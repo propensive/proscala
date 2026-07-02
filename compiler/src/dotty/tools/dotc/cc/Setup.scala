@@ -478,6 +478,15 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
        *  2. Map GlobalFresh to ResultCap in capturing types
        */
       def finalizeCapturing(tp: Type): Type = tp match
+        case CapturingType(parent, refs) if parent.isAlwaysPure && refs.elems.isEmpty =>
+          // A vacuously-empty capture set on an always-pure parent carries no information.
+          // Such a `T^{}` can be synthesised when an inline definition that yields a
+          // pure-typed value (e.g. an inline typeclass method returning an opaque pure type)
+          // is re-checked under capture checking: the explicit result-type tree is finalized
+          // with a kept, but empty, capture set. Strip it rather than rejecting the harmless
+          // box (which would otherwise fail with "T is a pure type, it makes no sense to add
+          // a capture set to it" at call sites that are, in fact, pure).
+          parent
         case CapturingType(parent, refs) =>
           if parent.isAlwaysPure && !tptToCheck.span.isZeroExtent then
             // If tptToCheck is zero-extent it could be copied from an overridden
@@ -926,8 +935,18 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
       case tp: (TypeRef | AppliedType) =>
         val sym = tp.typeSymbol
         if sym.isClass then
-          !sym.isPureClass && sym != defn.AnyClass
-          && sym != defn.MatchCaseClass
+          tp.tupleElementTypes match
+            case Some(elems) =>
+              // A tuple type captures exactly what its elements do: a tuple of pure
+              // elements is itself pure and needs no capture-set variable. Without this,
+              // an all-pure tuple in an invariant (type-member) position acquires a fresh
+              // capture variable `^'sN` that fails to unify with the pure tuple it should
+              // equal (e.g. a derived typeclass method's parameter no longer overrides the
+              // trait's pure member).
+              elems.exists(needsVariable)
+            case None =>
+              !sym.isPureClass && sym != defn.AnyClass
+              && sym != defn.MatchCaseClass
         else
           val tp1 = tp.dealiasKeepAnnotsAndOpaques
           if tp1 ne tp then needsVariable(tp1)
