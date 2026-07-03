@@ -33,4 +33,34 @@ package object wit {
         "version of the libraries.")
   }
 
+  /** Invokes a Wasm Component Model (WIT) imported function without a
+   *  hand-written `@WitImport` facade method.
+   *
+   *  This is an intrinsic recognized by the Scala.js linker frontend: calls to
+   *  it are lowered directly to a Wasm Component Model import invocation (the
+   *  same lowering as a call to an `@WitImport`-annotated method), with the
+   *  import declared on the enclosing class. It is intended to be emitted by
+   *  code generators (e.g. Xenophile) that already know the WIT function's
+   *  module, name and signature at compile time; it is not meant to be written
+   *  by hand.
+   *
+   *  The signature is carried explicitly rather than through type parameters,
+   *  so that it survives erasure. `module` and `name` are constant `String`
+   *  literals identifying the WIT function. `sigAndArgs` is a flat, inline
+   *  varargs list of the form:
+   *
+   *  {{{
+   *  classOf[R], classOf[P0], arg0, classOf[P1], arg1, ...
+   *  }}}
+   *
+   *  i.e. the result type first (as `classOf[R]`, or `classOf[Unit]` for a
+   *  `void` function), then one `classOf[P]` / argument pair per parameter, in
+   *  order. Each `Class[_]` must denote a type that maps to the Component Model
+   *  (a primitive, an unsigned type, `String`, an `Array`, a `@WitRecord`,
+   *  `@WitVariant` or `@WitFlags` type, a WIT resource, `Result` or
+   *  `java.util.Optional`) exactly as for an `@WitImport` parameter/result. The
+   *  caller is expected to cast the `Any` result to the real result type.
+   */
+  def witImportCall(module: String, name: String, sigAndArgs: Any*): Any = native
+
 }

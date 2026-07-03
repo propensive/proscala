@@ -94,6 +94,19 @@ class WitCodeGen(jsCodeGen: JSCodeGen)(using Context) {
     sym.hasAnnotation(jsdefn.WitResourceStaticMethodAnnot) ||
     sym.hasAnnotation(jsdefn.WitResourceConstructorAnnot)
 
+  /** Is this symbol the `scala.scalajs.wit.witImportCall` intrinsic?
+   *
+   *  Unlike the `@WitImport` annotation path, this is a stub-free import: the
+   *  call carries the module, name and signature explicitly (see
+   *  `JSCodeGen.genWitImportCallPrimitive`).
+   */
+  def isWitImportCall(sym: Symbol): Boolean =
+    sym == jsdefn.WitPackage_witImportCall
+
+  /** Build a WIT function type from Scala parameter and result types. */
+  def witFuncType(paramTypes: List[Type], resultType: Type): wit.FuncType =
+    wit.FuncType(paramTypes.map(toWIT(_)), toResultWIT(resultType))
+
   // Code generation methods
 
   /** Generate a WitFunctionApply node for a call to a WIT native member. */
