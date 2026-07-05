@@ -10,23 +10,27 @@
 # argfiles/manifests are written with shell `printf`, not the 4.0+ `$(file ...)`.
 # ==============================================================================
 
-# ---- Versions ----------------------------------------------------------------
-VERSION            := 3.9.0-RC1-propensive
-REF_VERSION        := 3.9.0-RC1
+# ---- Versions (per-tree config — the only block that differs across branches) -
+VERSION            := 3.8.4-propensive
+REF_VERSION        := 3.8.3
 SCALA2_VERSION     := 2.13.18
-SCALAJS_VERSION    := 1.22.0
+SCALAJS_VERSION    := 1.20.2
 ASM_VERSION        := 9.9.0-scala-1
-COMPILER_IFACE_VER := 1.12.0
-UTIL_IFACE_VER     := 1.11.5
-JLINE_VERSION      := 4.0.14
-COURSIER_IFACE_VER := 1.0.29-M4
-LZ4_VERSION        := 1.8.1
-GUAVA_VERSION      := 33.6.0-jre
-FAILUREACCESS_VER  := 1.0.3
+COMPILER_IFACE_VER := 1.10.7
+UTIL_IFACE_VER     := 1.10.7
+JLINE_VERSION      := 3.29.0
+COURSIER_IFACE_VER := 1.0.28
+LZ4_VERSION        := 1.8.0
+LZ4_GROUP          := org/lz4
+GUAVA_VERSION      := 33.2.1-jre
+FAILUREACCESS_VER  := 1.0.2
 MTAGS_VERSION      := 1.6.7
 LSP4J_VERSION      := 1.0.0
 GSON_VERSION       := 2.11.0
 JAVA_TARGET        := 17
+# -Werror is enabled on trees that are warning-clean (main, 3.9.0-RC1); the 3.8.4
+# tree comments it out, so leave this empty there.
+WERROR_FLAGS       :=
 
 # ---- Directories -------------------------------------------------------------
 ROOT     := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
@@ -58,10 +62,24 @@ cpjoin = $(subst $(space),:,$(strip $1))
 # scalac is already multi-threaded, so higher just oversubscribes cores.
 MAKEFLAGS += -j6
 
+# ---- Per-tree extra dependencies (part of the per-tree config) ----------------
+# Maven artifacts this tree needs beyond the common set, plus the repl's extra
+# runtime jars. Empty on main (which uses the directives-parser module and a
+# leaner repl); older release trees pull pprint/fansi/sourcecode and the
+# using_directives parser from Maven instead.
+EXTRA_MAVEN_PATHS := \
+  com/lihaoyi/pprint_3/0.9.3/pprint_3-0.9.3.jar \
+  com/lihaoyi/fansi_3/0.5.1/fansi_3-0.5.1.jar \
+  com/lihaoyi/sourcecode_3/0.4.4/sourcecode_3-0.4.4.jar \
+  org/virtuslab/using_directives/1.1.4/using_directives-1.1.4.jar
+REPL_EXTRA_JARS := \
+  $(JARS)/pprint_3-0.9.3.jar $(JARS)/fansi_3-0.5.1.jar \
+  $(JARS)/sourcecode_3-0.4.4.jar $(JARS)/using_directives-1.1.4.jar
+
 # ==============================================================================
 # Dependencies (downloaded from Maven Central, cached under .build/jars)
 # ==============================================================================
-MAVEN_PATHS := \
+MAVEN_PATHS := $(EXTRA_MAVEN_PATHS) \
   org/scala-lang/scala3-compiler_3/$(REF_VERSION)/scala3-compiler_3-$(REF_VERSION).jar \
   org/scala-lang/scala3-library_3/$(REF_VERSION)/scala3-library_3-$(REF_VERSION).jar \
   org/scala-lang/scala-library/$(REF_VERSION)/scala-library-$(REF_VERSION).jar \
@@ -74,7 +92,7 @@ MAVEN_PATHS := \
   org/jline/jline-terminal/$(JLINE_VERSION)/jline-terminal-$(JLINE_VERSION).jar \
   org/jline/jline-terminal-jni/$(JLINE_VERSION)/jline-terminal-jni-$(JLINE_VERSION).jar \
   io/get-coursier/interface/$(COURSIER_IFACE_VER)/interface-$(COURSIER_IFACE_VER).jar \
-  at/yawk/lz4/lz4-java/$(LZ4_VERSION)/lz4-java-$(LZ4_VERSION).jar \
+  $(LZ4_GROUP)/lz4-java/$(LZ4_VERSION)/lz4-java-$(LZ4_VERSION).jar \
   com/google/guava/guava/$(GUAVA_VERSION)/guava-$(GUAVA_VERSION).jar \
   com/google/guava/failureaccess/$(FAILUREACCESS_VER)/failureaccess-$(FAILUREACCESS_VER).jar \
   org/scalameta/mtags-interfaces/$(MTAGS_VERSION)/mtags-interfaces-$(MTAGS_VERSION).jar \
@@ -147,7 +165,7 @@ COMMON_ARGS := $(GEN)/common.args
 $(COMMON_ARGS): Makefile
 	@mkdir -p $(GEN)
 	@printf '%s\n' \
-	  -feature -deprecation -unchecked -Werror \
+	  -feature -deprecation -unchecked $(WERROR_FLAGS) \
 	  -encoding UTF8 \
 	  -language:implicitConversions \
 	  --java-output-version:$(JAVA_TARGET) \
@@ -190,8 +208,14 @@ INTERFACES_JAR := $(LIB)/scala3-interfaces.jar
 SCALA_LIB_JAR  := $(LIB)/scala-library.jar
 SCALA3_LIB_JAR := $(LIB)/scala3-library.jar
 TASTY_JAR      := $(LIB)/tasty-core.jar
-DIRECTIVES_JAR := $(LIB)/scala3-directives-parser.jar
 COMPILER_JAR   := $(LIB)/scala3-compiler.jar
+
+# scala3-directives-parser is a standalone module only in newer trees (main).
+# Older release trees (3.8.4, 3.9.0-RC1) don't have it — build it only if present.
+HAS_DIRECTIVES := $(wildcard directives-parser/src/main/scala)
+ifneq ($(HAS_DIRECTIVES),)
+DIRECTIVES_JAR := $(LIB)/scala3-directives-parser.jar
+endif
 
 # ---- 1. scala3-interfaces (pure Java) ----------------------------------------
 $(INTERFACES_JAR): $(DEPS_STAMP) $(shell find interfaces/src -name '*.java')
@@ -225,7 +249,8 @@ $(SCALA_LIB_JAR): $(COMMON_ARGS) $(DEPS_STAMP) $(LIBRARY_SRC) library/resources/
 	@cd $(BUILD)/refstd && jar xf $(JARS)/scala-library-$(REF_VERSION).jar
 	@# The reference stdlib ships matching .class + .tasty pairs; replace BOTH so
 	@# the overlaid classfile stays in sync with its TASTy (avoids -Werror warning).
-	@for E in $$(grep -oE '"[^"]+"' project/ScalaLibraryFilesToCopy.scala | tr -d '"'); do \
+	@# Skips gracefully on trees without this file (grep -> empty list).
+	@for E in $$(grep -oE '"[^"]+"' project/ScalaLibraryFilesToCopy.scala 2>/dev/null | tr -d '"'); do \
 	   d=$$(dirname "$$E"); b=$$(basename "$$E"); \
 	   [ -d "$(BUILD)/refstd/$$d" ] || continue; \
 	   mkdir -p "$(CLASSES)/scala-library/$$d"; \
@@ -250,11 +275,13 @@ $(TASTY_JAR): $(COMMON_ARGS) $(SCALA_LIB_JAR) $(shell find tasty/src -name '*.sc
 	$(call scalac_with,$(REFC),tasty-core,$(SCALA_LIB_JAR),tasty/src)
 	$(call jar_module,tasty-core,$@,org.scala.lang.tasty.core)
 
-# ---- 5. scala3-directives-parser ---------------------------------------------
+# ---- 5. scala3-directives-parser (only when the module exists) ---------------
+ifneq ($(HAS_DIRECTIVES),)
 $(DIRECTIVES_JAR): $(COMMON_ARGS) $(SCALA_LIB_JAR) $(shell find directives-parser/src/main/scala -name '*.scala')
 	@echo ">> scala3-directives-parser"
 	$(call scalac_with,$(REFC),directives,$(SCALA_LIB_JAR),directives-parser/src/main/scala)
 	$(call jar_module,directives,$@,org.scala.lang.scala3.directives.parser)
+endif
 
 # ---- 6. scala3-compiler (compiler/src + vendored scalajs-ir + javac) ---------
 COMPILER_SRC := $(shell find compiler/src compiler/src-scalajs-ir \( -name '*.scala' -o -name '*.java' \) -type f)
@@ -312,7 +339,7 @@ $(TASTY_INSPECTOR_JAR): $(COMMON_ARGS) $(STAGE_JARS) $(shell find tasty-inspecto
 	$(call jar_module,tasty-inspector,$@,org.scala.lang.scala3.tasty.inspector)
 
 # ---- 9. scala3-repl -----------------------------------------------------------
-REPL_CP := $(call cpjoin,$(STAGE_JARS) $(DIRECTIVES_JAR) $(JLINE_JARS) $(COURSIER_IFACE_JAR))
+REPL_CP := $(call cpjoin,$(STAGE_JARS) $(DIRECTIVES_JAR) $(JLINE_JARS) $(COURSIER_IFACE_JAR) $(REPL_EXTRA_JARS))
 $(REPL_JAR): $(COMMON_ARGS) $(STAGE_JARS) $(DIRECTIVES_JAR) $(shell find repl/src -name '*.scala')
 	@echo ">> scala3-repl"
 	$(call scalac_with,$(STAGEC),repl,$(REPL_CP),repl/src)
@@ -411,7 +438,7 @@ extra: $(EXTRA_JARS)
 # Third-party runtime jars shipped alongside the built modules on the classpath.
 THIRDPARTY_JARS := $(ASM_JAR) $(COMPILER_IFACE_JAR) $(UTIL_IFACE_JAR) \
   $(JLINE_JARS) $(COURSIER_IFACE_JAR) $(LZ4_JAR) $(GUAVA_JARS) $(MTAGS_IFACE_JAR) \
-  $(LSP4J_JARS) $(SJS_LIBRARY_JAR) $(SJS_JAVALIB_JAR)
+  $(LSP4J_JARS) $(SJS_LIBRARY_JAR) $(SJS_JAVALIB_JAR) $(REPL_EXTRA_JARS)
 
 # ---- Launcher scripts --------------------------------------------------------
 SCALAC_LAUNCHER := $(BIN)/scalac

@@ -12,6 +12,7 @@
 
 package dotty.tools.sjs.ir
 
+import scala.language.unsafeNulls
 import Names.ClassName
 import Trees._
 
@@ -24,10 +25,9 @@ object EntryPointsInfo {
   def forClassDef(classDef: ClassDef): EntryPointsInfo = {
     val hasEntryPoint = {
       classDef.topLevelExportDefs.nonEmpty ||
-      classDef.methods.exists(
-          m =>
-            m.flags.namespace == MemberNamespace.StaticConstructor &&
-            m.methodName.isStaticInitializer)
+      classDef.methods.exists(m =>
+          m.flags.namespace == MemberNamespace.StaticConstructor &&
+          m.methodName.isStaticInitializer)
     }
     new EntryPointsInfo(classDef.name.name, hasEntryPoint)
   }

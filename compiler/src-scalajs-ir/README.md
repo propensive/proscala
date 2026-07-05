@@ -1,7 +1,7 @@
 # Vendored Scala.js IR sources
 
 These sources are a vendored copy of the Scala.js **IR** library
-(`org.scala-js:scalajs-ir_3:1.22.0`, sources artifact), with a one-off package
+(`org.scala-js:scalajs-ir_2.13:1.20.2` (consumed via `for3Use2_13`), sources artifact), with a one-off package
 migration applied:
 
     org.scalajs.ir  ->  dotty.tools.sjs.ir
