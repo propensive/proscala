@@ -15,7 +15,7 @@ package scala
 import scala.language.`2.13`
 
 import scala.scalajs.js
-import scala.scalajs.LinkingInfo.{linkTimeIf, targetPureWasm}
+import scala.scalajs.LinkingInfo.{linkTimeIf, isWebAssembly}
 
 /** This class provides a simple way to get unique objects for equal strings.
  *  Since symbols are interned, they can be compared using reference equality.
@@ -49,7 +49,7 @@ object Symbol extends UniquenessCache[String, Symbol] {
 // Modified to use Scala.js specific cache
 private[scala] abstract class UniquenessCache[K, V] {
   private val cacheJS = {
-    linkTimeIf(!targetPureWasm) {
+    linkTimeIf(!isWebAssembly) {
       js.Dictionary.empty[V]
     } {
       null
@@ -57,7 +57,7 @@ private[scala] abstract class UniquenessCache[K, V] {
   }
 
   private val cacheWasm = {
-    linkTimeIf(targetPureWasm) {
+    linkTimeIf(isWebAssembly) {
       new java.util.HashMap[String, V]()
     } {
       null
@@ -68,7 +68,7 @@ private[scala] abstract class UniquenessCache[K, V] {
   protected def keyFromValue(v: V): Option[String]
 
   def apply(name: String): V = {
-    linkTimeIf(targetPureWasm) {
+    linkTimeIf(isWebAssembly) {
       cacheWasm.nn.computeIfAbsent(name, _ => valueFromKey(name))
     } {
       cacheJS.nn.getOrElseUpdate(name, valueFromKey(name))

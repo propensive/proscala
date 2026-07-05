@@ -234,7 +234,7 @@ trait IndexedBuffer[A] extends IndexedSeq[A]
 
 @SerialVersionUID(3L)
 object Buffer extends SeqFactory.Delegate[Buffer](
-  linkTimeIf[SeqFactory[Buffer]](LinkingInfo.targetPureWasm) {
+  linkTimeIf[SeqFactory[Buffer]](LinkingInfo.isWebAssembly) {
     ArrayBuffer
   } {
     js.WrappedArray
@@ -243,7 +243,7 @@ object Buffer extends SeqFactory.Delegate[Buffer](
 
 @SerialVersionUID(3L)
 object IndexedBuffer extends SeqFactory.Delegate[IndexedBuffer](
-  linkTimeIf[SeqFactory[IndexedBuffer]](LinkingInfo.targetPureWasm) {
+  linkTimeIf[SeqFactory[IndexedBuffer]](LinkingInfo.isWebAssembly) {
     ArrayBuffer
   } {
     js.WrappedArray

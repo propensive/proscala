@@ -54,7 +54,7 @@ object BoxesRunTime {
   def unboxToDouble(d: Any): Double = d.asInstanceOf[Double]
 
   def equals(x: Object, y: Object): Boolean =
-    linkTimeIf(LinkingInfo.targetPureWasm) {
+    linkTimeIf(LinkingInfo.isWebAssembly) {
       if (x eq y) {
         x match {
           case x: java.lang.Double => x == x // rejects NaN
