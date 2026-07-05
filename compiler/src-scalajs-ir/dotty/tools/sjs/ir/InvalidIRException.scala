@@ -12,6 +12,7 @@
 
 package dotty.tools.sjs.ir
 
+import scala.language.unsafeNulls
 class InvalidIRException(val optTree: Option[Trees.IRNode], message: String)
     extends Exception(message) {
 

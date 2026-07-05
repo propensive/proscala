@@ -12,6 +12,7 @@
 
 package dotty.tools.sjs.ir
 
+import scala.language.unsafeNulls
 final case class Position(
     /** Source file. */
     source: Position.SourceFile,
@@ -23,7 +24,7 @@ final case class Position(
   private val _isEmpty: Boolean = {
     def isEmptySlowPath(): Boolean = {
       source.getScheme == null && source.getRawAuthority == null &&
-      source.getRawQuery == null && source.getRawFragment == null
+        source.getRawQuery == null && source.getRawFragment == null
     }
     source.getRawPath == "" && isEmptySlowPath()
   }

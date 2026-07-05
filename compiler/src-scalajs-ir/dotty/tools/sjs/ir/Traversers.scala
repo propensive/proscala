@@ -12,6 +12,7 @@
 
 package dotty.tools.sjs.ir
 
+import scala.language.unsafeNulls
 import Trees._
 
 object Traversers {

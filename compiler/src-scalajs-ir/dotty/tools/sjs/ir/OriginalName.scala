@@ -12,8 +12,8 @@
 
 package dotty.tools.sjs.ir
 
+import scala.language.unsafeNulls
 import Names._
-import Nullables._
 
 /** An optional original name.
  *
@@ -21,7 +21,8 @@ import Nullables._
  *  names must always be well-formed Unicode strings. Unpaired surrogates are
  *  not valid.
  */
-final class OriginalName private (private val bytes: Nullable[Array[Byte]]) extends AnyVal {
+final class OriginalName private (private val bytes: Array[Byte])
+    extends AnyVal {
 
   /* The underlying field is a `bytes` instead of a `UTF8String` for two
    * reasons:
@@ -33,10 +34,14 @@ final class OriginalName private (private val bytes: Nullable[Array[Byte]]) exte
   def isEmpty: Boolean = bytes == null
   def isDefined: Boolean = bytes != null
 
-  def get: UTF8String = {
-    if (bytes == null)
-      throw new NoSuchElementException("NoOriginalName.get")
+  /** Gets the underlying `UTF8String` without checking for emptiness. */
+  @inline private def unsafeGet: UTF8String =
     UTF8String.unsafeCreate(bytes)
+
+  def get: UTF8String = {
+    if (isEmpty)
+      throw new NoSuchElementException("NoOriginalName.get")
+    unsafeGet
   }
 
   def orElse(name: Name): OriginalName =
@@ -60,14 +65,14 @@ final class OriginalName private (private val bytes: Nullable[Array[Byte]]) exte
     getOrElse(name.simpleName)
 
   def getOrElse(name: UTF8String): UTF8String =
-    if (bytes != null) UTF8String.unsafeCreate(bytes)
+    if (isDefined) unsafeGet
     else name
 
   def getOrElse(name: String): UTF8String = {
     /* Do not use `getOrElse(UTF8Sring(name))` so that we do not pay the cost
      * of encoding the `name` in UTF-8 if `this.isDefined`.
      */
-    if (bytes != null) UTF8String.unsafeCreate(bytes)
+    if (isDefined) unsafeGet
     else UTF8String(name)
   }
 
@@ -76,7 +81,7 @@ final class OriginalName private (private val bytes: Nullable[Array[Byte]]) exte
     getOrElse(name.simpleName)
 
   override def toString(): String =
-    if (bytes != null) s"OriginalName(${UTF8String.unsafeCreate(bytes)})"
+    if (isDefined) s"OriginalName($unsafeGet)"
     else "NoOriginalName"
 }
 

@@ -12,11 +12,10 @@
 
 package dotty.tools.sjs.ir
 
+import scala.language.unsafeNulls
 import java.util.Arrays
 import java.io.OutputStream
 import java.nio.ByteBuffer
-
-import Nullables._
 
 /** A version of a thing
  *
@@ -29,7 +28,7 @@ import Nullables._
  *  - Non hashes: Not guaranteed to be stable / collision free across different
  *        programs. Never written to IR files.
  */
-final class Version private (private val v: Nullable[Array[Byte]]) extends AnyVal {
+final class Version private (private val v: Array[Byte]) extends AnyVal {
   import Version.Type
 
   /** Checks whether two versions are known to be the same.
@@ -37,11 +36,11 @@ final class Version private (private val v: Nullable[Array[Byte]]) extends AnyVa
    *  Returns false if either of the versions is [[Version.Unversioned]]
    */
   def sameVersion(that: Version): Boolean = {
-    if (this.v == null || that.v == null) false
+    if (!this.isVersioned || !that.isVersioned) false
     else Arrays.equals(this.v, that.v)
   }
 
-  private[ir] def isHash: Boolean = v != null && v(0) == Type.Hash
+  private[ir] def isHash: Boolean = isVersioned && v(0) == Type.Hash
 
   private[ir] def writeHash(out: OutputStream): Unit = {
     require(isHash)
@@ -147,15 +146,14 @@ object Version {
    */
   def combine(versions: Version*): Version = {
     if (versions.forall(_.isVersioned)) {
-      val buf = ByteBuffer.allocate(1 + 4 + versions.map(_.v.nn.length + 4).sum)
+      val buf = ByteBuffer.allocate(1 + 4 + versions.map(_.v.length + 4).sum)
 
       buf.put(Type.Combined)
       buf.putInt(versions.length)
 
       for (version <- versions) {
-        val v = version.v.nn
-        buf.putInt(v.length)
-        buf.put(v)
+        buf.putInt(version.v.length)
+        buf.put(version.v)
       }
 
       new Version(buf.array())

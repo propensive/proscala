@@ -10,11 +10,11 @@
 # argfiles/manifests are written with shell `printf`, not the 4.0+ `$(file ...)`.
 # ==============================================================================
 
-# ---- Versions ----------------------------------------------------------------
+# ---- Versions (per-tree config — the only block that differs across branches) -
 VERSION            := 3.9.0-RC1-propensive
-REF_VERSION        := 3.9.0-RC1
+REF_VERSION        := 3.8.4
 SCALA2_VERSION     := 2.13.18
-SCALAJS_VERSION    := 1.22.0
+SCALAJS_VERSION    := 1.20.2
 ASM_VERSION        := 9.9.0-scala-1
 COMPILER_IFACE_VER := 1.12.0
 UTIL_IFACE_VER     := 1.11.5
@@ -58,10 +58,24 @@ cpjoin = $(subst $(space),:,$(strip $1))
 # scalac is already multi-threaded, so higher just oversubscribes cores.
 MAKEFLAGS += -j6
 
+# ---- Per-tree extra dependencies (part of the per-tree config) ----------------
+# Maven artifacts this tree needs beyond the common set, plus the repl's extra
+# runtime jars. Empty on main (which uses the directives-parser module and a
+# leaner repl); older release trees pull pprint/fansi/sourcecode and the
+# using_directives parser from Maven instead.
+EXTRA_MAVEN_PATHS := \
+  com/lihaoyi/pprint_3/0.9.3/pprint_3-0.9.3.jar \
+  com/lihaoyi/fansi_3/0.5.1/fansi_3-0.5.1.jar \
+  com/lihaoyi/sourcecode_3/0.4.4/sourcecode_3-0.4.4.jar \
+  org/virtuslab/using_directives/1.1.4/using_directives-1.1.4.jar
+REPL_EXTRA_JARS := \
+  $(JARS)/pprint_3-0.9.3.jar $(JARS)/fansi_3-0.5.1.jar \
+  $(JARS)/sourcecode_3-0.4.4.jar $(JARS)/using_directives-1.1.4.jar
+
 # ==============================================================================
 # Dependencies (downloaded from Maven Central, cached under .build/jars)
 # ==============================================================================
-MAVEN_PATHS := \
+MAVEN_PATHS := $(EXTRA_MAVEN_PATHS) \
   org/scala-lang/scala3-compiler_3/$(REF_VERSION)/scala3-compiler_3-$(REF_VERSION).jar \
   org/scala-lang/scala3-library_3/$(REF_VERSION)/scala3-library_3-$(REF_VERSION).jar \
   org/scala-lang/scala-library/$(REF_VERSION)/scala-library-$(REF_VERSION).jar \
@@ -321,7 +335,7 @@ $(TASTY_INSPECTOR_JAR): $(COMMON_ARGS) $(STAGE_JARS) $(shell find tasty-inspecto
 	$(call jar_module,tasty-inspector,$@,org.scala.lang.scala3.tasty.inspector)
 
 # ---- 9. scala3-repl -----------------------------------------------------------
-REPL_CP := $(call cpjoin,$(STAGE_JARS) $(DIRECTIVES_JAR) $(JLINE_JARS) $(COURSIER_IFACE_JAR))
+REPL_CP := $(call cpjoin,$(STAGE_JARS) $(DIRECTIVES_JAR) $(JLINE_JARS) $(COURSIER_IFACE_JAR) $(REPL_EXTRA_JARS))
 $(REPL_JAR): $(COMMON_ARGS) $(STAGE_JARS) $(DIRECTIVES_JAR) $(shell find repl/src -name '*.scala')
 	@echo ">> scala3-repl"
 	$(call scalac_with,$(STAGEC),repl,$(REPL_CP),repl/src)
@@ -420,7 +434,7 @@ extra: $(EXTRA_JARS)
 # Third-party runtime jars shipped alongside the built modules on the classpath.
 THIRDPARTY_JARS := $(ASM_JAR) $(COMPILER_IFACE_JAR) $(UTIL_IFACE_JAR) \
   $(JLINE_JARS) $(COURSIER_IFACE_JAR) $(LZ4_JAR) $(GUAVA_JARS) $(MTAGS_IFACE_JAR) \
-  $(LSP4J_JARS) $(SJS_LIBRARY_JAR) $(SJS_JAVALIB_JAR)
+  $(LSP4J_JARS) $(SJS_LIBRARY_JAR) $(SJS_JAVALIB_JAR) $(REPL_EXTRA_JARS)
 
 # ---- Launcher scripts --------------------------------------------------------
 SCALAC_LAUNCHER := $(BIN)/scalac
