@@ -83,6 +83,12 @@ class JSCodeGen()(using genCtx: Context) {
   private val isModuleInitialized = new ScopedVar[ScopedVar.VarBox[Boolean]]
   private val undefinedDefaultParams = new ScopedVar[mutable.Set[Symbol]]
 
+  /* WIT imports synthesized from `witImportCall` intrinsics in the current
+   * class's method bodies, keyed (and deduplicated) by their synthetic method
+   * name. Flushed into the class's `witNativeMembers` in `genScalaClass`. */
+  private val witImportCallMembers =
+    new ScopedVar[mutable.LinkedHashMap[MethodName, js.WitNativeMemberDef]]
+
   /* Contextual JS class value for some operations of nested JS classes that need one. */
   private val contextualJSClassValue = new ScopedVar[Option[js.Tree]](None)
 
@@ -269,6 +275,7 @@ class JSCodeGen()(using genCtx: Context) {
             currentClassSym := sym,
             delambdafyTargetDefDefs := MutableSymbolMap(),
             methodsAllowingJSAwait := mutable.Set.empty,
+            witImportCallMembers := mutable.LinkedHashMap.empty,
         ) {
           val tree = if (sym.hasAnnotation(jsdefn.WitResourceImportAnnot)) {
             // WIT resource class (trait annotated with @WitResourceImport)
@@ -524,7 +531,10 @@ class JSCodeGen()(using genCtx: Context) {
         }
       }
     }
-    val witNativeMembers = witNativeMembersBuilder.result()
+    // `@WitImport`-annotated members, plus any imports synthesized from
+    // `witImportCall` intrinsics found while generating the method bodies above.
+    val witNativeMembers =
+      witNativeMembersBuilder.result() ::: witImportCallMembers.get.values.toList
 
     // Generate member exports
     val memberExports = jsExportsGen.genMemberExports(sym)
@@ -2335,7 +2345,9 @@ class JSCodeGen()(using genCtx: Context) {
         genApplyNew(tree)
 
       case _ =>
-        if (primitives.isPrimitive(tree)) {
+        if (witCodeGen.isWitImportCall(sym)) {
+          genWitImportCallPrimitive(tree)
+        } else if (primitives.isPrimitive(tree)) {
           genPrimitiveOp(tree, isStat)
         } else if (Erasure.Boxing.isBox(sym)) {
           // Box a primitive value (cannot be Unit)
@@ -4650,6 +4662,128 @@ class JSCodeGen()(using genCtx: Context) {
     val methodName = MethodName.reflectiveProxy(NameTransformer.encode(methodNameStr), formalParamTypeRefs)
 
     js.Apply(js.ApplyFlags.empty, selectedValueTree, js.MethodIdent(methodName), actualArgs)(jstpe.AnyType)
+  }
+
+  /** Gen a call to the `scala.scalajs.wit.witImportCall` intrinsic.
+   *
+   *  `witImportCall(module, name, resultType, paramTypes, args)` performs a Wasm
+   *  Component Model import invocation *without* a hand-written `@WitImport`
+   *  facade method. It is meant to be emitted by code generators (e.g. Xenophile)
+   *  that already know the WIT function at compile time. The signature is carried
+   *  explicitly so that it survives erasure:
+   *
+   *   - `module` and `name` are constant `String` literals identifying the WIT
+   *     function;
+   *   - `resultType` is a `classOf[R]` literal and `paramTypes` an `Array` of
+   *     `classOf[P]` literals (like `Selectable.applyDynamic`);
+   *   - `args` is an `Array[Any]` of the argument values.
+   *
+   *  We recover all of that, synthesize a `WitNativeMemberDef` on the enclosing
+   *  class (deduplicated across identical imports), and emit a `WitFunctionApply`
+   *  keyed by the same synthetic method name — the same lowering used for a call
+   *  to an `@WitImport`-annotated method.
+   */
+  private def genWitImportCallPrimitive(tree: Apply): js.Tree = {
+    implicit val pos: Position = tree.span
+
+    val List(moduleArg, nameArg, sigAndArgsArg) = tree.args: @unchecked
+
+    def constantString(arg: Tree, what: String): String = arg match {
+      case Literal(const) if const.tag == Constants.StringTag =>
+        const.stringValue
+      case _ =>
+        report.error(s"The $what passed to witImportCall must be a String literal.", arg.sourcePos)
+        "<erroneous>"
+    }
+
+    def classOfType(arg: Tree, what: String): Type = arg match {
+      case Literal(const) if const.tag == Constants.ClazzTag =>
+        const.typeValue
+      case _ =>
+        report.error(s"The $what passed to witImportCall must be a literal classOf[T].", arg.sourcePos)
+        defn.AnyType
+    }
+
+    val moduleName = constantString(moduleArg, "module name")
+    val functionName = constantString(nameArg, "function name")
+
+    /* The variadic `sigAndArgs` is `[classOf[R], classOf[P0], arg0, classOf[P1],
+     * arg1, ...]`: the result type first (so the list is never empty), then the
+     * parameter type / argument pairs. Passed as inline varargs, it reaches the
+     * backend as `WrapArray(JavaSeqLiteral(...))`. */
+    val sigAndArgs: List[Tree] = sigAndArgsArg match {
+      case WrapArray(seq: JavaSeqLiteral) =>
+        seq.elems
+      case _ =>
+        report.error(
+            "The variadic arguments of witImportCall must be passed inline (not as `xs: _*`).",
+            sigAndArgsArg.sourcePos)
+        Nil
+    }
+
+    if (sigAndArgs.isEmpty)
+      report.error("witImportCall requires at least a result type.", tree.sourcePos)
+
+    val resultType =
+      sigAndArgs.headOption.fold(defn.UnitType)(classOfType(_, "result type"))
+
+    val paramAndArgTrees = sigAndArgs.drop(1)
+    if (paramAndArgTrees.size % 2 != 0)
+      report.error(
+          "witImportCall parameter types and arguments must be given as (classOf[P], arg) pairs.",
+          tree.sourcePos)
+
+    val pairs = paramAndArgTrees.grouped(2).toList.filter(_.sizeIs == 2)
+    val paramTypes: List[Type] = pairs.map(pair => classOfType(pair.head, "parameter type"))
+    val argTrees: List[Tree] = pairs.map(pair => pair(1))
+
+    // Synthesize a stable, IR-name-safe method name keyed on (module, name), and
+    // register (deduplicated) the corresponding import member on the enclosing class.
+    val methodName = witImportCallMethodName(moduleName, functionName, paramTypes, resultType)
+    val methodIdent = js.MethodIdent(methodName)
+    val flags = js.MemberFlags.empty.withNamespace(js.MemberNamespace.PublicStatic)
+    val funcType = witCodeGen.witFuncType(paramTypes, resultType)
+    val memberDef = js.WitNativeMemberDef(flags, moduleName,
+        js.WitFunctionName.Function(functionName), methodIdent, funcType)
+    witImportCallMembers.get.getOrElseUpdate(methodName, memberDef)
+
+    // Lower each argument, downcasting/unboxing it from `Any` to its carrier type.
+    val loweredArgs = argTrees.zip(paramTypes).map { (argTree, paramType) =>
+      val genArg = genExpr(argTree)
+      genAsInstanceOf(genArg, paramType)(using genArg.pos)
+    }
+
+    val className = encodeClassName(currentClassSym.get)
+    val call = js.WitFunctionApply(None, className, methodIdent, loweredArgs)(toIRType(resultType))
+
+    // The intrinsic's erased result type is `Object`; a `void` import must still
+    // yield a value. Primitive/reference results are already usable as `any`.
+    toIRType(resultType) match {
+      case jstpe.VoidType => js.Block(call, js.Undefined())
+      case _              => call
+    }
+  }
+
+  /** A stable, IR-name-safe synthetic method name for a `witImportCall` import.
+   *
+   *  Injective in `(module, name)` (hex-encoded), so distinct imports never
+   *  collide and identical imports in a class share one `WitNativeMemberDef`.
+   *  The parameter/result type refs keep the `MethodName` well-formed.
+   */
+  private def witImportCallMethodName(moduleName: String, functionName: String,
+      paramTypes: List[Type], resultType: Type): MethodName = {
+    val paramTypeRefs = paramTypes.map(tpe => toParamOrResultTypeRef(toTypeRef(tpe)))
+    val resultTypeRef = toParamOrResultTypeRef(toTypeRef(resultType))
+    val key = {
+      val bytes = (moduleName + " " + functionName).getBytes(java.nio.charset.StandardCharsets.UTF_8)
+      val sb = new java.lang.StringBuilder(bytes.length * 2)
+      for (b <- bytes) {
+        sb.append(Character.forDigit((b >> 4) & 0xf, 16))
+        sb.append(Character.forDigit(b & 0xf, 16))
+      }
+      sb.toString
+    }
+    MethodName(SimpleMethodName("witImportCall$" + key), paramTypeRefs, resultTypeRef)
   }
 
   /** Gen actual actual arguments to Scala method call.
