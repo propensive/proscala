@@ -12,8 +12,8 @@
 
 package dotty.tools.sjs.ir
 
-import scala.language.unsafeNulls
 import Names._
+import Nullables._
 
 /** An optional original name.
  *
@@ -21,8 +21,7 @@ import Names._
  *  names must always be well-formed Unicode strings. Unpaired surrogates are
  *  not valid.
  */
-final class OriginalName private (private val bytes: Array[Byte])
-    extends AnyVal {
+final class OriginalName private (private val bytes: Nullable[Array[Byte]]) extends AnyVal {
 
   /* The underlying field is a `bytes` instead of a `UTF8String` for two
    * reasons:
@@ -34,14 +33,10 @@ final class OriginalName private (private val bytes: Array[Byte])
   def isEmpty: Boolean = bytes == null
   def isDefined: Boolean = bytes != null
 
-  /** Gets the underlying `UTF8String` without checking for emptiness. */
-  @inline private def unsafeGet: UTF8String =
-    UTF8String.unsafeCreate(bytes)
-
   def get: UTF8String = {
-    if (isEmpty)
+    if (bytes == null)
       throw new NoSuchElementException("NoOriginalName.get")
-    unsafeGet
+    UTF8String.unsafeCreate(bytes)
   }
 
   def orElse(name: Name): OriginalName =
@@ -65,14 +60,14 @@ final class OriginalName private (private val bytes: Array[Byte])
     getOrElse(name.simpleName)
 
   def getOrElse(name: UTF8String): UTF8String =
-    if (isDefined) unsafeGet
+    if (bytes != null) UTF8String.unsafeCreate(bytes)
     else name
 
   def getOrElse(name: String): UTF8String = {
     /* Do not use `getOrElse(UTF8Sring(name))` so that we do not pay the cost
      * of encoding the `name` in UTF-8 if `this.isDefined`.
      */
-    if (isDefined) unsafeGet
+    if (bytes != null) UTF8String.unsafeCreate(bytes)
     else UTF8String(name)
   }
 
@@ -81,7 +76,7 @@ final class OriginalName private (private val bytes: Array[Byte])
     getOrElse(name.simpleName)
 
   override def toString(): String =
-    if (isDefined) s"OriginalName($unsafeGet)"
+    if (bytes != null) s"OriginalName(${UTF8String.unsafeCreate(bytes)})"
     else "NoOriginalName"
 }
 
