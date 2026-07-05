@@ -12,7 +12,6 @@
 
 package dotty.tools.sjs.ir
 
-import scala.language.unsafeNulls
 import java.io.{DataOutputStream, OutputStream}
 
 import Names._
@@ -115,6 +114,9 @@ object Hashers {
     case TopLevelMethodExportDef(moduleID, methodDef) =>
       TopLevelMethodExportDef(moduleID, hashJSMethodDef(methodDef))(tle.pos)
 
+    case WitExportDef(moduleName, name, methodDef, signature) =>
+      WitExportDef(moduleName, name, hashMethodDef(methodDef), signature)(tle.pos)
+
     case _:TopLevelFieldExportDef | _:TopLevelModuleExportDef |
         _:TopLevelJSClassExportDef =>
       tle
@@ -132,7 +134,7 @@ object Hashers {
     val newTopLevelExportDefs = topLevelExportDefs.map(hashTopLevelExportDef(_))
     ClassDef(name, originalName, kind, jsClassCaptures, superClass, interfaces,
         jsSuperClass, jsNativeLoadSpec, fields, newMethods, newJSConstructorDef,
-        newExportedMembers, jsNativeMembers, newTopLevelExportDefs)(
+        newExportedMembers, jsNativeMembers, witNativeMembers, newTopLevelExportDefs)(
         optimizerHints)
   }
 
@@ -546,8 +548,10 @@ object Hashers {
               throw new InvalidIRException(tree, "Cannot hash a typed closure with a rest param")
             mixType(resultType)
           } else {
-            if (resultType != AnyType)
-              throw new InvalidIRException(tree, "Cannot hash a JS closure with a result type != AnyType")
+            if (resultType != AnyType) {
+              throw new InvalidIRException(
+                  tree, "Cannot hash a JS closure with a result type != AnyType")
+            }
             restParam.foreach(mixParamDef(_))
           }
           mixTree(body)
@@ -561,6 +565,14 @@ object Hashers {
         case LinkTimeProperty(name) =>
           mixTag(TagLinkTimeProperty)
           mixString(name)
+          mixType(tree.tpe)
+
+        case WitFunctionApply(receiver, className, method, args) =>
+          mixTag(TagWitFunctionApply)
+          mixOptTree(receiver)
+          mixName(className)
+          mixMethodIdent(method)
+          mixTrees(args)
           mixType(tree.tpe)
 
         case Transient(value) =>
@@ -607,6 +619,9 @@ object Hashers {
       case ClassRef(className) =>
         mixTag(TagClassRef)
         mixName(className)
+      case WitResourceTypeRef(className) =>
+        mixTag(TagWitResourceTypeRef)
+        mixName(className)
       case typeRef: ArrayTypeRef =>
         mixTag(TagArrayTypeRef)
         mixArrayTypeRef(typeRef)
@@ -638,12 +653,28 @@ object Hashers {
       case NullType       => mixTag(TagNullType)
       case VoidType       => mixTag(TagVoidType)
 
-      case ClassType(className, nullable) =>
-        mixTag(if (nullable) TagClassType else TagNonNullClassType)
+      case ClassType(className, nullable, exact) =>
+        val tag = (exact, nullable) match {
+          case (true, true)   => TagExactClassType
+          case (true, false)  => TagExactNonNullClassType
+          case (false, true)  => TagClassType
+          case (false, false) => TagNonNullClassType
+        }
+        mixTag(tag)
         mixName(className)
 
-      case ArrayType(arrayTypeRef, nullable) =>
-        mixTag(if (nullable) TagArrayType else TagNonNullArrayType)
+      case WitResourceType(className) =>
+        mixTag(TagWitResourceType)
+        mixName(className)
+
+      case ArrayType(arrayTypeRef, nullable, exact) =>
+        val tag = (exact, nullable) match {
+          case (true, true)   => TagExactArrayType
+          case (true, false)  => TagExactNonNullArrayType
+          case (false, true)  => TagArrayType
+          case (false, false) => TagNonNullArrayType
+        }
+        mixTag(tag)
         mixArrayTypeRef(arrayTypeRef)
 
       case ClosureType(paramTypes, resultType, nullable) =>

@@ -10,14 +10,11 @@
  * additional information regarding copyright ownership.
  */
 
-package dotty.tools.sjs.ir
+package scala.scalajs.wit.annotation
 
-class InvalidIRException(val optTree: Option[Trees.IRNode], message: String)
-    extends Exception(message) {
+import scala.annotation.meta._
 
-  def this(tree: Trees.IRNode, message: String) =
-    this(Some(tree), message)
-
-  def this(message: String) =
-    this(None, message)
+@field @getter @setter
+class WitImport private () extends scala.annotation.StaticAnnotation {
+  def this(moduleName: String, name: String) = this()
 }
