@@ -14,7 +14,7 @@
 VERSION            := 3.9.0-RC1-propensive
 REF_VERSION        := 3.8.4
 SCALA2_VERSION     := 2.13.18
-SCALAJS_VERSION    := 1.20.2
+SCALAJS_VERSION    := 1.22.0-wasm.4
 ASM_VERSION        := 9.9.0-scala-1
 COMPILER_IFACE_VER := 1.12.0
 UTIL_IFACE_VER     := 1.11.5
@@ -124,8 +124,8 @@ MAVEN_PATHS := $(EXTRA_MAVEN_PATHS) $(WIT_TOOLCHAIN_PATHS) \
   org/eclipse/lsp4j/org.eclipse.lsp4j/$(LSP4J_VERSION)/org.eclipse.lsp4j-$(LSP4J_VERSION).jar \
   org/eclipse/lsp4j/org.eclipse.lsp4j.jsonrpc/$(LSP4J_VERSION)/org.eclipse.lsp4j.jsonrpc-$(LSP4J_VERSION).jar \
   com/google/code/gson/gson/$(GSON_VERSION)/gson-$(GSON_VERSION).jar \
-  org/scala-js/scalajs-library_2.13/$(SCALAJS_VERSION)/scalajs-library_2.13-$(SCALAJS_VERSION).jar \
-  org/scala-js/scalajs-javalib/$(SCALAJS_VERSION)/scalajs-javalib-$(SCALAJS_VERSION).jar
+  io/github/scala-wasm/scalajs-library_2.13/$(SCALAJS_VERSION)/scalajs-library_2.13-$(SCALAJS_VERSION).jar \
+  io/github/scala-wasm/scalajs-javalib/$(SCALAJS_VERSION)/scalajs-javalib-$(SCALAJS_VERSION).jar
 
 DEPS_STAMP := $(JARS)/.stamp
 
