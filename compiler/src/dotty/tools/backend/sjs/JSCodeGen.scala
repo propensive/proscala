@@ -467,14 +467,24 @@ class JSCodeGen()(using genCtx: Context) {
               moduleName <- annot.argumentConstantString(0)
               functionName <- annot.argumentConstantString(1)
             } {
-              val flags = js.MemberFlags.empty.withNamespace(js.MemberNamespace.PublicStatic)
-              val name = js.WitFunctionName.Function(functionName)
-              witNativeMembersBuilder += witCodeGen.genWitNativeMemberDef(flags, dd, moduleName, name)
+              // These `witCodeGen` entry points materialize the implicit
+              // `LocalNameGenerator` (`localNames`), which is only bound while a
+              // method body is generated; here we are at class scope, so
+              // establish a fresh local-name scope.
+              withNewLocalNameScope {
+                val flags = js.MemberFlags.empty.withNamespace(js.MemberNamespace.PublicStatic)
+                val name = js.WitFunctionName.Function(functionName)
+                witNativeMembersBuilder += witCodeGen.genWitNativeMemberDef(flags, dd, moduleName, name)
+              }
             }
           else if sym.isWitResourceStaticMethod then
-            witCodeGen.genWitResourceStaticMethodDef(dd).foreach(witNativeMembersBuilder += _)
+            withNewLocalNameScope {
+              witCodeGen.genWitResourceStaticMethodDef(dd).foreach(witNativeMembersBuilder += _)
+            }
           else if sym.isWitResourceConstructor then
-            witCodeGen.genWitResourceConstructor(dd).foreach(witNativeMembersBuilder += _)
+            withNewLocalNameScope {
+              witCodeGen.genWitResourceConstructor(dd).foreach(witNativeMembersBuilder += _)
+            }
           else if sym.hasAnnotation(jsdefn.WitExportAnnot) ||
               sym.allOverriddenSymbols.exists(_.hasAnnotation(jsdefn.WitExportAnnot)) then
             // WIT export - record for later, after method generation
@@ -499,13 +509,19 @@ class JSCodeGen()(using genCtx: Context) {
         moduleName <- annot.argumentConstantString(0)
         functionName <- annot.argumentConstantString(1)
       } {
-        val funcType = witCodeGen.witFunctionTypeOf(sym)
-        val exportInfo = WitExportInfo(moduleName, functionName, funcType)(dd.sourcePos)
+        // `witFunctionTypeOf` / `genWitExportDef` materialize the implicit
+        // `LocalNameGenerator` (`localNames`), which is only bound while a
+        // method body is being generated. This loop runs at class scope, after
+        // per-method generation, so establish a fresh local-name scope here.
+        withNewLocalNameScope {
+          val funcType = witCodeGen.witFunctionTypeOf(sym)
+          val exportInfo = WitExportInfo(moduleName, functionName, funcType)(dd.sourcePos)
 
-        // Find the generated method def
-        val methodIdent = encodeMethodSym(sym)
-        generatedMethods.find(_.name.name == methodIdent.name).foreach { methodDef =>
-          witExportDefsBuilder += witCodeGen.genWitExportDef(exportInfo, methodDef)
+          // Find the generated method def
+          val methodIdent = encodeMethodSym(sym)
+          generatedMethods.find(_.name.name == methodIdent.name).foreach { methodDef =>
+            witExportDefsBuilder += witCodeGen.genWitExportDef(exportInfo, methodDef)
+          }
         }
       }
     }
