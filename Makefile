@@ -190,8 +190,14 @@ INTERFACES_JAR := $(LIB)/scala3-interfaces.jar
 SCALA_LIB_JAR  := $(LIB)/scala-library.jar
 SCALA3_LIB_JAR := $(LIB)/scala3-library.jar
 TASTY_JAR      := $(LIB)/tasty-core.jar
-DIRECTIVES_JAR := $(LIB)/scala3-directives-parser.jar
 COMPILER_JAR   := $(LIB)/scala3-compiler.jar
+
+# scala3-directives-parser is a standalone module only in newer trees (main).
+# Older release trees (3.8.4, 3.9.0-RC1) don't have it — build it only if present.
+HAS_DIRECTIVES := $(wildcard directives-parser)
+ifneq ($(HAS_DIRECTIVES),)
+DIRECTIVES_JAR := $(LIB)/scala3-directives-parser.jar
+endif
 
 # ---- 1. scala3-interfaces (pure Java) ----------------------------------------
 $(INTERFACES_JAR): $(DEPS_STAMP) $(shell find interfaces/src -name '*.java')
@@ -225,7 +231,8 @@ $(SCALA_LIB_JAR): $(COMMON_ARGS) $(DEPS_STAMP) $(LIBRARY_SRC) library/resources/
 	@cd $(BUILD)/refstd && jar xf $(JARS)/scala-library-$(REF_VERSION).jar
 	@# The reference stdlib ships matching .class + .tasty pairs; replace BOTH so
 	@# the overlaid classfile stays in sync with its TASTy (avoids -Werror warning).
-	@for E in $$(grep -oE '"[^"]+"' project/ScalaLibraryFilesToCopy.scala | tr -d '"'); do \
+	@# Skips gracefully on trees without this file (grep -> empty list).
+	@for E in $$(grep -oE '"[^"]+"' project/ScalaLibraryFilesToCopy.scala 2>/dev/null | tr -d '"'); do \
 	   d=$$(dirname "$$E"); b=$$(basename "$$E"); \
 	   [ -d "$(BUILD)/refstd/$$d" ] || continue; \
 	   mkdir -p "$(CLASSES)/scala-library/$$d"; \
@@ -250,11 +257,13 @@ $(TASTY_JAR): $(COMMON_ARGS) $(SCALA_LIB_JAR) $(shell find tasty/src -name '*.sc
 	$(call scalac_with,$(REFC),tasty-core,$(SCALA_LIB_JAR),tasty/src)
 	$(call jar_module,tasty-core,$@,org.scala.lang.tasty.core)
 
-# ---- 5. scala3-directives-parser ---------------------------------------------
+# ---- 5. scala3-directives-parser (only when the module exists) ---------------
+ifneq ($(HAS_DIRECTIVES),)
 $(DIRECTIVES_JAR): $(COMMON_ARGS) $(SCALA_LIB_JAR) $(shell find directives-parser/src/main/scala -name '*.scala')
 	@echo ">> scala3-directives-parser"
 	$(call scalac_with,$(REFC),directives,$(SCALA_LIB_JAR),directives-parser/src/main/scala)
 	$(call jar_module,directives,$@,org.scala.lang.scala3.directives.parser)
+endif
 
 # ---- 6. scala3-compiler (compiler/src + vendored scalajs-ir + javac) ---------
 COMPILER_SRC := $(shell find compiler/src compiler/src-scalajs-ir \( -name '*.scala' -o -name '*.java' \) -type f)
