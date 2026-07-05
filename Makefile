@@ -21,12 +21,16 @@ UTIL_IFACE_VER     := 1.11.5
 JLINE_VERSION      := 4.0.14
 COURSIER_IFACE_VER := 1.0.29-M4
 LZ4_VERSION        := 1.8.1
+LZ4_GROUP          := at/yawk/lz4
 GUAVA_VERSION      := 33.6.0-jre
 FAILUREACCESS_VER  := 1.0.3
 MTAGS_VERSION      := 1.6.7
 LSP4J_VERSION      := 1.0.0
 GSON_VERSION       := 2.11.0
 JAVA_TARGET        := 17
+# -Werror is enabled on trees that are warning-clean (main, 3.9.0-RC1); the 3.8.4
+# tree comments it out, so leave this empty there.
+WERROR_FLAGS       := -Werror
 
 # ---- Directories -------------------------------------------------------------
 ROOT     := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
@@ -82,7 +86,7 @@ MAVEN_PATHS := $(EXTRA_MAVEN_PATHS) \
   org/jline/jline-terminal/$(JLINE_VERSION)/jline-terminal-$(JLINE_VERSION).jar \
   org/jline/jline-terminal-jni/$(JLINE_VERSION)/jline-terminal-jni-$(JLINE_VERSION).jar \
   io/get-coursier/interface/$(COURSIER_IFACE_VER)/interface-$(COURSIER_IFACE_VER).jar \
-  at/yawk/lz4/lz4-java/$(LZ4_VERSION)/lz4-java-$(LZ4_VERSION).jar \
+  $(LZ4_GROUP)/lz4-java/$(LZ4_VERSION)/lz4-java-$(LZ4_VERSION).jar \
   com/google/guava/guava/$(GUAVA_VERSION)/guava-$(GUAVA_VERSION).jar \
   com/google/guava/failureaccess/$(FAILUREACCESS_VER)/failureaccess-$(FAILUREACCESS_VER).jar \
   org/scalameta/mtags-interfaces/$(MTAGS_VERSION)/mtags-interfaces-$(MTAGS_VERSION).jar \
@@ -155,7 +159,7 @@ COMMON_ARGS := $(GEN)/common.args
 $(COMMON_ARGS): Makefile
 	@mkdir -p $(GEN)
 	@printf '%s\n' \
-	  -feature -deprecation -unchecked -Werror \
+	  -feature -deprecation -unchecked $(WERROR_FLAGS) \
 	  -encoding UTF8 \
 	  -language:implicitConversions \
 	  --java-output-version:$(JAVA_TARGET) \
@@ -202,7 +206,7 @@ COMPILER_JAR   := $(LIB)/scala3-compiler.jar
 
 # scala3-directives-parser is a standalone module only in newer trees (main).
 # Older release trees (3.8.4, 3.9.0-RC1) don't have it — build it only if present.
-HAS_DIRECTIVES := $(wildcard directives-parser)
+HAS_DIRECTIVES := $(wildcard directives-parser/src/main/scala)
 ifneq ($(HAS_DIRECTIVES),)
 DIRECTIVES_JAR := $(LIB)/scala3-directives-parser.jar
 endif
