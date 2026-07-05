@@ -331,6 +331,7 @@ $(COMPILER_JAR): $(COMMON_ARGS) $(SCALA_LIB_JAR) $(INTERFACES_JAR) $(TASTY_JAR) 
 	  '"-Wconf:src=.*src-scalajs-ir/.*&msg=Implicit parameters should be provided with a `using` clause:s"' \
 	  '"-Wconf:src=.*src-scalajs-ir/.*&msg=uninitialized` instead:s"' \
 	  '"-Wconf:src=.*src-scalajs-ir/.*&msg=object AnyRefMap in package scala\.collection\.mutable is deprecated:s"' \
+	  '"-Wconf:src=.*src-scalajs-ir/.*&msg=is deprecated for wildcard arguments of types:s"' \
 	  >> $(CLASSES)/compiler.args
 	@printf '%s\n' -classpath '$(COMPILER_CP)' -d $(CLASSES)/compiler >> $(CLASSES)/compiler.args
 	@find compiler/src compiler/src-scalajs-ir \( -name '*.scala' -o -name '*.java' \) -type f | LC_ALL=C sort >> $(CLASSES)/compiler.args
