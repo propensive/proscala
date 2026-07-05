@@ -52,6 +52,12 @@ cpjoin = $(subst $(space),:,$(strip $1))
 
 .DEFAULT_GOAL := release
 
+# Build modules in parallel by default. Module outputs are isolated (per-module
+# class/arg/manifest dirs and distinct jar names), so this is race-free. Override
+# on the command line with e.g. `make -j1` or `make -j12`. ~6 is a sweet spot:
+# scalac is already multi-threaded, so higher just oversubscribes cores.
+MAKEFLAGS += -j6
+
 # ==============================================================================
 # Dependencies (downloaded from Maven Central, cached under .build/jars)
 # ==============================================================================
