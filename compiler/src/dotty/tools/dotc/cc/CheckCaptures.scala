@@ -18,7 +18,7 @@ import typer.ErrorReporting.err
 import typer.ProtoTypes.{LhsProto, WildcardSelectionProto, SelectionProto}
 import util.{SimpleIdentitySet, EqHashMap, EqHashSet, SrcPos, Property}
 import util.chaining.tap
-import transform.{Recheck, PreRecheck, CapturedVars}
+import transform.{Recheck, PreRecheck, CapturedVars, ContextFunctionResults}
 import Recheck.*
 import scala.collection.mutable
 import CaptureSet.{withCaptureSetsExplained, IncludeFailure, MutAdaptFailure, VarState}
@@ -1254,6 +1254,23 @@ class CheckCaptures extends Recheck, SymTransformer:
     override def recheckDefDef(tree: DefDef, sym: Symbol)(using Context): Type =
       if Synthetics.isExcluded(sym) then sym.info
       else {
+        // Register the closures that implement this method's context-function result
+        // chain: erasure flattens their parameters into the method's parameter list
+        // (see ContextFunctionResults), so level checking treats references bound
+        // inside the chain as being at the method's level (see CCState.contextResultClosures).
+        def registerContextResults(rhs: Tree, n: Int)(using Context): Unit =
+          if n > 0 then rhs match
+            case Block(List(anonDef: DefDef), _: Closure) =>
+              ccState.contextResultClosures(anonDef.symbol) = sym
+              registerContextResults(anonDef.rhs, n - 1)
+            case Block(_, expr) => registerContextResults(expr, n)
+            case Inlined(_, _, expansion) => registerContextResults(expansion, n)
+            case Typed(expr, _) => registerContextResults(expr, n)
+            case _ =>
+        if !sym.isAnonymousFunction then
+          registerContextResults(
+            tree.rhs, ContextFunctionResults.contextResultCount(sym))
+
         val saved = curEnv
         val localSet = sym.useSet
         if sym.isAnonymousFunction && !localSet.isConst then

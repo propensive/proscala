@@ -931,7 +931,14 @@ object CaptureSet:
       case _ =>
         if owner.exists then
           val elemVis = elem.visibility
+          // A capability bound in a closure that implements a method's context-function
+          // result chain is at the method's level: erasure flattens those closures'
+          // parameters into the method's parameter list (see CCState.contextResultClosures).
+          val adjustedVis = ccState.contextResultClosures.lookup(elemVis) match
+            case meth: Symbol => meth
+            case null => elemVis
           !elemVis.isProperlyContainedIn(owner)
+          || adjustedVis == owner
           || nestedOK && elemVis.owner == owner
         else true
 
