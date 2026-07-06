@@ -4688,7 +4688,17 @@ class JSCodeGen()(using genCtx: Context) {
 
     val List(moduleArg, nameArg, sigAndArgsArg) = tree.args: @unchecked
 
-    def constantString(arg: Tree, what: String): String = arg match {
+    /* Macro-emitted calls (e.g. Xenophile's `invoke`) reach the backend with their literal
+     * arguments wrapped in adaptation nodes (`Typed` to the varargs element type, trivial
+     * blocks), so unwrap before matching the literals.
+     */
+    def skipWrappers(arg: Tree): Tree = arg match {
+      case Typed(expr, _)   => skipWrappers(expr)
+      case Block(Nil, expr) => skipWrappers(expr)
+      case _                => arg
+    }
+
+    def constantString(arg: Tree, what: String): String = skipWrappers(arg) match {
       case Literal(const) if const.tag == Constants.StringTag =>
         const.stringValue
       case _ =>
@@ -4696,7 +4706,7 @@ class JSCodeGen()(using genCtx: Context) {
         "<erroneous>"
     }
 
-    def classOfType(arg: Tree, what: String): Type = arg match {
+    def classOfType(arg: Tree, what: String): Type = skipWrappers(arg) match {
       case Literal(const) if const.tag == Constants.ClazzTag =>
         const.typeValue
       case _ =>
