@@ -107,6 +107,81 @@ class WitCodeGen(jsCodeGen: JSCodeGen)(using Context) {
   def witFuncType(paramTypes: List[Type], resultType: Type): wit.FuncType =
     wit.FuncType(paramTypes.map(toWIT(_)), toResultWIT(resultType))
 
+  /** Build a WIT function type from Scala parameter types and an already-resolved WIT result. Used
+   *  by the `witImportCall` intrinsic, whose result type is carried as text (see `parseWitType`)
+   *  because `classOf` erases the nested type arguments a `list<tuple<…>>` result needs.
+   */
+  def witFuncTypeParsed(paramTypes: List[Type], resultType: Option[wit.ValType]): wit.FuncType =
+    wit.FuncType(paramTypes.map(toWIT(_)), resultType)
+
+  /** Parse a WIT type descriptor — as produced by Xenophile's `Foreign.Type.text`, e.g.
+   *  `list<tuple<string, string>>` — into a `ValType`. `T|none` denotes `option<T>`. Only the
+   *  structural and primitive types are handled (named record/variant/… types are not carried this
+   *  way).
+   */
+  def parseWitType(text: String): wit.ValType = {
+    var pos = 0
+
+    def skipSpaces(): Unit = while (pos < text.length && text.charAt(pos) == ' ') pos += 1
+
+    def primitive(name: String): wit.ValType = name match {
+      case "bool"   => wit.BoolType
+      case "u8"     => wit.U8Type
+      case "u16"    => wit.U16Type
+      case "u32"    => wit.U32Type
+      case "u64"    => wit.U64Type
+      case "s8"     => wit.S8Type
+      case "s16"    => wit.S16Type
+      case "s32"    => wit.S32Type
+      case "s64"    => wit.S64Type
+      case "f32"    => wit.F32Type
+      case "f64"    => wit.F64Type
+      case "char"   => wit.CharType
+      case "string" => wit.StringType
+      case other    => throw new AssertionError(s"witImportCall: unsupported WIT type `$other`")
+    }
+
+    def parseType(): wit.ValType = {
+      skipSpaces()
+      val start = pos
+      while (pos < text.length && { val c = text.charAt(pos); c.isLetterOrDigit || c == '-' || c == '_' })
+        pos += 1
+      val name = text.substring(start, pos)
+
+      val base =
+        if (pos < text.length && text.charAt(pos) == '<') {
+          pos += 1
+          val args = mutable.ListBuffer[wit.ValType](parseType())
+          skipSpaces()
+          while (pos < text.length && text.charAt(pos) == ',') {
+            pos += 1
+            args += parseType()
+            skipSpaces()
+          }
+          if (pos < text.length && text.charAt(pos) == '>') pos += 1
+          name match {
+            case "list"   => wit.ListType(args.head, None)
+            case "tuple"  => wit.TupleType(args.toList)
+            case "option" => wit.OptionType(args.head)
+            case "result" => wit.ResultType(args.headOption, args.drop(1).headOption)
+            case other =>
+              throw new AssertionError(s"witImportCall: unsupported WIT type constructor `$other`")
+          }
+        } else primitive(name)
+
+      // `T|none` (the union Xenophile emits for `option<T>`) is `option<T>`.
+      skipSpaces()
+      if (pos < text.length && text.charAt(pos) == '|') {
+        pos += 1
+        skipSpaces()
+        while (pos < text.length && text.charAt(pos).isLetter) pos += 1
+        wit.OptionType(base)
+      } else base
+    }
+
+    parseType()
+  }
+
   // Code generation methods
 
   /** Generate a WitFunctionApply node for a call to a WIT native member. */

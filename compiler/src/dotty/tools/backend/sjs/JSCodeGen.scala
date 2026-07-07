@@ -4733,13 +4733,21 @@ class JSCodeGen()(using genCtx: Context) {
         Nil
     }
 
-    if (sigAndArgs.isEmpty)
-      report.error("witImportCall requires at least a result type.", tree.sourcePos)
+    if (sigAndArgs.sizeIs < 2)
+      report.error("witImportCall requires a result type (classOf) and its WIT type text.",
+          tree.sourcePos)
 
+    /* The result is carried as `classOf[R]` (giving the erasure-safe IR result type) *and* the WIT
+     * result type as text, because `classOf` erases the nested type arguments a `list<tuple<…>>`
+     * result needs. Parameter type / argument pairs (if any) follow. */
     val resultType =
       sigAndArgs.headOption.fold(defn.UnitType)(classOfType(_, "result type"))
 
-    val paramAndArgTrees = sigAndArgs.drop(1)
+    val resultWit =
+      if (resultType.typeSymbol == defn.UnitClass) None
+      else Some(witCodeGen.parseWitType(constantString(sigAndArgs(1), "result WIT type")))
+
+    val paramAndArgTrees = sigAndArgs.drop(2)
     if (paramAndArgTrees.size % 2 != 0)
       report.error(
           "witImportCall parameter types and arguments must be given as (classOf[P], arg) pairs.",
@@ -4754,7 +4762,7 @@ class JSCodeGen()(using genCtx: Context) {
     val methodName = witImportCallMethodName(moduleName, functionName, paramTypes, resultType)
     val methodIdent = js.MethodIdent(methodName)
     val flags = js.MemberFlags.empty.withNamespace(js.MemberNamespace.PublicStatic)
-    val funcType = witCodeGen.witFuncType(paramTypes, resultType)
+    val funcType = witCodeGen.witFuncTypeParsed(paramTypes, resultWit)
     val memberDef = js.WitNativeMemberDef(flags, moduleName,
         js.WitFunctionName.Function(functionName), methodIdent, funcType)
     witImportCallMembers.get.getOrElseUpdate(methodName, memberDef)
