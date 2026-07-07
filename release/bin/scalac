@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Simplified scalac launcher — runs the built compiler over release/lib.
+PROG_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+exec java -Dscala.usejavacp=true -cp "$PROG_HOME/lib/*" dotty.tools.MainGenericCompiler "$@"

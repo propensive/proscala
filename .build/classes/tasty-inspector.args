@@ -1,0 +1,23 @@
+-feature
+-deprecation
+-unchecked
+-Werror
+-encoding
+UTF8
+-language:implicitConversions
+--java-output-version:17
+-Yexplicit-nulls
+-Wsafe-init
+"-Wconf:msg=package scala contains object and package with same name:i"
+"-Wconf:src=scaladoc-testcases/.*:s"
+"-Wconf:msg=The RHS of reassignment must be transitively initialized:i"
+"-Wconf:msg=Could not verify that the method argument is transitively initialized:i"
+"-Wconf:msg=may cause initialization errors:i"
+"-Wconf:cat=deprecation&origin=scala\.collection\.Iterable\.stringPrefix:s"
+-classpath
+/Users/propensive/work/worktrees/scala/soundness-390/release/lib/scala-library.jar:/Users/propensive/work/worktrees/scala/soundness-390/release/lib/scala3-compiler.jar:/Users/propensive/work/worktrees/scala/soundness-390/release/lib/tasty-core.jar:/Users/propensive/work/worktrees/scala/soundness-390/release/lib/scala3-interfaces.jar:/Users/propensive/work/worktrees/scala/soundness-390/.build/jars/scala-asm-9.9.0-scala-1.jar:/Users/propensive/work/worktrees/scala/soundness-390/.build/jars/compiler-interface-1.12.0.jar:/Users/propensive/work/worktrees/scala/soundness-390/.build/jars/util-interface-1.11.5.jar
+-d
+/Users/propensive/work/worktrees/scala/soundness-390/.build/classes/tasty-inspector
+tasty-inspector/src/scala/tasty/inspector/Inspector.scala
+tasty-inspector/src/scala/tasty/inspector/Tasty.scala
+tasty-inspector/src/scala/tasty/inspector/TastyInspector.scala
