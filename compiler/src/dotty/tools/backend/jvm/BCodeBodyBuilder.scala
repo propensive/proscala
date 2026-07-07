@@ -1484,13 +1484,19 @@ trait BCodeBodyBuilder(val primitives: ScalaPrimitives, val bTypes: KnownBTypes)
       }
 
       receiverClass.info // ensure types the type is up to date; erasure may add lateINTERFACE to traits
-      val receiverName = bTypeLoader.classBTypeFromSymbol(receiverClass).internalName
+      // A call can reach the backend with a bottom-typed receiver (e.g. a member call on a
+      // value flow-typed to `Null` under explicit nulls with capture checking); `Nothing`
+      // and `Null` have no runtime class, and the only members dispatchable on them are
+      // Object's, so widen the descriptor's receiver to Object.
+      val receiverClass1 =
+        if defn.isBottomClassAfterErasure(receiverClass) then defn.ObjectClass else receiverClass
+      val receiverName = bTypeLoader.classBTypeFromSymbol(receiverClass1).internalName
 
       val jname    = method.javaSimpleName
       val bmType   = bTypeLoader.methodBTypeFromSymbol(method)
       val mdescr   = bmType.descriptor
 
-      val isInterface = isEmittedInterface(receiverClass)
+      val isInterface = isEmittedInterface(receiverClass1)
       import InvokeStyle.*
       if (style == Super) {
         val ownerBType = bTypeLoader.bTypeFromType(method.owner.info)
