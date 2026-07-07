@@ -50,16 +50,22 @@ package object wit {
    *  varargs list of the form:
    *
    *  {{{
-   *  classOf[R], classOf[P0], arg0, classOf[P1], arg1, ...
+   *  classOf[R], "<wit-result-type>", classOf[P0], arg0, classOf[P1], arg1, ...
    *  }}}
    *
-   *  i.e. the result type first (as `classOf[R]`, or `classOf[Unit]` for a
-   *  `void` function), then one `classOf[P]` / argument pair per parameter, in
-   *  order. Each `Class[_]` must denote a type that maps to the Component Model
-   *  (a primitive, an unsigned type, `String`, an `Array`, a `@WitRecord`,
-   *  `@WitVariant` or `@WitFlags` type, a WIT resource, `Result` or
-   *  `java.util.Optional`) exactly as for an `@WitImport` parameter/result. The
-   *  caller is expected to cast the `Any` result to the real result type.
+   *  i.e. the result carrier first (as `classOf[R]`, or `classOf[Unit]` for a
+   *  `void` function, giving the erasure-safe IR result type) followed by the
+   *  WIT result type as a constant `String` (e.g. `"list<tuple<string,
+   *  string>>"`), then one `classOf[P]` / argument pair per parameter, in
+   *  order. The WIT result type is given as text because `classOf` erases the
+   *  nested type arguments a `list<tuple<…>>` result needs; its grammar is the
+   *  usual WIT one (primitives, `list<…>`, `tuple<…>`, `option<…>` — or the
+   *  `T|none` union form — and `result<…>`). Each `classOf[P]` must denote a
+   *  type that maps to the Component Model (a primitive, an unsigned type,
+   *  `String`, an `Array`, a `@WitRecord`, `@WitVariant` or `@WitFlags` type, a
+   *  WIT resource, `Result` or `java.util.Optional`) exactly as for an
+   *  `@WitImport` parameter. The caller is expected to cast the `Any` result to
+   *  the real result type.
    */
   def witImportCall(module: String, name: String, sigAndArgs: Any*): Any = native
 
