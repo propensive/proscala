@@ -4719,10 +4719,12 @@ class JSCodeGen()(using genCtx: Context) {
     val moduleName = constantString(moduleArg, "module name")
     val functionName = constantString(nameArg, "function name")
 
-    /* The variadic `sigAndArgs` is `[classOf[R], classOf[P0], arg0, classOf[P1],
-     * arg1, ...]`: the result type first (so the list is never empty), then the
-     * parameter type / argument pairs. Passed as inline varargs, it reaches the
-     * backend as `WrapArray(JavaSeqLiteral(...))`. */
+    /* The variadic `sigAndArgs` is `[classOf[R], <descriptor>, P0, arg0, P1,
+     * arg1, ...]`: the result's carrier class and structured WIT descriptor
+     * first, then a parameter type / argument pair per parameter, where each
+     * parameter type is a bare `classOf[P]` or a `witParam(classOf[P],
+     * <descriptor>)`. Passed as inline varargs, it reaches the backend as
+     * `WrapArray(JavaSeqLiteral(...))`. */
     val sigAndArgs: List[Tree] = sigAndArgsArg match {
       case WrapArray(seq: JavaSeqLiteral) =>
         seq.elems
@@ -4815,7 +4817,20 @@ class JSCodeGen()(using genCtx: Context) {
           tree.sourcePos)
 
     val pairs = paramAndArgTrees.grouped(2).toList.filter(_.sizeIs == 2)
-    val paramTypes: List[Type] = pairs.map(pair => classOfType(pair.head, "parameter type"))
+
+    /* A parameter-type slot is either a bare `classOf[P]` (its WIT type derived from `P`) or a
+     * `witParam(classOf[P], <descriptor>)` carrying the exact WIT type alongside the carrier
+     * class, for parameter types `classOf` erases (e.g. `option<string>`). */
+    val paramInfos: List[(Type, Option[wit.ValType])] = pairs.map { pair =>
+      skipWrappers(pair.head) match {
+        case Apply(fn, List(cls, descriptor)) if fn.symbol == jsdefn.WitPackage_witParam =>
+          (classOfType(cls, "witParam carrier class"), Some(valTypeOfDescriptor(descriptor)))
+        case _ =>
+          (classOfType(pair.head, "parameter type"), None)
+      }
+    }
+
+    val paramTypes: List[Type] = paramInfos.map(_._1)
     val argTrees: List[Tree] = pairs.map(pair => pair(1))
 
     // Synthesize a stable, IR-name-safe method name keyed on (module, name), and
@@ -4823,7 +4838,7 @@ class JSCodeGen()(using genCtx: Context) {
     val methodName = witImportCallMethodName(moduleName, functionName, paramTypes, resultType)
     val methodIdent = js.MethodIdent(methodName)
     val flags = js.MemberFlags.empty.withNamespace(js.MemberNamespace.PublicStatic)
-    val funcType = witCodeGen.witFuncTypeParsed(paramTypes, resultWit)
+    val funcType = witCodeGen.witFuncTypeParsed(paramInfos, resultWit)
     val memberDef = js.WitNativeMemberDef(flags, moduleName,
         js.WitFunctionName.Function(functionName), methodIdent, funcType)
     witImportCallMembers.get.getOrElseUpdate(methodName, memberDef)
