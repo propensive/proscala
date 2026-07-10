@@ -356,10 +356,18 @@ class WitCodeGen(jsCodeGen: JSCodeGen)(using Context) {
         val t = args.headOption.getOrElse(defn.AnyType)
         wit.OptionType(toWIT(t))
       } else if (tsym.hasAnnotation(jsdefn.WitVariantAnnot) && tsym.is(Sealed)) {
-        // Sort by declaration order
-        // children returns source module (term symbol) for case objects,
-        // normalize to module class for encodeClassName and witVariantValueTypeOf
-        val cases = tsym.children.toList.sortBy(_.span.start).map { rawChild =>
+        /* Sort by declaration order. A symbol loaded from Tasty (rather than the current
+         * compilation unit) has no span, so only sort when spans exist — `children` already
+         * preserves declaration order for unpickled symbols.
+         * `children` returns the source module (term symbol) for case objects; normalize to the
+         * module class for encodeClassName and witVariantValueTypeOf. */
+        val rawChildren = tsym.children.toList
+
+        val orderedChildren =
+          if (rawChildren.forall(_.span.exists)) rawChildren.sortBy(_.span.start)
+          else rawChildren
+
+        val cases = orderedChildren.map { rawChild =>
           val child = if (rawChild.is(Module) && !rawChild.isClass) rawChild.moduleClass else rawChild
           val valueType = witVariantValueTypeOf(child)
           val caseTyp = if (isWitUnitType(valueType)) {
