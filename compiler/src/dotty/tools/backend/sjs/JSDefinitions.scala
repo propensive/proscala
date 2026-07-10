@@ -245,6 +245,24 @@ final class JSDefinitions() {
     @threadUnsafe lazy val WitPackage_witImportCallR = ScalaJSWitPackageClass.requiredMethodRef("witImportCall")
     def WitPackage_witImportCall(using Context) = WitPackage_witImportCallR.symbol
 
+    /* The structured WIT-type descriptor markers: `witImportCall`'s result type is described by a
+     * tree of calls to these (matched by symbol in the backend), rather than by text that would
+     * need parsing. */
+    @threadUnsafe lazy val WitPackage_witPrimR = ScalaJSWitPackageClass.requiredMethodRef("witPrim")
+    def WitPackage_witPrim(using Context) = WitPackage_witPrimR.symbol
+    @threadUnsafe lazy val WitPackage_witNamedR = ScalaJSWitPackageClass.requiredMethodRef("witNamed")
+    def WitPackage_witNamed(using Context) = WitPackage_witNamedR.symbol
+    @threadUnsafe lazy val WitPackage_witListR = ScalaJSWitPackageClass.requiredMethodRef("witList")
+    def WitPackage_witList(using Context) = WitPackage_witListR.symbol
+    @threadUnsafe lazy val WitPackage_witTupleR = ScalaJSWitPackageClass.requiredMethodRef("witTuple")
+    def WitPackage_witTuple(using Context) = WitPackage_witTupleR.symbol
+    @threadUnsafe lazy val WitPackage_witOptionR = ScalaJSWitPackageClass.requiredMethodRef("witOption")
+    def WitPackage_witOption(using Context) = WitPackage_witOptionR.symbol
+    @threadUnsafe lazy val WitPackage_witResultR = ScalaJSWitPackageClass.requiredMethodRef("witResult")
+    def WitPackage_witResult(using Context) = WitPackage_witResultR.symbol
+    @threadUnsafe lazy val WitPackage_witUnitR = ScalaJSWitPackageClass.requiredMethodRef("witUnit")
+    def WitPackage_witUnit(using Context) = WitPackage_witUnitR.symbol
+
   // WIT Import/Export annotations
   @threadUnsafe lazy val WitImportAnnotType: TypeRef = requiredClassRef("scala.scalajs.wit.annotation.WitImport")
   def WitImportAnnot(using Context) = WitImportAnnotType.symbol.asClass
