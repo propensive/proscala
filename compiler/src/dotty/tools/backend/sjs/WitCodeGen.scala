@@ -112,8 +112,9 @@ class WitCodeGen(jsCodeGen: JSCodeGen)(using Context) {
    *  tree of `wit*` marker calls, deconstructed in `genWitImportCallPrimitive`) because `classOf`
    *  erases the nested type arguments a `list<tuple<…>>` result needs.
    */
-  def witFuncTypeParsed(paramTypes: List[Type], resultType: Option[wit.ValType]): wit.FuncType =
-    wit.FuncType(paramTypes.map(toWIT(_)), resultType)
+  def witFuncTypeParsed(params: List[(Type, Option[wit.ValType])],
+      resultType: Option[wit.ValType]): wit.FuncType =
+    wit.FuncType(params.map((tpe, over) => over.getOrElse(toWIT(tpe))), resultType)
 
   // Code generation methods
 

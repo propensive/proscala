@@ -108,4 +108,12 @@ package object wit {
    */
   def witUnit: Any = native
 
+  /** A parameter-type slot of `witImportCall` whose WIT type needs more than
+   *  `classOf` can carry (e.g. `option<string>`, whose payload type `classOf`
+   *  erases): `cls` is the carrier class (the IR-level type the argument is
+   *  lowered as) and `descriptor` the structured WIT type, as a tree of the
+   *  other `wit*` markers. Never evaluated.
+   */
+  def witParam(cls: Class[?], descriptor: Any): Any = native
+
 }
