@@ -262,6 +262,8 @@ final class JSDefinitions() {
     def WitPackage_witResult(using Context) = WitPackage_witResultR.symbol
     @threadUnsafe lazy val WitPackage_witUnitR = ScalaJSWitPackageClass.requiredMethodRef("witUnit")
     def WitPackage_witUnit(using Context) = WitPackage_witUnitR.symbol
+    @threadUnsafe lazy val WitPackage_witParamR = ScalaJSWitPackageClass.requiredMethodRef("witParam")
+    def WitPackage_witParam(using Context) = WitPackage_witParamR.symbol
 
   // WIT Import/Export annotations
   @threadUnsafe lazy val WitImportAnnotType: TypeRef = requiredClassRef("scala.scalajs.wit.annotation.WitImport")
