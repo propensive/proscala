@@ -25,6 +25,7 @@ import dotty.tools.dotc.report
 
 import dotty.tools.sjs.ir
 import dotty.tools.sjs.ir.{ClassKind, Position, Trees => js, Types => jstpe, WellKnownNames => jswkn}
+import dotty.tools.sjs.ir.{WasmInterfaceTypes => wit}
 import dotty.tools.sjs.ir.Names.{ClassName, LocalName, MethodName, SimpleMethodName}
 import dotty.tools.sjs.ir.OriginalName
 import dotty.tools.sjs.ir.OriginalName.NoOriginalName
@@ -4733,18 +4734,79 @@ class JSCodeGen()(using genCtx: Context) {
     }
 
     if (sigAndArgs.sizeIs < 2)
-      report.error("witImportCall requires a result type (classOf) and its WIT type text.",
+      report.error(
+          "witImportCall requires a result type (classOf) and its structured WIT descriptor.",
           tree.sourcePos)
 
+    /* Recursively convert a structured WIT-type descriptor — a tree of calls to the `wit*` marker
+     * functions in `scala.scalajs.wit` — to a `ValType`. Matched by symbol, so no text parsing;
+     * `witNamed(classOf[X])` delegates to `toWIT`, which derives resource/record/variant/flags
+     * types from `X`'s annotations. The markers are never evaluated: the descriptor trees are
+     * consumed here and dropped.
+     */
+    def valTypeOfDescriptor(tree0: Tree): wit.ValType = {
+      def primOf(name: String): wit.ValType = name match {
+        case "bool"   => wit.BoolType
+        case "u8"     => wit.U8Type
+        case "u16"    => wit.U16Type
+        case "u32"    => wit.U32Type
+        case "u64"    => wit.U64Type
+        case "s8"     => wit.S8Type
+        case "s16"    => wit.S16Type
+        case "s32"    => wit.S32Type
+        case "s64"    => wit.S64Type
+        case "f32"    => wit.F32Type
+        case "f64"    => wit.F64Type
+        case "char"   => wit.CharType
+        case "string" => wit.StringType
+        case other =>
+          report.error(s"witPrim: unknown WIT primitive `$other`.", tree0.sourcePos)
+          wit.StringType
+      }
+
+      def arm(tree1: Tree): Option[wit.ValType] = {
+        val stripped = skipWrappers(tree1)
+        if (stripped.symbol == jsdefn.WitPackage_witUnit) None
+        else Some(valTypeOfDescriptor(stripped))
+      }
+
+      skipWrappers(tree0) match {
+        case Apply(fn, List(arg)) if fn.symbol == jsdefn.WitPackage_witPrim =>
+          primOf(constantString(arg, "witPrim name"))
+        case Apply(fn, List(arg)) if fn.symbol == jsdefn.WitPackage_witNamed =>
+          witCodeGen.toWIT(classOfType(arg, "witNamed class"))
+        case Apply(fn, List(arg)) if fn.symbol == jsdefn.WitPackage_witList =>
+          wit.ListType(valTypeOfDescriptor(arg), None)
+        case Apply(fn, List(arg)) if fn.symbol == jsdefn.WitPackage_witTuple =>
+          skipWrappers(arg) match {
+            case WrapArray(seq: JavaSeqLiteral) =>
+              wit.TupleType(seq.elems.map(valTypeOfDescriptor(_)))
+            case other =>
+              report.error("witTuple's components must be passed inline.", other.sourcePos)
+              wit.StringType
+          }
+        case Apply(fn, List(arg)) if fn.symbol == jsdefn.WitPackage_witOption =>
+          wit.OptionType(valTypeOfDescriptor(arg))
+        case Apply(fn, List(ok, err)) if fn.symbol == jsdefn.WitPackage_witResult =>
+          wit.ResultType(arm(ok), arm(err))
+        case other =>
+          report.error(
+              "The WIT result descriptor passed to witImportCall must be a tree of wit* marker " +
+              "calls (witPrim, witNamed, witList, witTuple, witOption, witResult, witUnit).",
+              other.sourcePos)
+          wit.StringType
+      }
+    }
+
     /* The result is carried as `classOf[R]` (giving the erasure-safe IR result type) *and* the WIT
-     * result type as text, because `classOf` erases the nested type arguments a `list<tuple<…>>`
-     * result needs. Parameter type / argument pairs (if any) follow. */
+     * result type as a structured descriptor, because `classOf` erases the nested type arguments a
+     * `list<tuple<…>>` result needs. Parameter type / argument pairs (if any) follow. */
     val resultType =
       sigAndArgs.headOption.fold(defn.UnitType)(classOfType(_, "result type"))
 
     val resultWit =
       if (resultType.typeSymbol == defn.UnitClass) None
-      else Some(witCodeGen.parseWitType(constantString(sigAndArgs(1), "result WIT type")))
+      else Some(valTypeOfDescriptor(sigAndArgs(1)))
 
     val paramAndArgTrees = sigAndArgs.drop(2)
     if (paramAndArgTrees.size % 2 != 0)
