@@ -11,6 +11,7 @@ import NameOps.*
 import Decorators.*
 import Types.*
 import util.Spans.Span
+import config.Feature
 import config.Printers.transforms
 import Annotations.ExperimentalAnnotation
 
@@ -86,6 +87,15 @@ abstract class AccessProxies {
       if accessed.is(Private) then sym.setFlag(Final)
       else if sym.allOverriddenSymbols.exists(!_.is(Deferred)) then sym.setFlag(Override)
       if accessed.is(Erased) then sym.setFlag(Erased)
+      // Under separation checking, an accessor for an update method, or a setter accessor
+      // for a mutable field, must itself count as an update method (see
+      // cc.Mutability.isUpdateMethod): otherwise any inline method that updates state
+      // through a private member fails the exclusivity check inside the synthetic accessor
+      // ("access is in method X, which is not an update method").
+      if Feature.enabled(Feature.separationChecking)
+         && (accessed.isAllOf(Mutable | Method)
+             || accessed.is(Mutable) && !accessed.is(Method) && name.isSetterName)
+      then sym.setFlag(Mutable)
       ExperimentalAnnotation.copy(accessed).foreach(sym.addAnnotation)
       sym
     }
