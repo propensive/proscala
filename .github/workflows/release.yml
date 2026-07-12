@@ -58,6 +58,8 @@ jobs:
           v="${{ steps.ver.outputs.version }}"
           git tag "$v"
           git push origin "refs/tags/$v"
+          # Only the jars we build (release/dist/lib) are attached; third-party
+          # runtime dependencies live in release/dist/deps and are not published.
           gh release create "$v" \
             --title "$v" \
             --target "$GITHUB_SHA" \
