@@ -33,12 +33,20 @@ JAVA_TARGET        := 17
 WERROR_FLAGS       :=
 
 # ---- Directories -------------------------------------------------------------
+# Build artefacts and the release tree are laid out per git branch, so switching
+# branches never clobbers another branch's output and each branch's build
+# survives a checkout. The paths mirror the branch name — building
+# feature/3.9/sambox writes release/feature/3.9/sambox/ and .build/feature/3.9/sambox/.
+# Detached HEAD falls back to the short commit; override with `make BRANCH=<name>`.
+# Downloaded Maven jars are shared (.build/jars): they are version-keyed and
+# identical across branches, so there is no need to re-download them per branch.
 ROOT     := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
-BUILD    := $(ROOT)/.build
-JARS     := $(BUILD)/jars
+BRANCH   := $(shell git -C $(ROOT) symbolic-ref --quiet --short HEAD 2>/dev/null || git -C $(ROOT) rev-parse --short HEAD 2>/dev/null || echo detached)
+JARS     := $(ROOT)/.build/jars
+BUILD    := $(ROOT)/.build/$(BRANCH)
 CLASSES  := $(BUILD)/classes
 GEN      := $(BUILD)/gen
-RELEASE  := $(ROOT)/release
+RELEASE  := $(ROOT)/release/$(BRANCH)
 LIB      := $(RELEASE)/lib
 BIN      := $(RELEASE)/bin
 
