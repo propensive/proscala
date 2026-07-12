@@ -107,7 +107,9 @@ MAVEN_PATHS := $(EXTRA_MAVEN_PATHS) \
 
 DEPS_STAMP := $(JARS)/.stamp
 
-$(DEPS_STAMP):
+# Depends on the Makefile so a version bump re-runs the download step (only the
+# newly-named, missing jars are actually fetched).
+$(DEPS_STAMP): Makefile
 	@mkdir -p $(JARS)
 	@for p in $(MAVEN_PATHS); do \
 	  f=$(JARS)/$$(basename $$p); \
@@ -120,6 +122,14 @@ $(DEPS_STAMP):
 
 .PHONY: deps
 deps: $(DEPS_STAMP)
+
+# Every third-party jar is actually produced by the $(DEPS_STAMP) recipe above,
+# but modules list individual jars as prerequisites. Give those jars an explicit
+# rule with an order-only dependency on the stamp (the empty recipe leaves the
+# downloaded file in place) so a parallel build (`-j`) blocks on the download
+# step instead of racing it and failing with "No rule to make target ...jar".
+$(JARS)/%.jar: | $(DEPS_STAMP)
+	@:
 
 # ---- Reference compiler classpath & launcher --------------------------------
 REF_JARS := \
