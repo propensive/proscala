@@ -11,7 +11,7 @@
 # ==============================================================================
 
 # ---- Versions (per-tree config — the only block that differs across branches) -
-VERSION            := 3.10.0-propensive
+VERSION            := 3.10.0-dev-propensive
 REF_VERSION        := 3.9.0-RC1
 SCALA2_VERSION     := 2.13.18
 SCALAJS_VERSION    := 1.22.0
