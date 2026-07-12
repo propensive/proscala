@@ -1,0 +1,65 @@
+name: Release
+
+# Publish a versioned trunk build whenever a change lands on a release stream
+# (i.e. a pull request is merged into release/<stream>). The build performs a
+# clean compilation of every JAR, versions them <upstream-version>-p<n> where
+# <n> is one greater than the previous release for that stream, tags the commit,
+# and attaches the JARs to a GitHub release.
+on:
+  push:
+    branches:
+      - 'release/**'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the release branch (full history so tags are visible)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Determine the next version
+        id: ver
+        run: |
+          set -euo pipefail
+          stream="${GITHUB_REF_NAME#release/}"
+          # The upstream version is the Makefile's VERSION with the -propensive
+          # (or an existing -p<n>) suffix stripped off.
+          base=$(grep -m1 '^VERSION' Makefile | sed -E 's/.*:=[[:space:]]*//; s/-propensive$//; s/-p[0-9]+$//')
+          git fetch --tags --force --quiet
+          # Highest existing patch number for this stream (empty if none yet).
+          prev=$(git tag -l "${base}-p*" | sed -nE "s/^${base}-p([0-9]+)\$/\1/p" | sort -n | tail -1)
+          next=$(( ${prev:-0} + 1 ))
+          version="${base}-p${next}"
+          echo "stream=$stream"     >> "$GITHUB_OUTPUT"
+          echo "version=$version"   >> "$GITHUB_OUTPUT"
+          echo "Building $version (stream=$stream, previous patch=${prev:-none})"
+
+      - name: Clean-build all JARs
+        run: |
+          make BRANCH=dist VERSION="${{ steps.ver.outputs.version }}" clean
+          make BRANCH=dist VERSION="${{ steps.ver.outputs.version }}" release
+
+      - name: Tag and publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          v="${{ steps.ver.outputs.version }}"
+          git tag "$v"
+          git push origin "refs/tags/$v"
+          gh release create "$v" \
+            --title "$v" \
+            --target "$GITHUB_SHA" \
+            --notes "Automated Proscala trunk build for the ${{ steps.ver.outputs.stream }} stream, built from ${GITHUB_SHA}." \
+            release/dist/lib/*.jar
