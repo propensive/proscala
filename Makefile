@@ -49,6 +49,9 @@ GEN      := $(BUILD)/gen
 RELEASE  := $(ROOT)/release/$(BRANCH)
 LIB      := $(RELEASE)/lib
 BIN      := $(RELEASE)/bin
+# Third-party runtime jars live in their own dir, kept separate from the jars we
+# build (release/<branch>/lib) so a published release can ship only our modules.
+DEPS     := $(RELEASE)/deps
 
 MC := https://repo1.maven.org/maven2
 
@@ -462,7 +465,7 @@ $(SCALAC_LAUNCHER): Makefile
 	  '#!/usr/bin/env bash' \
 	  '# Simplified scalac launcher — runs the built compiler over release/lib.' \
 	  'PROG_HOME="$$(cd "$$(dirname "$${BASH_SOURCE[0]}")/.." && pwd)"' \
-	  'exec java -Dscala.usejavacp=true -cp "$$PROG_HOME/lib/*" dotty.tools.MainGenericCompiler "$$@"' \
+	  'exec java -Dscala.usejavacp=true -cp "$$PROG_HOME/lib/*:$$PROG_HOME/deps/*" dotty.tools.MainGenericCompiler "$$@"' \
 	  > $@
 	@chmod +x $@
 
@@ -473,7 +476,7 @@ $(SCALA_LAUNCHER): Makefile
 	  '# Simplified scala launcher — starts the REPL (dotty.tools.repl.Main).' \
 	  '# Extra classpath entries can be added via SCALA_CP, e.g. SCALA_CP=out scala.' \
 	  'PROG_HOME="$$(cd "$$(dirname "$${BASH_SOURCE[0]}")/.." && pwd)"' \
-	  'CP="$$PROG_HOME/lib/*"; [ -n "$$SCALA_CP" ] && CP="$$CP:$$SCALA_CP"' \
+	  'CP="$$PROG_HOME/lib/*:$$PROG_HOME/deps/*"; [ -n "$$SCALA_CP" ] && CP="$$CP:$$SCALA_CP"' \
 	  'exec java -Dscala.usejavacp=true -cp "$$CP" dotty.tools.repl.Main "$$@"' \
 	  > $@
 	@chmod +x $@
@@ -492,9 +495,10 @@ distclean:
 # Full release: all module jars + third-party runtime jars + launchers in release/.
 .PHONY: release
 release: stage1 stage2 extra launchers
-	@cp $(THIRDPARTY_JARS) $(LIB)/
+	@mkdir -p $(DEPS)
+	@cp $(THIRDPARTY_JARS) $(DEPS)/
 	@echo ""
 	@echo "Release built in $(RELEASE)"
-	@echo "  modules : $(words $(STAGE1_JARS) $(STAGE2_JARS) $(EXTRA_JARS)) jars"
-	@echo "  deps    : $(words $(THIRDPARTY_JARS)) third-party jars"
+	@echo "  modules : $(words $(STAGE1_JARS) $(STAGE2_JARS) $(EXTRA_JARS)) jars in $(LIB)"
+	@echo "  deps    : $(words $(THIRDPARTY_JARS)) third-party jars in $(DEPS)"
 	@echo "  launcher: $(BIN)/scalac  $(BIN)/scala"
