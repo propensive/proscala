@@ -66,3 +66,28 @@ Documentation lives in `docs/_docs/`:
 - `docs/_docs/internals/` - Compiler internals documentation
 
 For available AI-assisted documentation workflows or skills start refer to [./docs/.ai/INDEX.md](./docs/.ai/INDEX.md)
+
+## Feature documentation
+
+This branch tree is part of Proscala, which maintains one patch per
+`feature/<stream>/<patch>` branch on top of this `make` branch (see `main`'s
+AGENTS.md for the full branch policy). Every patch branch must carry a
+documentation file, `doc/features/<patch>.md`, committed on the branch itself.
+Writing it is part of developing a patch, not an afterthought.
+
+The file must contain:
+
+- A short `#` title, then a **single-sentence description** of the feature or
+  bugfix on its own line at the top.
+- The **context** of the issue, **how to reproduce it**, and the **solution**,
+  explained clearly enough for a reader who does not already understand the
+  topic, focusing on the relevant details.
+- **Code samples** understandable without external context — a minimal
+  reproduction and the key compiler change.
+- Where it helps, an example of relevant [Soundness](https://soundness.dev)
+  code, since most patches exist because Soundness exercises the compiler in
+  ways upstream does not.
+
+Aim for a 2–4 minute read (roughly 400–800 words). Use identical content on
+every stream that carries the patch. The `make` branch itself carries no
+feature doc — it is the build, not a patch.
