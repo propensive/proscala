@@ -81,10 +81,23 @@ MAKEFLAGS += -j6
 EXTRA_MAVEN_PATHS :=
 REPL_EXTRA_JARS :=
 
+# ---- scala.scalajs.wit support (WASM trees only) -----------------------------
+# On trees that carry the Scala.js WIT API (library-js/.../scala/scalajs/wit),
+# the published scalajs-library must carry that API too, so downstream code can
+# compile `witImportCall` calls. Building it needs a Scala 2.13 + Scala.js
+# toolchain (the scala-wasm scalajs-compiler), pulled in only when the wit
+# sources are present. WIT_SRC is empty on non-WASM trees, disabling all of this.
+WIT_SRC := $(wildcard library-js/src/scala/scalajs/wit/package.scala)
+WIT_TOOLCHAIN_PATHS := $(if $(WIT_SRC), \
+  org/scala-lang/scala-compiler/$(SCALA2_VERSION)/scala-compiler-$(SCALA2_VERSION).jar \
+  org/scala-lang/scala-reflect/$(SCALA2_VERSION)/scala-reflect-$(SCALA2_VERSION).jar \
+  org/scala-lang/scala-library/$(SCALA2_VERSION)/scala-library-$(SCALA2_VERSION).jar \
+  io/github/scala-wasm/scalajs-compiler_$(SCALA2_VERSION)/$(SCALAJS_VERSION)/scalajs-compiler_$(SCALA2_VERSION)-$(SCALAJS_VERSION).jar)
+
 # ==============================================================================
 # Dependencies (downloaded from Maven Central, cached under .build/jars)
 # ==============================================================================
-MAVEN_PATHS := $(EXTRA_MAVEN_PATHS) \
+MAVEN_PATHS := $(EXTRA_MAVEN_PATHS) $(WIT_TOOLCHAIN_PATHS) \
   org/scala-lang/scala3-compiler_3/$(REF_VERSION)/scala3-compiler_3-$(REF_VERSION).jar \
   org/scala-lang/scala3-library_3/$(REF_VERSION)/scala3-library_3-$(REF_VERSION).jar \
   org/scala-lang/scala-library/$(REF_VERSION)/scala-library-$(REF_VERSION).jar \
@@ -405,6 +418,33 @@ $(SJS3_LIB_JAR): $(DEPS_STAMP)
 	@rm -rf $(CLASSES)/sjs3-library && mkdir -p $(CLASSES)/sjs3-library $(LIB)
 	$(call jar_module,sjs3-library,$@,org.scala.lang.scala3.library.sjs1)
 
+# ---- 12b. scalajs-library + scala.scalajs.wit (WASM trees only) ---------------
+# Upstream vendors Scala.js 1.20.2; the scala-wasm fork bumps it to
+# $(SCALAJS_VERSION) (1.22.0-wasm.*) and adds the WASM runtime. Proscala's WIT
+# support lives in library-js (scala.scalajs.wit: witImportCall + the wit* type
+# markers), but downstream code resolves those against the *scalajs-library* on
+# its classpath — so the published library must carry them. Recompile that one
+# package for Scala 2.13 with the scala-wasm scalajs-compiler and splice it into
+# a copy of the downloaded library. (`Class[?]` -> `Class[_]` for 2.13.)
+ifneq ($(WIT_SRC),)
+SCALA2_COMPILER := $(JARS)/scala-compiler-$(SCALA2_VERSION).jar
+SCALA2_REFLECT  := $(JARS)/scala-reflect-$(SCALA2_VERSION).jar
+SCALA2_LIBRARY  := $(JARS)/scala-library-$(SCALA2_VERSION).jar
+SJS_PLUGIN      := $(JARS)/scalajs-compiler_$(SCALA2_VERSION)-$(SCALAJS_VERSION).jar
+SJS_LIB_SHIP    := $(LIB)/scalajs-library_2.13-$(SCALAJS_VERSION).jar
+
+$(SJS_LIB_SHIP): $(SJS_LIBRARY_JAR) $(SJS_JAVALIB_JAR) $(SCALA2_COMPILER) $(SCALA2_REFLECT) $(SCALA2_LIBRARY) $(SJS_PLUGIN) $(WIT_SRC)
+	@echo ">> scalajs-library (+ scala.scalajs.wit)"
+	@rm -rf $(GEN)/wit && mkdir -p $(GEN)/wit/src $(GEN)/wit/out $(LIB)
+	@sed 's/Class\[?\]/Class[_]/g' $(WIT_SRC) > $(GEN)/wit/src/package.scala
+	java -cp $(call cpjoin,$(SCALA2_COMPILER) $(SCALA2_REFLECT) $(SCALA2_LIBRARY)) scala.tools.nsc.Main \
+	  -Xplugin:$(SJS_PLUGIN) \
+	  -classpath $(call cpjoin,$(SCALA2_LIBRARY) $(SJS_LIBRARY_JAR) $(SJS_JAVALIB_JAR)) \
+	  -d $(GEN)/wit/out $(GEN)/wit/src/package.scala
+	@cp $(SJS_LIBRARY_JAR) $@
+	cd $(GEN)/wit/out && jar uf $@ $$(find scala/scalajs/wit \( -name 'package*.class' -o -name 'package*.sjsir' \) -type f)
+endif
+
 # ---- 13. scala3-presentation-compiler ----------------------------------------
 # Generates dotty.tools.pc.buildinfo.BuildInfo and compiles the shaded
 # mtags-shared sources (protobuf remap + unsafe-nulls, per project/Shading.scala)
@@ -501,10 +541,12 @@ distclean:
 
 # Full release: all module jars + third-party runtime jars + launchers in release/.
 .PHONY: release
-release: stage1 stage2 extra launchers
+release: stage1 stage2 extra launchers $(if $(WIT_SRC),$(SJS_LIB_SHIP))
 	@mkdir -p $(DEPS)
 	@cp $(DEP_ONLY_JARS) $(DEPS)/
-	@cp $(SJS_RUNTIME_JARS) $(LIB)/
+	@# scalajs-javalib always; scalajs-library only when it isn't the wit-baked
+	@# one already built into $(LIB) by the SJS_LIB_SHIP recipe.
+	@cp $(SJS_JAVALIB_JAR) $(if $(WIT_SRC),,$(SJS_LIBRARY_JAR)) $(LIB)/
 	@echo ""
 	@echo "Release built in $(RELEASE)"
 	@echo "  published : $(words $(STAGE1_JARS) $(STAGE2_JARS) $(EXTRA_JARS) $(SJS_RUNTIME_JARS)) jars in $(LIB)"
