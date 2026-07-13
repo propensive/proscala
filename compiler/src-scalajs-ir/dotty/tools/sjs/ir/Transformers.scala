@@ -12,7 +12,6 @@
 
 package dotty.tools.sjs.ir
 
-import scala.language.unsafeNulls
 import Trees._
 import Types._
 import Version.Unversioned
@@ -190,6 +189,9 @@ object Transformers {
         case JSTypeOfGlobalRef(globalRef) =>
           JSTypeOfGlobalRef(transform(globalRef).asInstanceOf[JSGlobalRef])
 
+        case WitFunctionApply(receiver, module, name, args) =>
+          WitFunctionApply(receiver.map(transform), module, name, args.map(transform))(tree.tpe)
+
         // Atomic expressions
 
         case Closure(flags, captureParams, params, restParam, resultType, body, captureValues) =>
@@ -217,12 +219,23 @@ object Transformers {
   abstract class ClassTransformer extends Transformer {
     def transformClassDef(tree: ClassDef): ClassDef = {
       import tree._
-      ClassDef(name, originalName, kind, jsClassCaptures, superClass,
-          interfaces, transformTreeOpt(jsSuperClass), jsNativeLoadSpec,
-          fields.map(transformAnyFieldDef(_)),
-          methods.map(transformMethodDef), jsConstructor.map(transformJSConstructorDef),
-          jsMethodProps.map(transformJSMethodPropDef), jsNativeMembers,
-          topLevelExportDefs.map(transformTopLevelExportDef))(
+      ClassDef(
+        name,
+        originalName,
+        kind,
+        jsClassCaptures,
+        superClass,
+        interfaces,
+        transformTreeOpt(jsSuperClass),
+        jsNativeLoadSpec,
+        fields.map(transformAnyFieldDef(_)),
+        methods.map(transformMethodDef),
+        jsConstructor.map(transformJSConstructorDef),
+        jsMethodProps.map(transformJSMethodPropDef),
+        jsNativeMembers,
+        witNativeMembers,
+        topLevelExportDefs.map(transformTopLevelExportDef)
+      )(
           tree.optimizerHints)(tree.pos)
     }
 
@@ -292,6 +305,10 @@ object Transformers {
 
         case TopLevelMethodExportDef(moduleID, methodDef) =>
           TopLevelMethodExportDef(moduleID, transformJSMethodDef(methodDef))
+
+        case WitExportDef(moduleName, name, methodDef, signature) =>
+          WitExportDef(moduleName, name,
+              transformMethodDef(methodDef), signature)
       }
     }
   }

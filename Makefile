@@ -14,7 +14,7 @@
 VERSION            := 3.8.4-propensive
 REF_VERSION        := 3.8.3
 SCALA2_VERSION     := 2.13.18
-SCALAJS_VERSION    := 1.20.2
+SCALAJS_VERSION    := 1.22.0-wasm.4
 ASM_VERSION        := 9.9.0-scala-1
 COMPILER_IFACE_VER := 1.10.7
 UTIL_IFACE_VER     := 1.10.7
@@ -124,8 +124,8 @@ MAVEN_PATHS := $(EXTRA_MAVEN_PATHS) $(WIT_TOOLCHAIN_PATHS) \
   org/eclipse/lsp4j/org.eclipse.lsp4j/$(LSP4J_VERSION)/org.eclipse.lsp4j-$(LSP4J_VERSION).jar \
   org/eclipse/lsp4j/org.eclipse.lsp4j.jsonrpc/$(LSP4J_VERSION)/org.eclipse.lsp4j.jsonrpc-$(LSP4J_VERSION).jar \
   com/google/code/gson/gson/$(GSON_VERSION)/gson-$(GSON_VERSION).jar \
-  org/scala-js/scalajs-library_2.13/$(SCALAJS_VERSION)/scalajs-library_2.13-$(SCALAJS_VERSION).jar \
-  org/scala-js/scalajs-javalib/$(SCALAJS_VERSION)/scalajs-javalib-$(SCALAJS_VERSION).jar
+  io/github/scala-wasm/scalajs-library_2.13/$(SCALAJS_VERSION)/scalajs-library_2.13-$(SCALAJS_VERSION).jar \
+  io/github/scala-wasm/scalajs-javalib/$(SCALAJS_VERSION)/scalajs-javalib-$(SCALAJS_VERSION).jar
 
 DEPS_STAMP := $(JARS)/.stamp
 
@@ -331,6 +331,7 @@ $(COMPILER_JAR): $(COMMON_ARGS) $(SCALA_LIB_JAR) $(INTERFACES_JAR) $(TASTY_JAR) 
 	  '"-Wconf:src=.*src-scalajs-ir/.*&msg=Implicit parameters should be provided with a `using` clause:s"' \
 	  '"-Wconf:src=.*src-scalajs-ir/.*&msg=uninitialized` instead:s"' \
 	  '"-Wconf:src=.*src-scalajs-ir/.*&msg=object AnyRefMap in package scala\.collection\.mutable is deprecated:s"' \
+	  '"-Wconf:src=.*src-scalajs-ir/.*&msg=is deprecated for wildcard arguments of types:s"' \
 	  >> $(CLASSES)/compiler.args
 	@printf '%s\n' -classpath '$(COMPILER_CP)' -d $(CLASSES)/compiler >> $(CLASSES)/compiler.args
 	@find compiler/src compiler/src-scalajs-ir \( -name '*.scala' -o -name '*.java' \) -type f | LC_ALL=C sort >> $(CLASSES)/compiler.args

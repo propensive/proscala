@@ -12,7 +12,6 @@
 
 package dotty.tools.sjs.ir
 
-import scala.language.unsafeNulls
 import scala.annotation.{switch, tailrec}
 
 import Types._
@@ -345,8 +344,7 @@ object Names {
   def ClassInitializerSimpleName: SimpleMethodName =
     SimpleMethodName.ClassInitializer
 
-  /** The full name of a method, including its simple name and its signature.
-   */
+  /** The full name of a method, including its simple name and its signature. */
   final class MethodName private (val simpleName: SimpleMethodName,
       val paramTypeRefs: List[TypeRef], val resultTypeRef: TypeRef,
       val isReflectiveProxy: Boolean)
@@ -430,6 +428,8 @@ object Names {
           }
         case ClassRef(className) =>
           builder.append('L').append(className.nameString)
+        case WitResourceTypeRef(className) =>
+          builder.append('L').append(className.nameString)
         case ArrayTypeRef(base, dimensions) =>
           var i = 0
           while (i != dimensions) {
@@ -477,7 +477,7 @@ object Names {
     def apply(simpleName: SimpleMethodName, paramTypeRefs: List[TypeRef],
         resultTypeRef: TypeRef, isReflectiveProxy: Boolean): MethodName = {
       if ((simpleName.isConstructor || simpleName.isStaticInitializer ||
-          simpleName.isClassInitializer) && resultTypeRef != VoidRef) {
+            simpleName.isClassInitializer) && resultTypeRef != VoidRef) {
         throw new IllegalArgumentException(
             "A constructor or static initializer must have a void result type")
       }
