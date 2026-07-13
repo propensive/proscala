@@ -593,6 +593,7 @@ class Definitions {
 
   @tu lazy val IArrayModule: Symbol = requiredModule("scala.IArray")
   def IArrayModuleClass: Symbol = IArrayModule.moduleClass
+  @tu lazy val IArrayAlias: Symbol = ScalaPackageClass.requiredType("IArray")
 
   @tu lazy val UnitType: TypeRef = valueTypeRef("scala.Unit", java.lang.Void.TYPE, UnitEnc, nme.specializedTypeNames.Void)
   def UnitClass(using Context): ClassSymbol = UnitType.symbol.asClass
