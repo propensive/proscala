@@ -461,6 +461,13 @@ THIRDPARTY_JARS := $(ASM_JAR) $(COMPILER_IFACE_JAR) $(UTIL_IFACE_JAR) \
   $(JLINE_JARS) $(COURSIER_IFACE_JAR) $(LZ4_JAR) $(GUAVA_JARS) $(MTAGS_IFACE_JAR) \
   $(LSP4J_JARS) $(SJS_LIBRARY_JAR) $(SJS_JAVALIB_JAR) $(REPL_EXTRA_JARS)
 
+# The Scala.js / scala-wasm runtime jars are part of the published distribution
+# (they pair with our own Scala.js libraries so downloaded releases can run
+# Scala.js / WASM output), so they go in lib/ with the jars we build. Every other
+# third-party jar is a build/runtime dependency that stays in deps/, unpublished.
+SJS_RUNTIME_JARS := $(SJS_LIBRARY_JAR) $(SJS_JAVALIB_JAR)
+DEP_ONLY_JARS    := $(filter-out $(SJS_RUNTIME_JARS),$(THIRDPARTY_JARS))
+
 # ---- Launcher scripts --------------------------------------------------------
 SCALAC_LAUNCHER := $(BIN)/scalac
 SCALA_LAUNCHER  := $(BIN)/scala
@@ -502,9 +509,10 @@ distclean:
 .PHONY: release
 release: stage1 stage2 extra launchers
 	@mkdir -p $(DEPS)
-	@cp $(THIRDPARTY_JARS) $(DEPS)/
+	@cp $(DEP_ONLY_JARS) $(DEPS)/
+	@cp $(SJS_RUNTIME_JARS) $(LIB)/
 	@echo ""
 	@echo "Release built in $(RELEASE)"
-	@echo "  modules : $(words $(STAGE1_JARS) $(STAGE2_JARS) $(EXTRA_JARS)) jars in $(LIB)"
-	@echo "  deps    : $(words $(THIRDPARTY_JARS)) third-party jars in $(DEPS)"
+	@echo "  published : $(words $(STAGE1_JARS) $(STAGE2_JARS) $(EXTRA_JARS) $(SJS_RUNTIME_JARS)) jars in $(LIB)"
+	@echo "  deps      : $(words $(DEP_ONLY_JARS)) third-party jars in $(DEPS)"
 	@echo "  launcher: $(BIN)/scalac  $(BIN)/scala"
