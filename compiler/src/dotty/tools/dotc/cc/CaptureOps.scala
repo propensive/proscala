@@ -427,7 +427,13 @@ extension (tp: Type)
   def derivesFromMutable(using Context): Boolean =
     derivesFromCapTrait(defn.Caps_Mutable) || isArrayUnderStrictMut
 
-  def isArrayUnderStrictMut(using Context): Boolean = tp.classSymbol.isArrayUnderStrictMut
+  /** Like the symbol-level test, but through the type: the `IArray` opaque alias is
+   *  exempt for the same reason as in `derivesFromCapTrait` above — its interface
+   *  exposes no mutation, so it must not pick up `Array`'s strict-mutability
+   *  classification through dealiasing.
+   */
+  def isArrayUnderStrictMut(using Context): Boolean =
+    tp.typeSymbol != defn.IArrayAlias && tp.classSymbol.isArrayUnderStrictMut
 
   /** Drop @retains annotations everywhere */
   def dropAllRetains(using Context): Type = // TODO we should drop retains from inferred types before unpickling
