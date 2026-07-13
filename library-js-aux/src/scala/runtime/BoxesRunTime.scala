@@ -19,8 +19,8 @@ object BoxesRunTime {
   def boxToCharacter(c: Char): java.lang.Character =
     c.asInstanceOf[java.lang.Character]
 
-  def boxToByte(b: Byte): java.lang.Boolean =
-    b.asInstanceOf[java.lang.Boolean]
+  def boxToByte(b: Byte): java.lang.Byte =
+    b.asInstanceOf[java.lang.Byte]
 
   def boxToShort(s: Short): java.lang.Short =
     s.asInstanceOf[java.lang.Short]
@@ -57,7 +57,7 @@ object BoxesRunTime {
     linkTimeIf(LinkingInfo.isWebAssembly) {
       if (x eq y) {
         x match {
-          case x: java.lang.Double => x == x // rejects NaN
+          case x: java.lang.Double => x.doubleValue() == x.doubleValue() // rejects NaN
           case _                   => true
         }
       } else equals2(x, y)
