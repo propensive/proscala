@@ -519,6 +519,12 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
             if t.derivesFromCapability
                 && t.typeParams.isEmpty
                 && !t.isSingleton
+                && !t.isInstanceOf[TypeBounds]
+                  // A TypeType must stay a TypeType: wrapping an alias or bounds (e.g. the
+                  // refinement info of an opaque `type B = Array[Double]` member, which
+                  // under strict mutability derives from a capability through `Array`) in
+                  // a CapturingType turns it into a term type, tripping the refinedInfo
+                  // assertion when the enclosing RefinedType is rebuilt.
                 && (!sym.isConstructor || (t ne tp.finalResultType))
               // Don't add ^ to result types of class constructors deriving from Capability
             then t1 match
