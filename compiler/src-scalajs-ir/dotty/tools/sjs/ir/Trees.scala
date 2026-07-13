@@ -12,7 +12,6 @@
 
 package dotty.tools.sjs.ir
 
-import scala.language.unsafeNulls
 import scala.annotation.switch
 
 import Names._
@@ -57,20 +56,16 @@ object Trees {
 
   // Identifiers
 
-  sealed case class LocalIdent(name: LocalName)(implicit val pos: Position)
-      extends IRNode
+  sealed case class LocalIdent(name: LocalName)(implicit val pos: Position) extends IRNode
 
   sealed case class SimpleFieldIdent(name: SimpleFieldName)(implicit val pos: Position)
       extends IRNode
 
-  sealed case class FieldIdent(name: FieldName)(implicit val pos: Position)
-      extends IRNode
+  sealed case class FieldIdent(name: FieldName)(implicit val pos: Position) extends IRNode
 
-  sealed case class MethodIdent(name: MethodName)(implicit val pos: Position)
-      extends IRNode
+  sealed case class MethodIdent(name: MethodName)(implicit val pos: Position) extends IRNode
 
-  sealed case class ClassIdent(name: ClassName)(implicit val pos: Position)
-      extends IRNode
+  sealed case class ClassIdent(name: ClassName)(implicit val pos: Position) extends IRNode
 
   /** Tests whether the given name is a valid JavaScript identifier name.
    *
@@ -102,27 +97,30 @@ object Trees {
 
   sealed case class VarDef(name: LocalIdent, originalName: OriginalName,
       vtpe: Type, mutable: Boolean, rhs: Tree)(
-      implicit val pos: Position) extends Tree {
-    val tpe = VoidType
+      implicit val pos: Position)
+      extends Tree {
+    val tpe: VoidType.type = VoidType
 
     def ref(implicit pos: Position): VarRef = VarRef(name.name)(vtpe)
   }
 
   sealed case class ParamDef(name: LocalIdent, originalName: OriginalName,
       ptpe: Type, mutable: Boolean)(
-      implicit val pos: Position) extends IRNode {
+      implicit val pos: Position)
+      extends IRNode {
     def ref(implicit pos: Position): VarRef = VarRef(name.name)(ptpe)
   }
 
   // Control flow constructs
 
   sealed case class Skip()(implicit val pos: Position) extends Tree {
-    val tpe = VoidType
+    val tpe: VoidType.type = VoidType
   }
 
   sealed class Block private (val stats: List[Tree])(
-      implicit val pos: Position) extends Tree {
-    val tpe = stats.last.tpe
+      implicit val pos: Position)
+      extends Tree {
+    val tpe: Type = stats.last.tpe
 
     override def toString(): String =
       stats.mkString("Block(", ",", ")")
@@ -138,14 +136,14 @@ object Trees {
   object Block {
     def apply(stats: List[Tree])(implicit pos: Position): Tree = {
       val flattenedStats = stats flatMap {
-        case Skip() => Nil
+        case Skip()          => Nil
         case Block(subStats) => subStats
-        case other => other :: Nil
+        case other           => other :: Nil
       }
       flattenedStats match {
-        case Nil => Skip()
+        case Nil         => Skip()
         case only :: Nil => only
-        case _ => new Block(flattenedStats)
+        case _           => new Block(flattenedStats)
       }
     }
 
@@ -159,22 +157,26 @@ object Trees {
   }
 
   sealed case class Labeled(label: LabelName, tpe: Type, body: Tree)(
-      implicit val pos: Position) extends Tree
+      implicit val pos: Position)
+      extends Tree
 
   sealed trait AssignLhs extends Tree
 
   sealed case class Assign(lhs: AssignLhs, rhs: Tree)(
-      implicit val pos: Position) extends Tree {
-    val tpe = VoidType
+      implicit val pos: Position)
+      extends Tree {
+    val tpe: VoidType.type = VoidType
   }
 
   sealed case class Return(expr: Tree, label: LabelName)(
-      implicit val pos: Position) extends Tree {
-    val tpe = NothingType
+      implicit val pos: Position)
+      extends Tree {
+    val tpe: NothingType.type = NothingType
   }
 
   sealed case class If(cond: Tree, thenp: Tree, elsep: Tree)(val tpe: Type)(
-      implicit val pos: Position) extends Tree
+      implicit val pos: Position)
+      extends Tree
 
   /** Link-time `if` expression.
    *
@@ -209,8 +211,9 @@ object Trees {
       extends Tree
 
   sealed case class While(cond: Tree, body: Tree)(
-      implicit val pos: Position) extends Tree {
-    val tpe = cond match {
+      implicit val pos: Position)
+      extends Tree {
+    val tpe: Type = cond match {
       case BooleanLiteral(true) => NothingType
       case _                    => VoidType
     }
@@ -218,17 +221,20 @@ object Trees {
 
   sealed case class ForIn(obj: Tree, keyVar: LocalIdent,
       keyVarOriginalName: OriginalName, body: Tree)(
-      implicit val pos: Position) extends Tree {
-    val tpe = VoidType
+      implicit val pos: Position)
+      extends Tree {
+    val tpe: VoidType.type = VoidType
   }
 
   sealed case class TryCatch(block: Tree, errVar: LocalIdent,
       errVarOriginalName: OriginalName, handler: Tree)(
-      val tpe: Type)(implicit val pos: Position) extends Tree
+      val tpe: Type)(implicit val pos: Position)
+      extends Tree
 
   sealed case class TryFinally(block: Tree, finalizer: Tree)(
-      implicit val pos: Position) extends Tree {
-    val tpe = block.tpe
+      implicit val pos: Position)
+      extends Tree {
+    val tpe: Type = block.tpe
   }
 
   /** A break-free switch (without fallthrough behavior).
@@ -256,7 +262,8 @@ object Trees {
    *  checking more complicated, without bringing any added value.
    */
   sealed case class Match(selector: Tree, cases: List[(List[MatchableLiteral], Tree)],
-      default: Tree)(val tpe: Type)(implicit val pos: Position) extends Tree
+      default: Tree)(val tpe: Type)(implicit val pos: Position)
+      extends Tree
 
   /** `await arg`.
    *
@@ -271,67 +278,75 @@ object Trees {
    *  node out of or into an intervening closure, contrary to `UnaryOp`s.
    */
   sealed case class JSAwait(arg: Tree)(implicit val pos: Position) extends Tree {
-    val tpe = AnyType
+    val tpe: AnyType.type = AnyType
   }
 
   sealed case class Debugger()(implicit val pos: Position) extends Tree {
-    val tpe = VoidType
+    val tpe: VoidType.type = VoidType
   }
 
   // Scala expressions
 
   sealed case class New(className: ClassName, ctor: MethodIdent,
       args: List[Tree])(
-      implicit val pos: Position) extends Tree {
-    val tpe = ClassType(className, nullable = false)
+      implicit val pos: Position)
+      extends Tree {
+    val tpe: ClassType = ClassType(className, nullable = false, exact = true)
   }
 
   sealed case class LoadModule(className: ClassName)(
-      implicit val pos: Position) extends Tree {
+      implicit val pos: Position)
+      extends Tree {
     /* With Compliant moduleInits, `LoadModule`s are nullable!
      * The linker components have dedicated code to consider `LoadModule`s as
      * non-nullable depending on the semantics, but the `tpe` here must be
      * nullable in the general case.
      */
-    val tpe = ClassType(className, nullable = true)
+    val tpe: ClassType = ClassType(className, nullable = true, exact = true)
   }
 
   sealed case class StoreModule()(implicit val pos: Position) extends Tree {
-    val tpe = VoidType
+    val tpe: VoidType.type = VoidType
   }
 
   sealed case class Select(qualifier: Tree, field: FieldIdent)(val tpe: Type)(
-      implicit val pos: Position) extends AssignLhs
+      implicit val pos: Position)
+      extends AssignLhs
 
   sealed case class SelectStatic(field: FieldIdent)(val tpe: Type)(
-      implicit val pos: Position) extends AssignLhs
+      implicit val pos: Position)
+      extends AssignLhs
 
   sealed case class SelectJSNativeMember(className: ClassName, member: MethodIdent)(
       implicit val pos: Position)
       extends Tree {
-    val tpe = AnyType
+    val tpe: AnyType.type = AnyType
   }
 
   /** Apply an instance method with dynamic dispatch (the default). */
   sealed case class Apply(flags: ApplyFlags, receiver: Tree, method: MethodIdent,
       args: List[Tree])(
-      val tpe: Type)(implicit val pos: Position) extends Tree
+      val tpe: Type)(implicit val pos: Position)
+      extends Tree
 
   /** Apply an instance method with static dispatch (e.g., super calls). */
   sealed case class ApplyStatically(flags: ApplyFlags, receiver: Tree,
       className: ClassName, method: MethodIdent, args: List[Tree])(
-      val tpe: Type)(implicit val pos: Position) extends Tree
+      val tpe: Type)(implicit val pos: Position)
+      extends Tree
 
   /** Apply a static method. */
   sealed case class ApplyStatic(flags: ApplyFlags, className: ClassName,
       method: MethodIdent, args: List[Tree])(
-      val tpe: Type)(implicit val pos: Position) extends Tree
+      val tpe: Type)(implicit val pos: Position)
+      extends Tree
 
   /** Apply a static method via dynamic import. */
   sealed case class ApplyDynamicImport(flags: ApplyFlags, className: ClassName,
       method: MethodIdent, args: List[Tree])(
-      implicit val pos: Position) extends Tree {
-    val tpe = AnyType
+      implicit val pos: Position)
+      extends Tree {
+    val tpe: AnyType.type = AnyType
   }
 
   /** Apply a typed closure
@@ -386,7 +401,8 @@ object Trees {
    *  Intuitively, `tpe` must be a supertype of `superClass! & ...interfaces!`.
    *  Since our type system does not have intersection types, in practice this
    *  means that there must exist `C ∈ { superClass } ∪ interfaces` such that
-   *  `tpe` is a supertype of `C!`.
+   *  `tpe` is a supertype of `C!`. As a consequence, `tpe` cannot be an exact
+   *  class type.
    *
    *  The uniqueness of the anonymous class and its run-time class name are
    *  not guaranteed.
@@ -460,12 +476,14 @@ object Trees {
    *  Otherwise, unary operations preserve pureness.
    */
   sealed case class UnaryOp(op: UnaryOp.Code, lhs: Tree)(
-      implicit val pos: Position) extends Tree {
+      implicit val pos: Position)
+      extends Tree {
 
-    val tpe = UnaryOp.resultTypeOf(op, lhs.tpe)
+    val tpe: Type = UnaryOp.resultTypeOf(op, lhs.tpe)
   }
 
   object UnaryOp {
+
     /** Codes are raw Ints to be able to write switch matches on them. */
     type Code = Int
 
@@ -528,6 +546,9 @@ object Trees {
     final val Long_clz = 37
     final val UnsignedIntToLong = 38
 
+    // Bool to int, introduced in 1.22
+    final val BoolToInt = 39
+
     def isClassOp(op: Code): Boolean =
       op >= Class_name && op <= Class_superClass
 
@@ -550,7 +571,7 @@ object Trees {
         ShortType
       case CharToInt | ByteToInt | ShortToInt | LongToInt | DoubleToInt |
           String_length | Array_length | IdentityHashCode | Float_toBits |
-          Int_clz | Long_clz =>
+          Int_clz | Long_clz | BoolToInt =>
         IntType
       case IntToLong | DoubleToLong | Double_toBits | UnsignedIntToLong =>
         LongType
@@ -563,9 +584,9 @@ object Trees {
       case Class_name =>
         StringType
       case Class_componentType | Class_superClass | GetClass =>
-        ClassType(ClassClass, nullable = true)
+        ClassType(ClassClass, nullable = true, exact = true)
       case WrapAsThrowable =>
-        ClassType(ThrowableClass, nullable = false)
+        ClassType(ThrowableClass, nullable = false, exact = false)
       case UnwrapFromThrowable =>
         AnyType
       case Throw =>
@@ -604,12 +625,14 @@ object Trees {
    *  Otherwise, binary operations preserve pureness.
    */
   sealed case class BinaryOp(op: BinaryOp.Code, lhs: Tree, rhs: Tree)(
-      implicit val pos: Position) extends Tree {
+      implicit val pos: Position)
+      extends Tree {
 
-    val tpe = BinaryOp.resultTypeOf(op)
+    val tpe: Type = BinaryOp.resultTypeOf(op)
   }
 
   object BinaryOp {
+
     /** Codes are raw Ints to be able to write switch matches on them. */
     type Code = Int
 
@@ -620,8 +643,8 @@ object Trees {
 
     final val Boolean_== = 4
     final val Boolean_!= = 5
-    final val Boolean_|  = 6
-    final val Boolean_&  = 7
+    final val Boolean_| = 6
+    final val Boolean_& = 7
 
     final val Int_+ = 8
     final val Int_- = 9
@@ -629,18 +652,18 @@ object Trees {
     final val Int_/ = 11
     final val Int_% = 12
 
-    final val Int_|   = 13
-    final val Int_&   = 14
-    final val Int_^   = 15
-    final val Int_<<  = 16
+    final val Int_| = 13
+    final val Int_& = 14
+    final val Int_^ = 15
+    final val Int_<< = 16
     final val Int_>>> = 17
-    final val Int_>>  = 18
+    final val Int_>> = 18
 
     final val Int_== = 19
     final val Int_!= = 20
-    final val Int_<  = 21
+    final val Int_< = 21
     final val Int_<= = 22
-    final val Int_>  = 23
+    final val Int_> = 23
     final val Int_>= = 24
 
     final val Long_+ = 25
@@ -649,18 +672,18 @@ object Trees {
     final val Long_/ = 28
     final val Long_% = 29
 
-    final val Long_|   = 30
-    final val Long_&   = 31
-    final val Long_^   = 32
-    final val Long_<<  = 33
+    final val Long_| = 30
+    final val Long_& = 31
+    final val Long_^ = 32
+    final val Long_<< = 33
     final val Long_>>> = 34
-    final val Long_>>  = 35
+    final val Long_>> = 35
 
     final val Long_== = 36
     final val Long_!= = 37
-    final val Long_<  = 38
+    final val Long_< = 38
     final val Long_<= = 39
-    final val Long_>  = 40
+    final val Long_> = 40
     final val Long_>= = 41
 
     final val Float_+ = 42
@@ -677,9 +700,9 @@ object Trees {
 
     final val Double_== = 52
     final val Double_!= = 53
-    final val Double_<  = 54
+    final val Double_< = 54
     final val Double_<= = 55
-    final val Double_>  = 56
+    final val Double_> = 56
     final val Double_>= = 57
 
     // New in 1.11
@@ -745,20 +768,24 @@ object Trees {
   }
 
   sealed case class NewArray(typeRef: ArrayTypeRef, length: Tree)(
-      implicit val pos: Position) extends Tree {
-    val tpe = ArrayType(typeRef, nullable = false)
+      implicit val pos: Position)
+      extends Tree {
+    val tpe: ArrayType = ArrayType(typeRef, nullable = false, exact = true)
   }
 
   sealed case class ArrayValue(typeRef: ArrayTypeRef, elems: List[Tree])(
-      implicit val pos: Position) extends Tree {
-    val tpe = ArrayType(typeRef, nullable = false)
+      implicit val pos: Position)
+      extends Tree {
+    val tpe: ArrayType = ArrayType(typeRef, nullable = false, exact = true)
   }
 
   sealed case class ArraySelect(array: Tree, index: Tree)(val tpe: Type)(
-      implicit val pos: Position) extends AssignLhs
+      implicit val pos: Position)
+      extends AssignLhs
 
   sealed case class RecordValue(tpe: RecordType, elems: List[Tree])(
-      implicit val pos: Position) extends Tree
+      implicit val pos: Position)
+      extends Tree
 
   sealed case class RecordSelect(record: Tree, field: SimpleFieldIdent)(
       val tpe: Type)(
@@ -768,7 +795,7 @@ object Trees {
   sealed case class IsInstanceOf(expr: Tree, testType: Type)(
       implicit val pos: Position)
       extends Tree {
-    val tpe = BooleanType
+    val tpe: BooleanType.type = BooleanType
   }
 
   sealed case class AsInstanceOf(expr: Tree, tpe: Type)(
@@ -778,28 +805,38 @@ object Trees {
   // JavaScript expressions
 
   sealed case class JSNew(ctor: Tree, args: List[TreeOrJSSpread])(
-      implicit val pos: Position) extends Tree {
-    val tpe = AnyType
+      implicit val pos: Position)
+      extends Tree {
+    val tpe: AnyType.type = AnyType
   }
 
   sealed case class JSPrivateSelect(qualifier: Tree, field: FieldIdent)(
-      implicit val pos: Position) extends AssignLhs {
-    val tpe = AnyType
+      implicit val pos: Position)
+      extends AssignLhs {
+    val tpe: AnyType.type = AnyType
   }
 
   sealed case class JSSelect(qualifier: Tree, item: Tree)(
-      implicit val pos: Position) extends AssignLhs {
-    val tpe = AnyType
+      implicit val pos: Position)
+      extends AssignLhs {
+    val tpe: AnyType.type = AnyType
   }
 
   sealed case class JSFunctionApply(fun: Tree, args: List[TreeOrJSSpread])(
-      implicit val pos: Position) extends Tree {
-    val tpe = AnyType
+      implicit val pos: Position)
+      extends Tree {
+    val tpe: AnyType.type = AnyType
   }
 
+  sealed case class WitFunctionApply(receiver: Option[Tree], className: ClassName,
+      method: MethodIdent,
+      args: List[Tree])(val tpe: Type)(implicit val pos: Position)
+      extends Tree
+
   sealed case class JSMethodApply(receiver: Tree, method: Tree,
-      args: List[TreeOrJSSpread])(implicit val pos: Position) extends Tree {
-    val tpe = AnyType
+      args: List[TreeOrJSSpread])(implicit val pos: Position)
+      extends Tree {
+    val tpe: AnyType.type = AnyType
   }
 
   /** Selects a property inherited from the given `superClass` on `receiver`.
@@ -833,8 +870,9 @@ object Trees {
    *  `this` value.
    */
   sealed case class JSSuperSelect(superClass: Tree, receiver: Tree, item: Tree)(
-      implicit val pos: Position) extends AssignLhs {
-    val tpe = AnyType
+      implicit val pos: Position)
+      extends AssignLhs {
+    val tpe: AnyType.type = AnyType
   }
 
   /** Calls a method inherited from the given `superClass` on `receiver`.
@@ -885,7 +923,7 @@ object Trees {
       method: Tree, args: List[TreeOrJSSpread])(
       implicit val pos: Position)
       extends Tree {
-    val tpe = AnyType
+    val tpe: AnyType.type = AnyType
   }
 
   /** Super constructor call in the constructor of a non-native JS class.
@@ -926,8 +964,9 @@ object Trees {
    *  }}}
    */
   sealed case class JSSuperConstructorCall(args: List[TreeOrJSSpread])(
-      implicit val pos: Position) extends Tree {
-    val tpe = VoidType
+      implicit val pos: Position)
+      extends Tree {
+    val tpe: VoidType.type = VoidType
   }
 
   /** JavaScript dynamic import of the form `import(arg)`.
@@ -940,9 +979,8 @@ object Trees {
    *  `ImportCall` is a dedicated syntactic form that cannot be
    *  dissociated.
    */
-  sealed case class JSImportCall(arg: Tree)(implicit val pos: Position)
-      extends Tree {
-    val tpe = AnyType // it is a JavaScript Promise
+  sealed case class JSImportCall(arg: Tree)(implicit val pos: Position) extends Tree {
+    val tpe: AnyType.type = AnyType // it is a JavaScript Promise
   }
 
   /** JavaScript meta-property `new.target`.
@@ -955,7 +993,7 @@ object Trees {
    *  is a dedicated syntactic form that cannot be dissociated.
    */
   sealed case class JSNewTarget()(implicit val pos: Position) extends Tree {
-    val tpe = AnyType
+    val tpe: AnyType.type = AnyType
   }
 
   /** JavaScript meta-property `import.meta`.
@@ -968,7 +1006,7 @@ object Trees {
    *  is a dedicated syntactic form that cannot be dissociated.
    */
   sealed case class JSImportMeta()(implicit val pos: Position) extends Tree {
-    val tpe = AnyType
+    val tpe: AnyType.type = AnyType
   }
 
   /** Loads the constructor of a JS class (native or not).
@@ -998,14 +1036,16 @@ object Trees {
    *  and therefore reachable.
    */
   sealed case class LoadJSConstructor(className: ClassName)(
-      implicit val pos: Position) extends Tree {
-    val tpe = AnyType
+      implicit val pos: Position)
+      extends Tree {
+    val tpe: AnyType.type = AnyType
   }
 
   /** Like [[LoadModule]] but for a JS module class. */
   sealed case class LoadJSModule(className: ClassName)(
-      implicit val pos: Position) extends Tree {
-    val tpe = AnyType
+      implicit val pos: Position)
+      extends Tree {
+    val tpe: AnyType.type = AnyType
   }
 
   /** `...items`, the "spread" operator of ECMAScript 6.
@@ -1020,16 +1060,18 @@ object Trees {
       implicit val pos: Position)
       extends Tree {
 
-    val tpe = VoidType
+    val tpe: VoidType.type = VoidType
   }
 
   /** JavaScript unary operation. */
   sealed case class JSUnaryOp(op: JSUnaryOp.Code, lhs: Tree)(
-      implicit val pos: Position) extends Tree {
-    val tpe = JSUnaryOp.resultTypeOf(op)
+      implicit val pos: Position)
+      extends Tree {
+    val tpe: Type = JSUnaryOp.resultTypeOf(op)
   }
 
   object JSUnaryOp {
+
     /** Codes are raw Ints to be able to write switch matches on them. */
     type Code = Int
 
@@ -1046,11 +1088,13 @@ object Trees {
 
   /** JavaScript binary operation. */
   sealed case class JSBinaryOp(op: JSBinaryOp.Code, lhs: Tree, rhs: Tree)(
-      implicit val pos: Position) extends Tree {
-    val tpe = JSBinaryOp.resultTypeOf(op)
+      implicit val pos: Position)
+      extends Tree {
+    val tpe: Type = JSBinaryOp.resultTypeOf(op)
   }
 
   object JSBinaryOp {
+
     /** Codes are raw Ints to be able to write switch matches on them. */
     type Code = Int
 
@@ -1063,22 +1107,22 @@ object Trees {
     final val / = 6
     final val % = 7
 
-    final val |   = 8
-    final val &   = 9
-    final val ^   = 10
-    final val <<  = 11
-    final val >>  = 12
+    final val | = 8
+    final val & = 9
+    final val ^ = 10
+    final val << = 11
+    final val >> = 12
     final val >>> = 13
 
-    final val <  = 14
+    final val < = 14
     final val <= = 15
-    final val >  = 16
+    final val > = 16
     final val >= = 17
 
     final val && = 18
     final val || = 19
 
-    final val in         = 20
+    final val in = 20
     final val instanceof = 21
 
     // New in 1.12
@@ -1098,26 +1142,30 @@ object Trees {
   }
 
   sealed case class JSArrayConstr(items: List[TreeOrJSSpread])(
-      implicit val pos: Position) extends Tree {
-    val tpe = AnyNotNullType
+      implicit val pos: Position)
+      extends Tree {
+    val tpe: AnyNotNullType.type = AnyNotNullType
   }
 
   sealed case class JSObjectConstr(fields: List[(Tree, Tree)])(
-      implicit val pos: Position) extends Tree {
-    val tpe = AnyNotNullType
+      implicit val pos: Position)
+      extends Tree {
+    val tpe: AnyNotNullType.type = AnyNotNullType
   }
 
   sealed case class JSGlobalRef(name: String)(
-      implicit val pos: Position) extends AssignLhs {
+      implicit val pos: Position)
+      extends AssignLhs {
     import JSGlobalRef._
 
-    val tpe = AnyType
+    val tpe: AnyType.type = AnyType
 
     require(isValidJSGlobalRefName(name),
         s"`$name` is not a valid global ref name")
   }
 
   object JSGlobalRef {
+
     /** Set of identifier names that can never be accessed from the global
      *  scope.
      *
@@ -1163,8 +1211,9 @@ object Trees {
   }
 
   sealed case class JSTypeOfGlobalRef(globalRef: JSGlobalRef)(
-      implicit val pos: Position) extends Tree {
-    val tpe = AnyType
+      implicit val pos: Position)
+      extends Tree {
+    val tpe: AnyType.type = AnyType
   }
 
   // Literals
@@ -1189,46 +1238,53 @@ object Trees {
   sealed trait MatchableLiteral extends Literal
 
   sealed case class Undefined()(implicit val pos: Position) extends Literal {
-    val tpe = UndefType
+    val tpe: UndefType.type = UndefType
   }
 
   sealed case class Null()(implicit val pos: Position) extends MatchableLiteral {
-    val tpe = NullType
+    val tpe: NullType.type = NullType
   }
 
   sealed case class BooleanLiteral(value: Boolean)(
-      implicit val pos: Position) extends Literal {
-    val tpe = BooleanType
+      implicit val pos: Position)
+      extends Literal {
+    val tpe: BooleanType.type = BooleanType
   }
 
   sealed case class CharLiteral(value: Char)(
-      implicit val pos: Position) extends Literal {
-    val tpe = CharType
+      implicit val pos: Position)
+      extends Literal {
+    val tpe: CharType.type = CharType
   }
 
   sealed case class ByteLiteral(value: Byte)(
-      implicit val pos: Position) extends Literal {
-    val tpe = ByteType
+      implicit val pos: Position)
+      extends Literal {
+    val tpe: ByteType.type = ByteType
   }
 
   sealed case class ShortLiteral(value: Short)(
-      implicit val pos: Position) extends Literal {
-    val tpe = ShortType
+      implicit val pos: Position)
+      extends Literal {
+    val tpe: ShortType.type = ShortType
   }
 
   sealed case class IntLiteral(value: Int)(
-      implicit val pos: Position) extends MatchableLiteral {
-    val tpe = IntType
+      implicit val pos: Position)
+      extends MatchableLiteral {
+    val tpe: IntType.type = IntType
   }
 
   sealed case class LongLiteral(value: Long)(
-      implicit val pos: Position) extends Literal {
-    val tpe = LongType
+      implicit val pos: Position)
+      extends Literal {
+    val tpe: LongType.type = LongType
   }
 
   sealed case class FloatLiteral(value: Float)(
-      implicit val pos: Position) extends Literal {
-    val tpe = FloatType
+      implicit val pos: Position)
+      extends Literal {
+    val tpe: FloatType.type = FloatType
 
     override def equals(that: Any): Boolean = that match {
       case that: FloatLiteral => java.lang.Float.compare(this.value, that.value) == 0
@@ -1239,8 +1295,9 @@ object Trees {
   }
 
   sealed case class DoubleLiteral(value: Double)(
-      implicit val pos: Position) extends Literal {
-    val tpe = DoubleType
+      implicit val pos: Position)
+      extends Literal {
+    val tpe: DoubleType.type = DoubleType
 
     override def equals(that: Any): Boolean = that match {
       case that: DoubleLiteral => java.lang.Double.compare(this.value, that.value) == 0
@@ -1251,13 +1308,15 @@ object Trees {
   }
 
   sealed case class StringLiteral(value: String)(
-      implicit val pos: Position) extends MatchableLiteral {
-    val tpe = StringType
+      implicit val pos: Position)
+      extends MatchableLiteral {
+    val tpe: StringType.type = StringType
   }
 
   sealed case class ClassOf(typeRef: TypeRef)(
-      implicit val pos: Position) extends Literal {
-    val tpe = ClassType(ClassClass, nullable = false)
+      implicit val pos: Position)
+      extends Literal {
+    val tpe: ClassType = ClassType(ClassClass, nullable = false, exact = true)
   }
 
   sealed case class LinkTimeProperty(name: String)(val tpe: Type)(
@@ -1268,6 +1327,7 @@ object Trees {
     final val ProductionMode = "core/productionMode"
     final val ESVersion = "core/esVersion"
     final val UseECMAScript2015Semantics = "core/useECMAScript2015Semantics"
+    final val ModuleKind = "core/moduleKind"
     final val IsWebAssembly = "core/isWebAssembly"
     final val LinkerVersion = "core/linkerVersion"
   }
@@ -1275,7 +1335,8 @@ object Trees {
   // Atomic expressions
 
   sealed case class VarRef(name: LocalName)(val tpe: Type)(
-      implicit val pos: Position) extends AssignLhs
+      implicit val pos: Position)
+      extends AssignLhs
 
   /** Convenience constructor and extractor for `VarRef`s representing `this` bindings. */
   object This {
@@ -1312,7 +1373,8 @@ object Trees {
   sealed case class Closure(flags: ClosureFlags, captureParams: List[ParamDef],
       params: List[ParamDef], restParam: Option[ParamDef], resultType: Type,
       body: Tree, captureValues: List[Tree])(
-      implicit val pos: Position) extends Tree {
+      implicit val pos: Position)
+      extends Tree {
     val tpe: Type =
       if (flags.typed) ClosureType(params.map(_.ptpe), resultType, nullable = false)
       else AnyNotNullType
@@ -1332,7 +1394,7 @@ object Trees {
       captureValues: List[Tree])(
       implicit val pos: Position)
       extends Tree {
-    val tpe = AnyType
+    val tpe: AnyType.type = AnyType
   }
 
   // Transient, a special one
@@ -1346,15 +1408,18 @@ object Trees {
    *    The payload of the transient node, without any specified meaning.
    */
   sealed case class Transient(value: Transient.Value)(
-      implicit val pos: Position) extends Tree {
-    val tpe = value.tpe
+      implicit val pos: Position)
+      extends Tree {
+    val tpe: Type = value.tpe
   }
 
   object Transient {
+
     /** Common interface for the values that can be stored in [[Transient]]
      *  nodes.
      */
     trait Value {
+
       /** Type of this transient value. */
       val tpe: Type
 
@@ -1427,10 +1492,12 @@ object Trees {
       val jsConstructor: Option[JSConstructorDef],
       val jsMethodProps: List[JSMethodPropDef],
       val jsNativeMembers: List[JSNativeMemberDef],
+      val witNativeMembers: List[WitNativeMemberDef],
       val topLevelExportDefs: List[TopLevelExportDef]
   )(
       val optimizerHints: OptimizerHints
-  )(implicit val pos: Position) extends IRNode {
+  )(implicit val pos: Position)
+      extends IRNode {
     def className: ClassName = name.name
   }
 
@@ -1449,12 +1516,15 @@ object Trees {
         jsConstructor: Option[JSConstructorDef],
         jsMethodProps: List[JSMethodPropDef],
         jsNativeMembers: List[JSNativeMemberDef],
-        topLevelExportDefs: List[TopLevelExportDef])(
+        witNativeMembers: List[WitNativeMemberDef],
+        topLevelExportDefs: List[TopLevelExportDef]
+    )(
         optimizerHints: OptimizerHints)(
         implicit pos: Position): ClassDef = {
       new ClassDef(name, originalName, kind, jsClassCaptures, superClass,
           interfaces, jsSuperClass, jsNativeLoadSpec, fields, methods,
-          jsConstructor, jsMethodProps, jsNativeMembers, topLevelExportDefs)(
+          jsConstructor, jsMethodProps, jsNativeMembers,
+          witNativeMembers, topLevelExportDefs)(
           optimizerHints)
     }
   }
@@ -1481,16 +1551,19 @@ object Trees {
 
   sealed case class FieldDef(flags: MemberFlags, name: FieldIdent,
       originalName: OriginalName, ftpe: Type)(
-      implicit val pos: Position) extends AnyFieldDef
+      implicit val pos: Position)
+      extends AnyFieldDef
 
   sealed case class JSFieldDef(flags: MemberFlags, name: Tree, ftpe: Type)(
-      implicit val pos: Position) extends AnyFieldDef
+      implicit val pos: Position)
+      extends AnyFieldDef
 
   sealed case class MethodDef(flags: MemberFlags, name: MethodIdent,
       originalName: OriginalName, args: List[ParamDef], resultType: Type,
       body: Option[Tree])(
       val optimizerHints: OptimizerHints, val version: Version)(
-      implicit val pos: Position) extends VersionedMemberDef {
+      implicit val pos: Position)
+      extends VersionedMemberDef {
     def methodName: MethodName = name.name
   }
 
@@ -1526,6 +1599,22 @@ object Trees {
       implicit val pos: Position)
       extends MemberDef
 
+  sealed case class WitNativeMemberDef(flags: MemberFlags,
+      moduleName: String, name: WitFunctionName, method: MethodIdent,
+      signature: WasmInterfaceTypes.FuncType)(
+      implicit val pos: Position)
+      extends MemberDef
+
+  sealed abstract class WitFunctionName {}
+
+  object WitFunctionName {
+    final case class Function(func: String) extends WitFunctionName
+    final case class ResourceMethod(func: String, resource: String) extends WitFunctionName
+    final case class ResourceStaticMethod(func: String, resource: String) extends WitFunctionName
+    final case class ResourceConstructor(resource: String) extends WitFunctionName
+    final case class ResourceDrop(resource: String) extends WitFunctionName
+  }
+
   // Top-level export defs
 
   sealed abstract class TopLevelExportDef extends IRNode {
@@ -1538,13 +1627,26 @@ object Trees {
       case TopLevelJSClassExportDef(_, name) => name
 
       case TopLevelMethodExportDef(_, JSMethodDef(_, propName, _, _, _)) =>
-        val StringLiteral(name) = propName: @unchecked  // unchecked is needed for Scala 3.2+
+        val StringLiteral(name) = propName: @unchecked // unchecked is needed for Scala 3.2+
         name
 
-      case TopLevelFieldExportDef(_, name, _) => name
+      case TopLevelFieldExportDef(_, name, _)   => name
+      case WitExportDef(moduleName, name, _, _) => name match {
+          case WitFunctionName.Function(func) =>
+            s"$moduleName#$func"
+          case WitFunctionName.ResourceMethod(func, resource) =>
+            s"$moduleName#[method]$resource.$func"
+          case WitFunctionName.ResourceStaticMethod(func, resource) =>
+            s"$moduleName#[static]$resource.$func"
+          case WitFunctionName.ResourceConstructor(resource) =>
+            s"$moduleName#[constructor]$resource"
+          case WitFunctionName.ResourceDrop(resource) =>
+            s"$moduleName#[resource-drop]$resource"
+        }
     }
 
-    require(isValidTopLevelExportName(topLevelExportName),
+    val isWitExport = this.isInstanceOf[WitExportDef]
+    require(isWitExport || isValidTopLevelExportName(topLevelExportName),
         s"`$topLevelExportName` is not a valid top-level export name")
   }
 
@@ -1554,7 +1656,8 @@ object Trees {
   }
 
   sealed case class TopLevelJSClassExportDef(moduleID: String, exportName: String)(
-      implicit val pos: Position) extends TopLevelExportDef
+      implicit val pos: Position)
+      extends TopLevelExportDef
 
   /** Export for a top-level object.
    *
@@ -1562,15 +1665,31 @@ object Trees {
    *  The instance is initialized during ES module instantiation.
    */
   sealed case class TopLevelModuleExportDef(moduleID: String, exportName: String)(
-      implicit val pos: Position) extends TopLevelExportDef
+      implicit val pos: Position)
+      extends TopLevelExportDef
 
   sealed case class TopLevelMethodExportDef(moduleID: String,
       methodDef: JSMethodDef)(
-      implicit val pos: Position) extends TopLevelExportDef
+      implicit val pos: Position)
+      extends TopLevelExportDef
 
   sealed case class TopLevelFieldExportDef(moduleID: String,
       exportName: String, field: FieldIdent)(
-      implicit val pos: Position) extends TopLevelExportDef
+      implicit val pos: Position)
+      extends TopLevelExportDef
+
+  /** Wasm Component Model export definition.
+   *
+   *  This is compiled to a static forwarder for component model export that contains
+   *  Canonical ABI conversion and calls the method.
+   */
+  sealed case class WitExportDef(moduleName: String,
+      name: WitFunctionName, methodDef: MethodDef,
+      signature: WasmInterfaceTypes.FuncType)(
+      implicit val pos: Position)
+      extends TopLevelExportDef {
+    override def moduleID = DefaultModuleID
+  }
 
   // Miscellaneous
 
@@ -1776,10 +1895,10 @@ object Trees {
       new MemberNamespace(ordinal)
 
     def forNonStaticCall(flags: ApplyFlags): MemberNamespace = {
-        if (flags.isPrivate) Private
-        else if (flags.isConstructor) Constructor
-        else Public
-      }
+      if (flags.isPrivate) Private
+      else if (flags.isConstructor) Constructor
+      else Public
+    }
 
     def forStaticCall(flags: ApplyFlags): MemberNamespace =
       if (flags.isPrivate) PrivateStatic else PublicStatic
@@ -1846,8 +1965,7 @@ object Trees {
      *  Global("cp", List("Vect"))
      *  }}}
      */
-    final case class Global(globalRef: String, path: List[String])
-        extends JSNativeLoadSpec {
+    final case class Global(globalRef: String, path: List[String]) extends JSNativeLoadSpec {
 
       require(JSGlobalRef.isValidJSGlobalRefName(globalRef))
     }
@@ -1881,8 +1999,7 @@ object Trees {
      *  Import("foo", List("default"))
      *  }}}
      */
-    final case class Import(module: String, path: List[String])
-        extends JSNativeLoadSpec
+    final case class Import(module: String, path: List[String]) extends JSNativeLoadSpec
 
     /** Like [[Import]], but with a [[Global]] fallback when linking without
      *  modules.

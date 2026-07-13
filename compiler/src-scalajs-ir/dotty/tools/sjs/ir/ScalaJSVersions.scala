@@ -12,15 +12,18 @@
 
 package dotty.tools.sjs.ir
 
-import scala.language.unsafeNulls
 import java.util.concurrent.ConcurrentHashMap
 
 import scala.util.matching.Regex
 
+import Nullables._
+
 object ScalaJSVersions extends VersionChecks(
-    current = "1.20.2",
-    binaryEmitted = "1.20"
-)
+      current = "1.22.1-wasm.4-SNAPSHOT",
+      binaryEmitted = "1.22"
+    ) {
+  final val organization = "io.github.scala-wasm"
+}
 
 /** Helper class to allow for testing of logic. */
 class VersionChecks private[ir] (
@@ -63,8 +66,8 @@ class VersionChecks private[ir] (
     if (!knownSupportedBinary.contains(version)) {
       val (major, minor, preRelease) = parseBinary(version)
       val supported = (
-          // the exact pre-release version is supported via knownSupportedBinary
-          preRelease.isEmpty &&
+        // the exact pre-release version is supported via knownSupportedBinary
+        preRelease.isEmpty &&
           major == binaryMajor &&
           minor <= binaryMinor &&
           (binaryPreRelease.isEmpty || minor < binaryMinor)
@@ -87,12 +90,12 @@ private object VersionChecks {
 
   private def parseBinary(v: String): (Int, Int, Option[String]) = {
     val m = mustMatch(binaryRE, v)
-    (m.group(1).toInt, m.group(2).toInt, preRelease(m.group(3)))
+    (m.group(1).nn.toInt, m.group(2).nn.toInt, preRelease(m.group(3)))
   }
 
   private def parseFull(v: String): (Int, Int, Int, Option[String]) = {
     val m = mustMatch(fullRE, v)
-    (m.group(1).toInt, m.group(2).toInt, m.group(3).toInt, preRelease(m.group(4)))
+    (m.group(1).nn.toInt, m.group(2).nn.toInt, m.group(3).nn.toInt, preRelease(m.group(4)))
   }
 
   private def mustMatch(re: Regex, v: String): Regex.Match = {
@@ -100,7 +103,7 @@ private object VersionChecks {
         throw new IllegalArgumentException("malformed version: " + v))
   }
 
-  private def preRelease(v: String): Option[String] =
+  private def preRelease(v: Nullable[String]): Option[String] =
     Option(v).map(_.stripPrefix("-"))
 
   private def checkConsistent(current: String, binary: String) = {
@@ -120,7 +123,7 @@ private object VersionChecks {
 
     require(
         binaryPreRelease.isEmpty || (
-            currentMinor == binaryMinor &&
+          currentMinor == binaryMinor &&
             currentPatch == 0 &&
             binaryPreRelease == currentPreRelease),
         "binaryEmitted is in pre-release but does not match current")
