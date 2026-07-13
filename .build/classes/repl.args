@@ -1,0 +1,36 @@
+-feature
+-deprecation
+-unchecked
+-Werror
+-encoding
+UTF8
+-language:implicitConversions
+--java-output-version:17
+-Yexplicit-nulls
+-Wsafe-init
+"-Wconf:msg=package scala contains object and package with same name:i"
+"-Wconf:src=scaladoc-testcases/.*:s"
+"-Wconf:msg=The RHS of reassignment must be transitively initialized:i"
+"-Wconf:msg=Could not verify that the method argument is transitively initialized:i"
+"-Wconf:msg=may cause initialization errors:i"
+"-Wconf:cat=deprecation&origin=scala\.collection\.Iterable\.stringPrefix:s"
+-classpath
+/Users/propensive/work/worktrees/scala/soundness-390/release/lib/scala-library.jar:/Users/propensive/work/worktrees/scala/soundness-390/release/lib/scala3-compiler.jar:/Users/propensive/work/worktrees/scala/soundness-390/release/lib/tasty-core.jar:/Users/propensive/work/worktrees/scala/soundness-390/release/lib/scala3-interfaces.jar:/Users/propensive/work/worktrees/scala/soundness-390/.build/jars/scala-asm-9.9.0-scala-1.jar:/Users/propensive/work/worktrees/scala/soundness-390/.build/jars/compiler-interface-1.12.0.jar:/Users/propensive/work/worktrees/scala/soundness-390/.build/jars/util-interface-1.11.5.jar:/Users/propensive/work/worktrees/scala/soundness-390/.build/jars/jline-reader-4.0.14.jar:/Users/propensive/work/worktrees/scala/soundness-390/.build/jars/jline-terminal-4.0.14.jar:/Users/propensive/work/worktrees/scala/soundness-390/.build/jars/jline-terminal-jni-4.0.14.jar:/Users/propensive/work/worktrees/scala/soundness-390/.build/jars/interface-1.0.29-M4.jar:/Users/propensive/work/worktrees/scala/soundness-390/.build/jars/pprint_3-0.9.3.jar:/Users/propensive/work/worktrees/scala/soundness-390/.build/jars/fansi_3-0.5.1.jar:/Users/propensive/work/worktrees/scala/soundness-390/.build/jars/sourcecode_3-0.4.4.jar:/Users/propensive/work/worktrees/scala/soundness-390/.build/jars/using_directives-1.1.4.jar
+-d
+/Users/propensive/work/worktrees/scala/soundness-390/.build/classes/repl
+repl/src/dotty/tools/repl/AbstractFileClassLoader.scala
+repl/src/dotty/tools/repl/CollectTopLevelImports.scala
+repl/src/dotty/tools/repl/DependencyResolver.scala
+repl/src/dotty/tools/repl/JLineTerminal.scala
+repl/src/dotty/tools/repl/Main.scala
+repl/src/dotty/tools/repl/ParseResult.scala
+repl/src/dotty/tools/repl/Rendering.scala
+repl/src/dotty/tools/repl/ReplBytecodeInstrumentation.scala
+repl/src/dotty/tools/repl/ReplCommand.scala
+repl/src/dotty/tools/repl/ReplCompiler.scala
+repl/src/dotty/tools/repl/ReplDriver.scala
+repl/src/dotty/tools/repl/ScalaClassLoader.scala
+repl/src/dotty/tools/repl/ScriptEngine.scala
+repl/src/dotty/tools/repl/StackTraceOps.scala
+repl/src/dotty/tools/repl/StopRepl.scala
+repl/src/dotty/tools/repl/package.scala

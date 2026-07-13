@@ -1,0 +1,2 @@
+Automatic-Module-Name: org.scala.lang.scala3.compiler
+Git-Hash: ce37618
