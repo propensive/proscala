@@ -399,9 +399,15 @@ SJS_CP := $(call cpjoin,$(SJS_LIBRARY_JAR) $(SJS_JAVALIB_JAR))
 
 # ---- 11. scala-library-sjs (Scala.js stdlib; .sjsir-only artifact) -----------
 # Source set mirrors Build.scala:1188-1211: library-js/src overrides win over
-# library/src; BoxesRunTime/ScalaNumber come from the Scala.js deps, not here.
+# library/src. BoxesRunTime/Statics/ScalaNumber are excluded from the main pass
+# so references to them resolve to library/src's .java stubs (Java statics),
+# making callers emit class-targeted static calls; a second pass then compiles
+# library-js-aux, whose objects' static forwarders satisfy those calls. (The
+# Scala.js deps do NOT provide scala/runtime, so these classes must be shipped
+# here or linking anything that reaches them — e.g. TupleN equality, LazyList,
+# var-capturing closures — fails with non-existent-class errors.)
 $(SJS_SCALALIB_JAR): $(COMMON_ARGS) $(STAGE_JARS) $(SJS_LIBRARY_JAR) $(SJS_JAVALIB_JAR) \
-                     $(shell find library-js/src -type f) $(LIBRARY_SRC)
+                     $(shell find library-js/src library-js-aux/src -type f) $(LIBRARY_SRC)
 	@echo ">> scala-library-sjs (Scala.js stdlib)"
 	@rm -rf $(CLASSES)/sjs-scalalib $(CLASSES)/sjs-scalalib-jar
 	@mkdir -p $(CLASSES)/sjs-scalalib $(CLASSES)/sjs-scalalib-jar $(GEN) $(LIB)
@@ -413,6 +419,11 @@ $(SJS_SCALALIB_JAR): $(COMMON_ARGS) $(STAGE_JARS) $(SJS_LIBRARY_JAR) $(SJS_JAVAL
 	@grep -vE 'BoxesRunTime.scala|ScalaNumber.scala' $(GEN)/sjs-js-rel.txt | sed 's|^|library-js/src/|' >> $(CLASSES)/sjs-scalalib.args
 	@comm -23 $(GEN)/sjs-lib-rel.txt $(GEN)/sjs-js-rel.txt | grep -vE 'BoxesRunTime|ScalaNumber' | sed 's|^|library/src/|' >> $(CLASSES)/sjs-scalalib.args
 	$(STAGEC) @$(CLASSES)/sjs-scalalib.args
+	@cp $(COMMON_ARGS) $(CLASSES)/sjs-scalalib-aux.args
+	@printf '%s\n' -scalajs '"-Wconf:any:s"' -classpath '$(call cpjoin,$(CLASSES)/sjs-scalalib $(SJS_CP))' \
+	  -sourcepath 'library/src' -d $(CLASSES)/sjs-scalalib >> $(CLASSES)/sjs-scalalib-aux.args
+	@find library-js-aux/src -name '*.scala' -type f >> $(CLASSES)/sjs-scalalib-aux.args
+	$(STAGEC) @$(CLASSES)/sjs-scalalib-aux.args
 	@# Keep only .sjsir plus the UnitOps / AnonFunctionXXL class+tasty entries.
 	cd $(CLASSES)/sjs-scalalib && jar cf $@ $$(find . \( -name '*.sjsir' \
 	  -o -name 'UnitOps.tasty' -o -name 'UnitOps.class' -o -name 'UnitOps$$.class' \
