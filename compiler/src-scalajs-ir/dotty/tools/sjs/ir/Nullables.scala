@@ -12,12 +12,6 @@
 
 package dotty.tools.sjs.ir
 
-class InvalidIRException(val optTree: Option[Trees.IRNode], message: String)
-    extends Exception(message) {
-
-  def this(tree: Trees.IRNode, message: String) =
-    this(Some(tree), message)
-
-  def this(message: String) =
-    this(None, message)
+private[ir] object Nullables {
+  type Nullable[+A <: AnyRef] = A | Null
 }

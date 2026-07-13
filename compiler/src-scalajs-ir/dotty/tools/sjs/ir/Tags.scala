@@ -12,7 +12,6 @@
 
 package dotty.tools.sjs.ir
 
-import scala.language.unsafeNulls
 /** Serialization and hashing tags for trees and types */
 private[ir] object Tags {
 
@@ -195,6 +194,13 @@ private[ir] object Tags {
 
   final val TagClosureType = TagNonNullArrayType + 1
   final val TagNonNullClosureType = TagClosureType + 1
+
+  // New in 1.21
+
+  final val TagExactClassType = TagNonNullClosureType + 1
+  final val TagExactNonNullClassType = TagExactClassType + 1
+  final val TagExactArrayType = TagExactNonNullClassType + 1
+  final val TagExactNonNullArrayType = TagExactArrayType + 1
 
   // Tags for TypeRefs
 

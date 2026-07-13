@@ -12,7 +12,6 @@
 
 package dotty.tools.sjs.ir
 
-import scala.language.unsafeNulls
 import java.security.MessageDigest
 
 /** Wrapper around java.security.MessageDigest.getInstance("SHA-1") */

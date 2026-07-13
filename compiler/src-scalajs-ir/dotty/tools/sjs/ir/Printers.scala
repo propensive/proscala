@@ -12,7 +12,6 @@
 
 package dotty.tools.sjs.ir
 
-import scala.language.unsafeNulls
 import scala.annotation.switch
 
 // Unimport default print and println to avoid invoking them by mistake
@@ -130,9 +129,8 @@ object Printers {
       }
     }
 
-    def printArgs(args: List[TreeOrJSSpread]): Unit = {
+    def printArgs(args: List[TreeOrJSSpread]): Unit =
       printRow(args, "(", ", ", ")")
-    }
 
     def printAnyNode(node: IRNode): Unit = {
       node match {
@@ -225,7 +223,7 @@ object Printers {
 
           printBlock(thenp)
           elsep match {
-            case Skip() => ()
+            case Skip()      => ()
             case If(_, _, _) =>
               print(" else ")
               print(elsep)
@@ -420,7 +418,7 @@ object Printers {
               p("((byte)", ")")
             case IntToShort =>
               p("((short)", ")")
-            case CharToInt | ByteToInt | ShortToInt | LongToInt | DoubleToInt =>
+            case CharToInt | ByteToInt | ShortToInt | LongToInt | DoubleToInt | BoolToInt =>
               p("((int)", ")")
             case IntToLong | DoubleToLong =>
               p("((long)", ")")
@@ -484,7 +482,7 @@ object Printers {
           print(')')
 
         case BinaryOp(BinaryOp.Double_-,
-            IntLiteral(0) | FloatLiteral(0.0f) | DoubleLiteral(0.0), rhs) =>
+                IntLiteral(0) | FloatLiteral(0.0f) | DoubleLiteral(0.0), rhs) =>
           print("(-")
           print(rhs)
           print(')')
@@ -1030,8 +1028,10 @@ object Printers {
         print(spec)
       }
       print(" ")
-      printColumn(fields ::: methods ::: jsConstructor.toList :::
-          jsMethodProps ::: jsNativeMembers ::: topLevelExportDefs, "{", "", "}")
+      printColumn(
+          fields ::: methods ::: jsConstructor.toList :::
+          jsMethodProps ::: jsNativeMembers ::: topLevelExportDefs,
+          "{", "", "}")
     }
 
     def print(memberDef: MemberDef): Unit = {
@@ -1176,12 +1176,16 @@ object Printers {
       case NullType       => print("null")
       case VoidType       => print("void")
 
-      case ClassType(className, nullable) =>
+      case ClassType(className, nullable, exact) =>
+        if (exact)
+          print("=")
         print(className)
         if (!nullable)
           print("!")
 
-      case ArrayType(arrayTypeRef, nullable) =>
+      case ArrayType(arrayTypeRef, nullable, exact) =>
+        if (exact)
+          print("=")
         print(arrayTypeRef)
         if (!nullable)
           print("!")

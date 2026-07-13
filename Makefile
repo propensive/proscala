@@ -14,7 +14,7 @@
 VERSION            := 3.9.0-RC1-propensive
 REF_VERSION        := 3.8.4
 SCALA2_VERSION     := 2.13.18
-SCALAJS_VERSION    := 1.20.2
+SCALAJS_VERSION    := 1.22.0
 ASM_VERSION        := 9.9.0-scala-1
 COMPILER_IFACE_VER := 1.12.0
 UTIL_IFACE_VER     := 1.11.5

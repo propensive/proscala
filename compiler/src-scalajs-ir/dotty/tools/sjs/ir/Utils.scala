@@ -12,7 +12,6 @@
 
 package dotty.tools.sjs.ir
 
-import scala.language.unsafeNulls
 private[ir] object Utils {
 
   private final val EscapeJSChars = "\\b\\t\\n\\v\\f\\r\\\"\\\\"
@@ -68,8 +67,7 @@ private[ir] object Utils {
    *  - [[jumpBack]]
    *  - [[continue]]
    */
-  private[ir] class JumpBackByteArrayOutputStream
-      extends java.io.ByteArrayOutputStream {
+  private[ir] class JumpBackByteArrayOutputStream extends java.io.ByteArrayOutputStream {
     protected var jumpBackPos: Int = -1
     protected var headPos: Int = -1
 

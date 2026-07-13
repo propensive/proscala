@@ -12,7 +12,6 @@
 
 package dotty.tools.sjs.ir
 
-import scala.language.unsafeNulls
 import java.io.{DataOutputStream, OutputStream}
 
 import Names._
@@ -546,8 +545,10 @@ object Hashers {
               throw new InvalidIRException(tree, "Cannot hash a typed closure with a rest param")
             mixType(resultType)
           } else {
-            if (resultType != AnyType)
-              throw new InvalidIRException(tree, "Cannot hash a JS closure with a result type != AnyType")
+            if (resultType != AnyType) {
+              throw new InvalidIRException(
+                  tree, "Cannot hash a JS closure with a result type != AnyType")
+            }
             restParam.foreach(mixParamDef(_))
           }
           mixTree(body)
@@ -638,12 +639,24 @@ object Hashers {
       case NullType       => mixTag(TagNullType)
       case VoidType       => mixTag(TagVoidType)
 
-      case ClassType(className, nullable) =>
-        mixTag(if (nullable) TagClassType else TagNonNullClassType)
+      case ClassType(className, nullable, exact) =>
+        val tag = (exact, nullable) match {
+          case (true, true)   => TagExactClassType
+          case (true, false)  => TagExactNonNullClassType
+          case (false, true)  => TagClassType
+          case (false, false) => TagNonNullClassType
+        }
+        mixTag(tag)
         mixName(className)
 
-      case ArrayType(arrayTypeRef, nullable) =>
-        mixTag(if (nullable) TagArrayType else TagNonNullArrayType)
+      case ArrayType(arrayTypeRef, nullable, exact) =>
+        val tag = (exact, nullable) match {
+          case (true, true)   => TagExactArrayType
+          case (true, false)  => TagExactNonNullArrayType
+          case (false, true)  => TagArrayType
+          case (false, false) => TagNonNullArrayType
+        }
+        mixTag(tag)
         mixArrayTypeRef(arrayTypeRef)
 
       case ClosureType(paramTypes, resultType, nullable) =>

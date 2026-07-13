@@ -12,7 +12,6 @@
 
 package dotty.tools.sjs.ir
 
-import scala.language.unsafeNulls
 import scala.annotation.switch
 
 sealed abstract class ClassKind {
