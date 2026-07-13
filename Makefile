@@ -400,9 +400,15 @@ SJS_CP := $(call cpjoin,$(SJS_LIBRARY_JAR) $(SJS_JAVALIB_JAR))
 
 # ---- 11. scala-library-sjs (Scala.js stdlib; .sjsir-only artifact) -----------
 # Source set mirrors Build.scala:1188-1211: library-js/src overrides win over
-# library/src; BoxesRunTime/ScalaNumber come from the Scala.js deps, not here.
+# library/src. BoxesRunTime/Statics/ScalaNumber are excluded from the main pass
+# so references to them resolve to library/src's .java stubs (Java statics),
+# making callers emit class-targeted static calls; a second pass then compiles
+# library-js-aux, whose objects' static forwarders satisfy those calls. (The
+# Scala.js deps do NOT provide scala/runtime, so these classes must be shipped
+# here or linking anything that reaches them — e.g. TupleN equality, LazyList,
+# var-capturing closures — fails with non-existent-class errors.)
 $(SJS_SCALALIB_JAR): $(COMMON_ARGS) $(STAGE_JARS) $(SJS_LIBRARY_JAR) $(SJS_JAVALIB_JAR) \
-                     $(shell find library-js/src -type f) $(LIBRARY_SRC)
+                     $(shell find library-js/src library-js-aux/src -type f) $(LIBRARY_SRC)
 	@echo ">> scala-library-sjs (Scala.js stdlib)"
 	@rm -rf $(CLASSES)/sjs-scalalib $(CLASSES)/sjs-scalalib-jar
 	@mkdir -p $(CLASSES)/sjs-scalalib $(CLASSES)/sjs-scalalib-jar $(GEN) $(LIB)
@@ -414,10 +420,20 @@ $(SJS_SCALALIB_JAR): $(COMMON_ARGS) $(STAGE_JARS) $(SJS_LIBRARY_JAR) $(SJS_JAVAL
 	@grep -vE 'BoxesRunTime.scala|ScalaNumber.scala' $(GEN)/sjs-js-rel.txt | sed 's|^|library-js/src/|' >> $(CLASSES)/sjs-scalalib.args
 	@comm -23 $(GEN)/sjs-lib-rel.txt $(GEN)/sjs-js-rel.txt | grep -vE 'BoxesRunTime|ScalaNumber' | sed 's|^|library/src/|' >> $(CLASSES)/sjs-scalalib.args
 	$(STAGEC) @$(CLASSES)/sjs-scalalib.args
-	@# Keep only .sjsir plus the UnitOps / AnonFunctionXXL class+tasty entries.
+	@cp $(COMMON_ARGS) $(CLASSES)/sjs-scalalib-aux.args
+	@printf '%s\n' -scalajs '"-Wconf:any:s"' -classpath '$(call cpjoin,$(CLASSES)/sjs-scalalib $(SJS_CP))' \
+	  -sourcepath 'library/src' -d $(CLASSES)/sjs-scalalib >> $(CLASSES)/sjs-scalalib-aux.args
+	@find library-js-aux/src -name '*.scala' -type f >> $(CLASSES)/sjs-scalalib-aux.args
+	$(STAGEC) @$(CLASSES)/sjs-scalalib-aux.args
+	@# Keep only .sjsir plus the UnitOps / AnonFunctionXXL class+tasty entries — and, on WASM
+	@# trees, the WASI facades' class+tasty: downstream compiles must load those symbols from
+	@# Tasty (not Scala 2 classfiles), or sealed-children enumeration loses declaration order
+	@# and source spans, and WitCodeGen emits variant descriptors with the cases misordered
+	@# (e.g. wasi:http's `method` alphabetized, so `get` encodes as the `post` discriminant).
 	cd $(CLASSES)/sjs-scalalib && jar cf $@ $$(find . \( -name '*.sjsir' \
 	  -o -name 'UnitOps.tasty' -o -name 'UnitOps.class' -o -name 'UnitOps$$.class' \
-	  -o -name 'AnonFunctionXXL.tasty' -o -name 'AnonFunctionXXL.class' \) -type f)
+	  -o -name 'AnonFunctionXXL.tasty' -o -name 'AnonFunctionXXL.class' \
+	  -o -path './scala/scalajs/wasi/*' \( -name '*.tasty' -o -name '*.class' \) \) -type f)
 
 # ---- 12. scala3-library-sjs (empty placeholder jar) --------------------------
 $(SJS3_LIB_JAR): $(DEPS_STAMP)
@@ -449,6 +465,10 @@ $(SJS_LIB_SHIP): $(SJS_LIBRARY_JAR) $(SJS_JAVALIB_JAR) $(SCALA2_COMPILER) $(SCAL
 	  -classpath $(call cpjoin,$(SCALA2_LIBRARY) $(SJS_LIBRARY_JAR) $(SJS_JAVALIB_JAR)) \
 	  -d $(GEN)/wit/out $(GEN)/wit/src/package.scala
 	@cp $(SJS_LIBRARY_JAR) $@
+	@# Drop the library's Scala-2-compiled copies of the WASI facades: the scalalib ships them
+	@# compiled by the stage compiler (with Tasty), and a single provenance keeps the compile-time
+	@# symbols, the linked .sjsir and the WIT variant-case order consistent.
+	@zip -qd $@ 'scala/scalajs/wasi/*' 2>/dev/null || true
 	cd $(GEN)/wit/out && jar uf $@ $$(find scala/scalajs/wit \( -name 'package*.class' -o -name 'package*.sjsir' \) -type f)
 endif
 

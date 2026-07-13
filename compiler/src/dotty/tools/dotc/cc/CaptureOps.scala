@@ -79,6 +79,15 @@ extension (tp: Type)
       ref
     case ref: TermRef if ref.isLocalMutable =>
       ref.mapLocalMutable
+    case _: SkolemType =>
+      // A skolem stands for the unnameable value of an unstable argument, substituted
+      // into a dependent result's capture set (e.g. inline expansion of a given whose
+      // result retains a parameter). It cannot be written in source, so it is not a
+      // user error to report; widen it to the top capability, the standard sound
+      // approximation for a capability that cannot be named. (Skolem infos were
+      // already erased to Any by RetainingAnnotation.sanitize, so the underlying
+      // captures cannot be recovered here.)
+      GlobalAny
     case _ =>
       // if this was compiled from cc syntax, problem should have been reported at Typer
       throw IllegalCaptureRef(tp)
@@ -427,7 +436,13 @@ extension (tp: Type)
   def derivesFromMutable(using Context): Boolean =
     derivesFromCapTrait(defn.Caps_Mutable) || isArrayUnderStrictMut
 
-  def isArrayUnderStrictMut(using Context): Boolean = tp.classSymbol.isArrayUnderStrictMut
+  /** Like the symbol-level test, but through the type: the `IArray` opaque alias is
+   *  exempt for the same reason as in `derivesFromCapTrait` above — its interface
+   *  exposes no mutation, so it must not pick up `Array`'s strict-mutability
+   *  classification through dealiasing.
+   */
+  def isArrayUnderStrictMut(using Context): Boolean =
+    tp.typeSymbol != defn.IArrayAlias && tp.classSymbol.isArrayUnderStrictMut
 
   /** Drop @retains annotations everywhere */
   def dropAllRetains(using Context): Type = // TODO we should drop retains from inferred types before unpickling
