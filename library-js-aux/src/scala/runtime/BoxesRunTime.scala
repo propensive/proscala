@@ -57,7 +57,7 @@ object BoxesRunTime {
     linkTimeIf(LinkingInfo.isWebAssembly) {
       if (x eq y) {
         x match {
-          case x: java.lang.Double => x == x // rejects NaN
+          case x: java.lang.Double => x.doubleValue() == x.doubleValue() // rejects NaN
           case _                   => true
         }
       } else equals2(x, y)
