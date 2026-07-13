@@ -49,13 +49,29 @@ private def derivesFromCapTraitDealiased(cls: ClassSymbol)(using Context): Boole
   tp.dealiasKeepAnnots match
     case tp: (TypeRef | AppliedType) =>
       val sym = tp.typeSymbol
-      if sym.isClass
-      then (if sym.isArrayUnderStrictMut then defn.Caps_Mutable else sym).derivesFrom(cls)
+      if sym.isClass then sym.derivesFrom(cls)
       else tp.superType.derivesFromCapTrait(cls)
     ...
 ```
 
-The old body becomes the private `derivesFromCapTraitDealiased`; the public entry point first checks whether the type's head symbol is the `scala.IArray` opaque alias and, if so, answers `false` for every capability trait. Note the `isArrayUnderStrictMut` line inside the dealiased check — that is where a dealiased `IArray` was being conflated with mutable `Array`.
+The old body becomes the private `derivesFromCapTraitDealiased`; the public entry point first checks whether the type's head symbol is the `scala.IArray` opaque alias and, if so, answers `false` for every capability trait.
+
+Unlike the 3.9/3.10 versions of this compiler — where the array-under-strict-mutability case is folded *inside* `derivesFromCapTrait`'s symbol mapping, so the guard above covers it — the 3.8 stream reaches the array classification through separate disjuncts:
+
+```scala
+def derivesFromCapability(using Context): Boolean =
+  derivesFromCapTrait(defn.Caps_Capability) || isArrayUnderStrictMut
+def derivesFromExclusive(using Context): Boolean =
+  derivesFromCapTrait(defn.Caps_ExclusiveCapability) || isArrayUnderStrictMut
+// ... likewise Stateful, Unscoped, Mutable
+```
+
+`isArrayUnderStrictMut` consults `tp.classSymbol`, which dealiases straight to `Array`, bypassing the guard: under separation checking (strict mutability) every stdlib `IArray` factory or combinator result was still freshened (`val empty: Data = IArray.from(Nil)` inferred `IArray[Byte]^{any}` against the pure opaque alias). The same exemption is therefore applied in the type-level test:
+
+```scala
+def isArrayUnderStrictMut(using Context): Boolean =
+  tp.typeSymbol != defn.IArrayAlias && tp.classSymbol.isArrayUnderStrictMut
+```
 
 `compiler/src/dotty/tools/dotc/core/Definitions.scala` — expose the alias symbol:
 
