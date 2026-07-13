@@ -931,12 +931,18 @@ final class ClassfileParser(
       }
 
       permittedSubclasses.foreach { child =>
-        val cls = getClassSymbol(child.name)
-        sym.addAnnotation(Annotation.deferredSymAndTree(defn.ChildAnnot)(
+        // Resolve the permitted subclass lazily, inside the deferred annotation tree: a
+        // sealed Java interface may permit an implementation class whose own signature
+        // refers back to (other) sealed interfaces in the same library — resolving the
+        // child during this symbol's completion then forms a completion cycle (e.g. the
+        // JDK 25 `java.lang.classfile` API: MethodModel permits BufferedMethodBuilder$Model,
+        // and BufferedMethodBuilder's parents lead back to the sealed MethodInfo).
+        sym.addAnnotation(Annotation.deferredSymAndTree(defn.ChildAnnot) {
+          val cls = getClassSymbol(child.name)
           New(defn.ChildAnnot.typeRef.appliedTo(cls.owner.thisType.select(cls.name, cls)), Nil)
-          .withSpan(NoSpan)
-          ))
-        }
+            .withSpan(NoSpan)
+        })
+      }
 
       def fillInParamNames(t: Type): Type = t match
         case mt @ MethodType(oldp) if namedParams.nonEmpty =>
