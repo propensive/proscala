@@ -92,6 +92,15 @@ object Mutability:
       if tp.derivesFromStateful then
         tp match
           case tp: Capability if tp.isExclusive(required) => Exclusivity.OK
+          case tp: TermRef if tp.symbol.is(InlineProxy) =>
+            // Capture checking runs on inlined trees, so an update call made
+            // through an inline forwarder sees the inliner's receiver proxy,
+            // whose own capability is never exclusive. Judge the proxy by the
+            // capture set of its underlying type — the receiver it binds — so
+            // an exclusive receiver stays callable through the proxy and a
+            // read-only one still errors.
+            if tp.symbol.info.captureSet.isExclusive(required) then Exclusivity.OK
+            else Exclusivity.ReadOnly(tp)
           case _ =>
             if tp.captureSet.isExclusive(required) then Exclusivity.OK
             else Exclusivity.ReadOnly(tp)
