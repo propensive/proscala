@@ -11,13 +11,13 @@ implementation differs).
 
 | Feature | Description | Streams | Kind | Repro |
 | ------- | ----------- | ------- | ---- | ----- |
-| [aliascap](aliascap/aliascap.md) | Keep root capabilities global in type alias infos | 3.8, 3.9, 3.10 | bug fix | FIXME |
+| [aliascap](aliascap/aliascap.md) | Keep root capabilities global in type alias infos | 3.8, 3.9, 3.10 | bug fix | yes |
 | [boundscap](boundscap/boundscap.md) | Keep TypeBounds out of capability wrapping in CC Setup | 3.8 | bug fix (crash) | FIXME (none known) |
 | [castbox](castbox/castbox.md) | Box opaque-external type arguments in cast type applications | 3.8, 3.9 | bug fix | yes |
 | [ctxresult](ctxresult/ctxresult.md) | Context-result closures level-checked at the method's level | 3.8, 3.9, 3.10 | bug fix | yes |
 | [dictcaps](dictcaps/dictcaps.md) | Infer the capture set of recursive-implicit dictionary instances | 3.8, 3.9, 3.10 | bug fix | yes |
 | [iarraypure](iarraypure/iarraypure.md) | Treat `IArray` as pure under capture checking | 3.8, 3.9, 3.10 | bug fix | yes |
-| [inertcache](inertcache/inertcache.md) | Cache inert types in capture-checking Setup | 3.9, 3.10 | bug fix (hang) | FIXME |
+| [inertcache](inertcache/inertcache.md) | Cache inert types in capture-checking Setup | 3.9, 3.10 | bug fix (hang) | yes |
 | [inlineupdate](inlineupdate/inlineupdate.md) | Propagate update classification to inline accessors | 3.8, 3.9, 3.10 | bug fix | yes |
 | [inlineupdate-receiver](inlineupdate-receiver/inlineupdate-receiver.md) | Judge inline receiver proxies by their underlying capture set | 3.9 | bug fix | FIXME |
 | [integratemap](integratemap/integratemap.md) | Evaluate IntegrateMap symbols in the spliced run context | 3.10 | bug fix (crash) | yes |
