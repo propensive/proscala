@@ -19,9 +19,9 @@ implementation differs).
 | [iarraypure](iarraypure/iarraypure.md) | Treat `IArray` as pure under capture checking | 3.8, 3.9, 3.10 | bug fix | yes |
 | [inertcache](inertcache/inertcache.md) | Cache inert types in capture-checking Setup | 3.9, 3.10 | bug fix (hang) | yes |
 | [inlineupdate](inlineupdate/inlineupdate.md) | Propagate update classification to inline accessors | 3.8, 3.9, 3.10 | bug fix | yes |
-| [inlineupdate-receiver](inlineupdate-receiver/inlineupdate-receiver.md) | Judge inline receiver proxies by their underlying capture set | 3.9 | bug fix | FIXME |
+| [inlineupdate-receiver](inlineupdate-receiver/inlineupdate-receiver.md) | Judge inline receiver proxies by their underlying capture set | 3.9 | bug fix | FIXME (not triggered by current Soundness) |
 | [integratemap](integratemap/integratemap.md) | Evaluate IntegrateMap symbols in the spliced run context | 3.10 | bug fix (crash) | yes |
-| [lazycycle](lazycycle/lazycycle.md) | Guard against cyclic LazyRef graphs in capture-checking Setup | 3.9, 3.10 | bug fix (crash) | FIXME |
+| [lazycycle](lazycycle/lazycycle.md) | Guard against cyclic LazyRef graphs in capture-checking Setup | 3.9, 3.10 | bug fix (crash) | FIXME (not triggered by current Soundness) |
 | [make](make/make.md) | The Makefile-based default build | 3.8, 3.9, 3.10 | build | n/a |
 | [nullreceiver](nullreceiver/nullreceiver.md) | Widen bottom-typed call receivers to Object in the backend | 3.9, 3.10 | bug fix (crash) | yes |
 | [permitlazy](permitlazy/permitlazy.md) | Lazy resolution of permitted subclasses in classfile parsing | 3.9, 3.10 | bug fix | yes |
