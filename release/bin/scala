@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Simplified scala launcher — starts the REPL (dotty.tools.repl.Main).
+# Extra classpath entries can be added via SCALA_CP, e.g. SCALA_CP=out scala.
+PROG_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CP="$PROG_HOME/lib/*"; [ -n "$SCALA_CP" ] && CP="$CP:$SCALA_CP"
+exec java -Dscala.usejavacp=true -cp "$CP" dotty.tools.repl.Main "$@"

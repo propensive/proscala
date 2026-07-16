@@ -1,0 +1,28 @@
+-feature
+-deprecation
+-unchecked
+-Werror
+-encoding
+UTF8
+-language:implicitConversions
+--java-output-version:17
+-Yexplicit-nulls
+-Wsafe-init
+"-Wconf:msg=package scala contains object and package with same name:i"
+"-Wconf:src=scaladoc-testcases/.*:s"
+"-Wconf:msg=The RHS of reassignment must be transitively initialized:i"
+"-Wconf:msg=Could not verify that the method argument is transitively initialized:i"
+"-Wconf:msg=may cause initialization errors:i"
+"-Wconf:cat=deprecation&origin=scala\.collection\.Iterable\.stringPrefix:s"
+-classpath
+/Users/propensive/work/worktrees/scala/soundness-390/release/lib/scala-library.jar
+-d
+/Users/propensive/work/worktrees/scala/soundness-390/.build/classes/tasty-core
+tasty/src/dotty/tools/tasty/TastyBuffer.scala
+tasty/src/dotty/tools/tasty/TastyFormat.scala
+tasty/src/dotty/tools/tasty/TastyHash.scala
+tasty/src/dotty/tools/tasty/TastyHeaderUnpickler.scala
+tasty/src/dotty/tools/tasty/TastyReader.scala
+tasty/src/dotty/tools/tasty/TastyVersion.scala
+tasty/src/dotty/tools/tasty/UnpickleException.scala
+tasty/src/dotty/tools/tasty/util/Util.scala

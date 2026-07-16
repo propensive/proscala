@@ -1,0 +1,10 @@
+Manifest-Version: 1.0
+Specification-Title: scala-library-bootstrapped
+Specification-Version: 3.8.4
+Specification-Vendor: LAMP/EPFL
+Implementation-Title: scala-library-bootstrapped
+Implementation-Version: 3.8.4
+Implementation-Vendor: LAMP/EPFL
+Implementation-Vendor-Id: org.scala-lang
+Implementation-URL: https://scala-lang.org/
+
