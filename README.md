@@ -7,8 +7,9 @@ patches on top of upstream `scala/scala3`.
 
 This `main` branch is deliberately empty of code. It holds **only
 documentation and repository-wide files** — this README, the licence and
-attribution notices, and the policies and process documentation that apply to
-the fork as a whole. Every variation of the actual Scala source lives on its
+attribution notices, the policies and process documentation that apply to
+the fork as a whole, and the per-feature documentation under
+[`doc/`](doc/README.md). Every variation of the actual Scala source lives on its
 own branch, described below. If you have just cloned the repository and are
 wondering where the compiler is, check out one of the branches below (for a
 complete, buildable tree, use a `trunk/<stream>` or `release/<stream>` branch).
@@ -41,7 +42,8 @@ Every branch name is prefixed by its role. For a given stream `<s>`:
 
 - **`feature/<s>/<patch>`** — one branch per patch, based on
   `feature/<s>/make`. Each holds a single, self-contained change (e.g.
-  `aliascap`, `unboxedpure`, `wasm`) plus its feature documentation. A stream
+  `aliascap`, `unboxedpure`, `wasm`); its documentation lives on `main` under
+  [`doc/<patch>/`](doc/README.md). A stream
   only carries the patches it needs, so the set differs between streams. A patch
   that genuinely depends on another is named `<dependency>-<patch>` (e.g.
   `wasm-witcall`) and built on that branch.

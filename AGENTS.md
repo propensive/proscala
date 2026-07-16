@@ -70,13 +70,16 @@ the minor/patch number: `3.8`, `3.9`, `3.10`.
 
 ### Feature documentation
 
-Every patch branch must carry a documentation file, `doc/features/<patch>.md`,
-committed on the branch itself so it travels with the patch (and so
-`trunk/<stream>` aggregates the full catalogue of feature docs). Writing this
-file is part of developing a patch, not an afterthought — add it before the
-patch is merged into `trunk`.
+Every patch has a documentation directory on the **`main` branch**,
+`doc/<patch>/`, containing `doc/<patch>/<patch>.md` (the feature doc) and, for
+bug fixes, `doc/<patch>/repro/` with a minimal reproduction (standalone source
+files plus a `README.md` giving the compiler flags and expected failure, or a
+`FIXME.md` while no self-contained reproduction is known). `doc/README.md`
+indexes all features. Patch branches themselves carry **only code** — no
+documentation files. Writing the doc is part of developing a patch, not an
+afterthought — add it to `main` before the patch is merged into `trunk`.
 
-Requirements for the file:
+Requirements for the doc file:
 
 - A short `#` title, followed by a **single-sentence description** of the
   feature or bugfix on its own line at the top.
@@ -90,8 +93,9 @@ Requirements for the file:
   [Soundness](https://soundness.dev) code, since most patches exist because
   Soundness exercises the compiler in ways upstream does not.
 
-The same file (identical content) is used on every stream that carries the
-patch. The `make` branch carries no feature doc — it is the build, not a patch.
+One doc covers every stream that carries the patch; where streams genuinely
+differ, the directory carries a clearly named variant file (e.g.
+`doc/iarraypure/iarraypure-3.8.md`).
 
 ### Building a distribution
 
