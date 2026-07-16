@@ -27,7 +27,7 @@ implementation differs).
 | [permitlazy](permitlazy/permitlazy.md) | Lazy resolution of permitted subclasses in classfile parsing | 3.9, 3.10 | bug fix | yes |
 | [sambox](sambox/sambox.md) | Capability-implied captures on SAM anonymous-class type members | 3.8, 3.9, 3.10 | bug fix | yes |
 | [samstateful](samstateful/samstateful.md) | Read-only views of constant method-result capture sets | 3.9 | bug fix | yes |
-| [skolemcap](skolemcap/skolemcap.md) | Widen skolems in retains sets to the top capability | 3.8, 3.9, 3.10 | bug fix | FIXME (none known) |
+| [skolemcap](skolemcap/skolemcap.md) | Widen skolems in retains sets to the top capability | 3.8, 3.9, 3.10 | bug fix | yes (needs Soundness classpath) |
 | [splicealias](splicealias/splicealias.md) | Give spliced type binders their spliced type as info | 3.8, 3.9 | bug fix | yes |
 | [staleread](staleread/staleread.md) | Tolerate reading newer denotations from stale run contexts | 3.9 | bug fix (crash) | FIXME |
 | [unboxedpure](unboxedpure/unboxedpure.md) | Do not box pure types with vacuous or pure-tuple capture sets | 3.8, 3.9, 3.10 | bug fix | yes |
