@@ -2,13 +2,13 @@
 
 FIXME: this feature is not documented yet.
 
-The patch (`feature/3.9/inlineupdate-receiver`, tip commit "Judge inline
-receiver proxies by their underlying capture set") builds on
-[inlineupdate](../inlineupdate/inlineupdate.md) but has no `doc/features`
-file. Per AGENTS.md it needs: a single-sentence description; context,
-reproduction and solution sections; a minimal reproduction; and the key
-compiler change.
-
-Note also that the branch itself is a legacy aggregation-style branch (it
-carries other patches besides its own change) and is due to be rebuilt as a
-clean patch on top of `inlineupdate`.
+The patch (`feature/3.9/inlineupdate-receiver`, commit "Judge inline receiver
+proxies by their underlying capture set") builds on
+[inlineupdate](../inlineupdate/inlineupdate.md) and has never been documented.
+Per AGENTS.md it needs: a single-sentence description; context, reproduction
+and solution sections; a minimal reproduction; and the key compiler change.
+The commit message is a useful starting point: capture checking runs on
+inlined trees, so an update call made through an inline forwarder sees the
+inliner's receiver proxy, whose own capability is never exclusive; the patch
+judges an `InlineProxy` `TermRef` by the capture set of its underlying type —
+the receiver expression it binds.
