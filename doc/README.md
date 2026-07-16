@@ -12,7 +12,7 @@ implementation differs).
 | Feature | Description | Streams | Kind | Repro |
 | ------- | ----------- | ------- | ---- | ----- |
 | [aliascap](aliascap/aliascap.md) | Keep root capabilities global in type alias infos | 3.8, 3.9, 3.10 | bug fix | yes |
-| [boundscap](boundscap/boundscap.md) | Keep TypeBounds out of capability wrapping in CC Setup | 3.8 | bug fix (crash) | FIXME (none known) |
+| [boundscap](boundscap/boundscap.md) | Keep TypeBounds out of capability wrapping in CC Setup | 3.8 | bug fix (crash) | yes |
 | [castbox](castbox/castbox.md) | Box opaque-external type arguments in cast type applications | 3.8, 3.9 | bug fix | yes |
 | [ctxresult](ctxresult/ctxresult.md) | Context-result closures level-checked at the method's level | 3.8, 3.9, 3.10 | bug fix | yes |
 | [dictcaps](dictcaps/dictcaps.md) | Infer the capture set of recursive-implicit dictionary instances | 3.8, 3.9, 3.10 | bug fix | yes |
