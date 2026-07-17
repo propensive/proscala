@@ -623,8 +623,19 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
             case _ => args.map(_ => NoType)
           for case (arg: TypeTree, formal) <- args.lazyZip(formals) do
             if defn.isTypeTestOrCast(fn.symbol) then
+              // Box the arguments of an undealiasable (e.g. opaque-external) type application
+              // in a cast's type argument, exactly as `normalizeCaptures` does for the same
+              // application elsewhere. Otherwise a cast — such as the one an opaque type's
+              // companion `apply` performs — produces an unboxed spelling of a type whose
+              // canonical (declaration-side) spelling has boxed arguments, and the two fail
+              // to compare ("is boxed but ... is not").
+              val boxedArgs = arg.tpe match
+                case tp @ AppliedType(tycon, args0)
+                if !defn.isFunctionClass(tp.dealias.typeSymbol) && (tp.dealias eq tp) =>
+                  tp.derivedAppliedType(tycon, args0.mapConserve(_.boxDeeply))
+                case tp => tp
               arg.setNuType(
-                globalCapToLocal(arg.tpe, Origin.TypeArg(arg.tpe)))
+                globalCapToLocal(boxedArgs, Origin.TypeArg(arg.tpe)))
               else
                 transformTT(arg, NoSymbol, boxed = true, typeArgFormal = formal) // type arguments in type applications are boxed
 
