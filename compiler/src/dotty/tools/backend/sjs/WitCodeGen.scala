@@ -94,6 +94,28 @@ class WitCodeGen(jsCodeGen: JSCodeGen)(using Context) {
     sym.hasAnnotation(jsdefn.WitResourceStaticMethodAnnot) ||
     sym.hasAnnotation(jsdefn.WitResourceConstructorAnnot)
 
+  /** Is this symbol the `scala.scalajs.wit.witImportCall` intrinsic?
+   *
+   *  Unlike the `@WitImport` annotation path, this is a stub-free import: the
+   *  call carries the module, name and signature explicitly (see
+   *  `JSCodeGen.genWitImportCallPrimitive`).
+   */
+  def isWitImportCall(sym: Symbol): Boolean =
+    sym == jsdefn.WitPackage_witImportCall
+
+  /** Build a WIT function type from Scala parameter and result types. */
+  def witFuncType(paramTypes: List[Type], resultType: Type): wit.FuncType =
+    wit.FuncType(paramTypes.map(toWIT(_)), toResultWIT(resultType))
+
+  /** Build a WIT function type from Scala parameter types and an already-resolved WIT result. Used
+   *  by the `witImportCall` intrinsic, whose result type is carried as a structured descriptor (a
+   *  tree of `wit*` marker calls, deconstructed in `genWitImportCallPrimitive`) because `classOf`
+   *  erases the nested type arguments a `list<tuple<…>>` result needs.
+   */
+  def witFuncTypeParsed(params: List[(Type, Option[wit.ValType])],
+      resultType: Option[wit.ValType]): wit.FuncType =
+    wit.FuncType(params.map((tpe, over) => over.getOrElse(toWIT(tpe))), resultType)
+
   // Code generation methods
 
   /** Generate a WitFunctionApply node for a call to a WIT native member. */
@@ -335,10 +357,18 @@ class WitCodeGen(jsCodeGen: JSCodeGen)(using Context) {
         val t = args.headOption.getOrElse(defn.AnyType)
         wit.OptionType(toWIT(t))
       } else if (tsym.hasAnnotation(jsdefn.WitVariantAnnot) && tsym.is(Sealed)) {
-        // Sort by declaration order
-        // children returns source module (term symbol) for case objects,
-        // normalize to module class for encodeClassName and witVariantValueTypeOf
-        val cases = tsym.children.toList.sortBy(_.span.start).map { rawChild =>
+        /* Sort by declaration order. A symbol loaded from Tasty (rather than the current
+         * compilation unit) has no span, so only sort when spans exist — `children` already
+         * preserves declaration order for unpickled symbols.
+         * `children` returns the source module (term symbol) for case objects; normalize to the
+         * module class for encodeClassName and witVariantValueTypeOf. */
+        val rawChildren = tsym.children.toList
+
+        val orderedChildren =
+          if (rawChildren.forall(_.span.exists)) rawChildren.sortBy(_.span.start)
+          else rawChildren
+
+        val cases = orderedChildren.map { rawChild =>
           val child = if (rawChild.is(Module) && !rawChild.isClass) rawChild.moduleClass else rawChild
           val valueType = witVariantValueTypeOf(child)
           val caseTyp = if (isWitUnitType(valueType)) {
