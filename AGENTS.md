@@ -13,8 +13,11 @@ library and language spec. It maintains a small set of patches on top of
 upstream `scala/scala3`, organised into streams (see below). We care about
 maintainability. "The tests pass" is not enough to justify that a change is good.
 
-The Scala source itself lives on the code branches; this `main` branch holds
-only documentation and repository-wide files.
+The Scala source lives on the code branches; the `main` branch holds the
+documentation, repository-wide files **and the build itself** (the Makefile,
+per-stream config, vendored Scala.js sources and helper scripts). The build is
+overlaid onto a code branch at build time, so the code branches stay pure-source
+deviations from upstream.
 
 ## Branch Structure
 
@@ -30,16 +33,13 @@ the minor/patch number: `3.8`, `3.9`, `3.10`.
   - `upstream/3.8` → `scala/scala3` `release-3.8.4`
   - `upstream/3.9` → `scala/scala3` `release-3.9.0`
   - `upstream/3.10` → `scala/scala3` `main`
-- **`feature/<stream>/make`** — the **default build**. It carries the simplified
-  Makefile-based build and is the base for every other patch in the stream. It sits
-  directly on `upstream/<stream>`.
-- **`feature/<stream>/<patch>`** — one branch per patch per stream, based on
-  `feature/<stream>/make`. `<patch>` is a short alphanumeric identifier (e.g.
-  `aliascap`, `unboxedpure`, `wasm`). A stream only carries the patches it needs, so
-  the set differs between streams.
-- **`trunk/<stream>`** — the aggregation of *all* of a stream's patches (which
-  therefore includes `make`). It must always contain every patch. (Formerly
-  `all/<stream>`.)
+- **`feature/<stream>/<patch>`** — one branch per patch per stream, a **pure-source
+  deviation based directly on `upstream/<stream>`**. It carries only its own change —
+  no build files (those live on `main` and are overlaid at build time). `<patch>` is
+  a short alphanumeric identifier (e.g. `aliascap`, `unboxedpure`, `wasm`). A stream
+  only carries the patches it needs, so the set differs between streams.
+- **`trunk/<stream>`** — the aggregation of *all* of a stream's patches, merged onto
+  `upstream/<stream>`. It must always contain every patch. (Formerly `all/<stream>`.)
 - **`scratch/<feature>`** — a throwaway branch for work in progress, usually
   branched off a `trunk/<stream>` or `release/<stream>`. It is not part of the
   published structure: once the work is ready it is split into a clean
@@ -48,21 +48,24 @@ the minor/patch number: `3.8`, `3.9`, `3.10`.
 - **`release/<stream>`** — the published release line for a stream, created from
   `trunk/<stream>`. It is **protected** (pull-request-only): merging a PR into it
   triggers a GitHub Actions build that tags and publishes a versioned release.
-- **`main`** — documentation and repository-wide files only; no Scala source.
+- **`main`** — documentation, repository-wide files, **and the build**: the
+  `Makefile`, per-stream config (`mk/<stream>.mk`), the vendored Scala.js IR
+  (`mk/scalajs-ir/`), the Scala.js scalalib support sources (`library-js-aux/`),
+  `project/ScalaLibraryFilesToCopy.scala`, and `bin/` (the overlay and rebase
+  tooling). No Scala compiler/library source of its own.
 
 ### Patch rules
 
-- Every patch is built on `feature/<stream>/make`, the default build. `make` is
-  universal, so it is **not** written into patch names — a bare id like `aliascap`
-  already means "`make` + that change".
-- A patch is a single self-contained change (one or a few commits) on top of `make`.
+- Every patch is a pure-source deviation on `upstream/<stream>` — just its own
+  change, with **no build files** (the build lives on `main` and is overlaid at
+  build time). A bare id like `aliascap` means exactly that change on upstream.
+- A patch is a single self-contained change (one or a few commits) on upstream.
 - **Keep patches independent.** Do not stack a patch on another merely because they
-  were developed together. Each branch should hold only its own change on top of
-  `make`.
+  were developed together. Each branch should hold only its own change on upstream.
 - **Genuine dependencies only.** If a patch cannot work — or cannot even make sense —
-  without another patch (beyond `make`), build it on that patch's branch and name it
+  without another patch, build it on that patch's branch and name it
   `<dependency>-<patch>`, hyphen-separated. Example: `wasm-witcall` — the `witcall`
-  intrinsic builds on `wasm`, which itself builds on `make`.
+  intrinsic builds on `wasm`, which itself builds on `upstream/<stream>`.
 - Prefer the shortest name that captures the real dependency. Long chains of many
   patch ids (`a-b-c-d-…`) are a smell — they are almost always an aggregation
   masquerading as a dependency and should be collapsed back to independent patches
@@ -99,17 +102,21 @@ differ, the directory carries a clearly named variant file (e.g.
 
 ### Building a distribution
 
-Any build is produced by cherry-picking the wanted patches — all from the **same
-stream** — onto `feature/<stream>/make`. `trunk/<stream>` is simply the aggregate of
-everything, kept up to date as patches are added or changed.
+Any build is produced from a code branch — a single `feature/<stream>/<patch>`,
+or `trunk/<stream>` for the whole stream — by overlaying the build from `main` and
+running `make`. The build is a plain `make` (GNU make, plus `curl`, `javac`, `jar`
+and a JDK ≥ 17). From a checkout of any code branch:
 
-Builds go through the `make` branch's `Makefile` — a plain `make` (GNU make, plus
-`curl`, `javac`, `jar` and a JDK ≥ 17). From a checkout of any code branch:
+    git archive origin/main bin/proscala-overlay | tar -x   # bootstrap the helper
+    bin/proscala-overlay                                     # drop the build in
+    make                                                     # build every module jar
 
-    make            # equivalently `make release`: a clean, non-bootstrapped
-                    # build of every module jar
-
-It downloads the reference compiler and third-party jars from Maven Central,
+`bin/proscala-overlay` copies the Makefile, the stream's config, the vendored
+Scala.js IR (choosing the stock or scala-wasm IR by whether the tree carries the
+WASM/WIT sources) and the other build inputs from `main` into the worktree as
+untracked, git-excluded files, so `git status` still shows only the branch's own
+change. `make` then downloads the reference compiler and third-party jars from Maven
+Central,
 compiles each module with that reference compiler, and lays out its artefacts
 **per branch** under `release/<branch>/`:
 
@@ -125,8 +132,12 @@ compiles each module with that reference compiler, and lays out its artefacts
 Intermediate classes go under `.build/<branch>/`; downloaded Maven jars are shared
 across branches under `.build/jars`. Both `release/` and `.build/` are git-ignored,
 so a branch's output is never committed and survives switching branches. Useful
-targets: `make deps` (fetch dependencies only), `make clean` / `make distclean`
-(remove a branch's output). Override the output path with `make BRANCH=<name>`.
+targets: `make deps` (fetch dependencies only), `make tarball` (build, then bundle
+the published jars into a single `release/<branch>/proscala-<version>.tar.gz` — what
+a release attaches), `make clean` / `make distclean` (remove a branch's output).
+Override the output path with `make BRANCH=<name>`. The stream is derived from the
+branch name; from a detached checkout (e.g. CI) pass it explicitly with
+`make STREAM=3.8|3.9|3.10`.
 
 ### Keeping up with upstream
 
@@ -138,46 +149,42 @@ patches never drift far from the code they modify. Do this per stream with:
     #      bin/proscala-rebase-tree 3.10 upstream/main
 
 The script (bash 4+) fetches `upstream`, fast-forwards `upstream/<stream>` to the
-ref, then rebases `feature/<stream>/make` onto it, every patch onto its parent (in
-dependency order — `wasm` before `wasm-witcall`), and finally rebuilds
+ref, then rebases every patch onto its parent (in dependency order — `wasm` before
+`wasm-witcall`; a plain patch's parent is `upstream/<stream>`), and finally rebuilds
 `trunk/<stream>` as the merge of all patches. It works out each branch's current
 base as `merge-base(branch, parent)` so only that branch's own commits are
 replayed, and it rebases branches in place when they are checked out in a worktree
-so your working copies are left alone.
+so your working copies are left alone. (`-n`/`--dry-run` previews the whole plan and
+changes nothing.)
 
 A branch whose commits clash with upstream is left **unchanged** (its rebase is
 aborted) and listed at the end; branches depending on it are skipped. Resolve each
-by hand — `git rebase --onto feature/<stream>/make <old-make> feature/<stream>/<patch>`,
+by hand — `git rebase --onto upstream/<stream> <old-base> feature/<stream>/<patch>`,
 fix the conflict, `git rebase --continue` — then re-run the script (it is
 idempotent: already-updated branches are no-ops) to finish the tree and rebuild
 `trunk`. Review, build-test the affected branches, then push renamed history with
 `git push --force-with-lease`. Nothing is pushed by the script.
 
-### Cascading a build change
+### Changing the build
 
-The `make` branch is the base of every other branch, so a change to the build
-(the `Makefile`, vendored sources, `.gitignore`) reaches all branches by
-re-basing the tree. Commit the change to `feature/<stream>/make`, then run the
-**same** script with no upstream ref:
+Because the build lives on `main` and is overlaid at build time, a build change
+(the `Makefile`, `mk/<stream>.mk`, vendored sources) is a **single commit on
+`main`** — there is nothing to cascade across branches. Every subsequent build of
+any code branch picks it up automatically. An upstream update reaches a release line
+through the next `trunk/<stream> → release/<stream>` pull request; a build change on
+`main` reaches every build immediately (and a release when it is next cut).
 
-    bin/proscala-rebase-tree <stream>
-
-With no ref it leaves `upstream/<stream>` (and therefore `make`'s base) alone and
-just replays every patch onto the updated `make`, then rebuilds `trunk`. Apply the
-change to each stream's `make` (cherry-pick it across) and cascade each stream.
-
-The script never touches `upstream/*`, `main`, or `release/*`. `upstream/*` are
-pristine mirrors; `release/*` are protected and move only through pull requests, so
-a `make` change (or an upstream update) reaches a release line when the next
-`trunk/<stream> → release/<stream>` PR is merged.
+The rebase-tree script never touches `upstream/*`, `main`, or `release/*`.
+`upstream/*` are pristine mirrors and `release/*` are protected, moving only through
+pull requests.
 
 ### Everyday workflow
 
 1. **Develop.** Branch a `scratch/<feature>` off the relevant `trunk/<stream>`
    (or `release/<stream>`) and do the work there.
 2. **Isolate.** When it's ready, split the change onto its own clean
-   `feature/<stream>/<patch>` branch — a single-purpose patch on
-   `feature/<stream>/make`, following the patch rules above — **and** merge it into
+   `feature/<stream>/<patch>` branch — a single-purpose, source-only patch on
+   `upstream/<stream>`, following the patch rules above — **and** merge it into
    `trunk/<stream>`. Now the change exists both as a reusable patch and in the
    aggregate.
 3. **Accumulate.** Repeat for further changes; `trunk/<stream>` gathers them all.
@@ -194,16 +201,17 @@ Keep the streams in step with upstream out-of-band with `bin/proscala-rebase-tre
 Merging into a `release/<stream>` branch runs `.github/workflows/release.yml`,
 which:
 
-1. **Versions** the build as `<upstream-base>-p<n>`. The base is the `Makefile`'s
-   `VERSION` with the `-propensive` suffix stripped; `<n>` is one greater than the
-   highest existing `-p` tag for that base (starting at `1`). A stream that tracks
-   a non-final upstream carries a `-dev` marker in its `VERSION`, so it releases as
-   `<base>-dev-p<n>`.
-2. **Builds** everything cleanly with `make`.
-3. **Tags** the commit with the version and creates a **GitHub release**, attaching
-   the published jars (`release/<branch>/lib/*.jar`) — the jars we build plus the
-   Scala.js / scala-wasm runtime; the other third-party dependencies are not
-   published.
+1. **Overlays** the build from `main` (`bin/proscala-overlay`), so the release
+   branch — which holds only Scala source plus this workflow — can be built.
+2. **Versions** the build as `<upstream-base>-p<n>`. The base is the stream's
+   `mk/<stream>.mk` `VERSION` with the `-propensive` suffix stripped; `<n>` is one
+   greater than the highest existing `-p` tag for that base (starting at `1`). A
+   stream that tracks a non-final upstream carries a `-dev` marker in its `VERSION`,
+   so it releases as `<base>-dev-p<n>`.
+3. **Builds** everything cleanly (`make … tarball`).
+4. **Tags** the commit with the version and creates a **GitHub release**, attaching a
+   single `proscala-<version>.tar.gz` — a top-level `lib/` of the jars we build plus
+   the Scala.js / scala-wasm runtime; third-party dependencies are not published.
 
 Current streams and their release versions:
 
@@ -213,6 +221,9 @@ Current streams and their release versions:
 | `3.9`  | `scala/scala3 release-3.9.0` | `3.9.0-RC1-p<n>`    |
 | `3.10` | `scala/scala3 main`          | `3.10.0-dev-p<n>`   |
 
-The GitHub token needs `contents: write` (declared in the workflow); the inherited
-scala/scala3 CI workflows have been removed, so `Release` is the only workflow that
-runs on the fork.
+The GitHub token needs `contents: write` (declared in the workflow). Because the
+code branches are now pure upstream, they carry the inherited scala/scala3 CI
+workflow files again; those are **disabled at the repository level** (Actions →
+each workflow → Disable), so `Release` is the only workflow that runs on the fork.
+`release.yml` lives only on the `release/<stream>` branches — the one build-related
+file that must sit on a branch, so a push there triggers it.
