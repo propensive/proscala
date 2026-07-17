@@ -2,6 +2,7 @@ package dotty.tools.dotc.quoted
 
 import dotty.tools.dotc.ast.Trees.*
 import dotty.tools.dotc.ast.{TreeTypeMap, tpd}
+import dotty.tools.dotc.config.Feature
 import dotty.tools.dotc.config.Printers.*
 import dotty.tools.dotc.core.Contexts.*
 import dotty.tools.dotc.core.Decorators.*
@@ -177,6 +178,23 @@ object PickledQuotes {
               case TypeHole.V2(types) =>
                 val Hole(_, idx, _, _) = tdef.rhs: @unchecked
                 PickledQuotes.quotedTypeToTree(types.nn.apply(idx))
+            // Under capture checking, point the binder's own info at the spliced type. The
+            // tree map below substitutes occurrences in the expansion's types, but a symbol
+            // whose ClassInfo is unchanged by the map (e.g. an anonymous class whose
+            // declarations — not parents — mention the binder) is not copied, and its members
+            // keep referring to this symbol. Its pickled placeholder info is `TypeAlias(Any)`,
+            // so such survivors wrongly dealias to `Any` when capture checking's recheck
+            // consults the member. The `@inferred` markers are stripped: as part of a member's
+            // alias they would fail the member's declared bounds in override checking.
+            // Confined to capture-checked runs: downstream macros that inspect types reaching
+            // through such surviving references observe the alias too, and existing code
+            // depends on the placeholder there.
+            if Feature.ccEnabledSomewhere then
+              def stripInferred(tp: Type): Type = tp match
+                case AnnotatedType(parent, annot) if annot.symbol == defn.InferredAnnot =>
+                  stripInferred(parent)
+                case _ => tp
+              tdef.symbol.info = TypeAlias(stripInferred(tree.tpe))
             (tdef.symbol, tree.tpe)
         }.toMap
         class ReplaceSplicedTyped extends TypeMap() {
