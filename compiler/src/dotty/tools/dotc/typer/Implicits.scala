@@ -2143,7 +2143,14 @@ final class SearchRoot extends SearchHistory:
             val classDef = ClassDef(classSym, DefDef(constr), vdefs)
 
             val valSym = newLazyImplicit(classSym.typeRef, span)
-            val inst = ValDef(valSym, New(classSym.typeRef, Nil))
+            // Mark the memoizing val's type inferred: under capture checking the dictionary
+            // instance captures whatever its (possibly capability-typed) entries capture, so
+            // `new <dictionary>` has a non-empty capture set. An inferred type lets capture
+            // checking solve that set from the constructor rather than forcing the pure
+            // `classSym.typeRef`, which would reject the capturing instance. This is a private
+            // detail of the recursive-implicit memoization: the escaping result term's type
+            // (`res` below) is unchanged, so a laundered/pure resolution stays pure at its use.
+            val inst = ValDef(valSym, New(classSym.typeRef, Nil), inferred = true)
 
             // Substitute dictionary references into outermost result term.
             val resMap = new TreeTypeMap(treeMap = {
