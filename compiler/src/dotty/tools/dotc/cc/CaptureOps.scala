@@ -389,8 +389,18 @@ extension (tp: Type)
         this(acc, upperBound)
     accumulate(true, tp)
 
-  /** Tests whether the type derives from capability class `cls`. */
-  def derivesFromCapTrait(cls: ClassSymbol)(using Context): Boolean = tp.dealiasKeepAnnots match
+  /** Tests whether the type derives from capability class `cls`.
+   *  `IArray` derives from none: although it dealiases to (mutable, and under
+   *  strict mutability capability-classified) `Array`, its interface exposes no
+   *  mutation, so a fresh `IArray` is immutable from birth — construction is
+   *  semantically `caps.freeze`. Without this, every stdlib `IArray` factory
+   *  result is spuriously `^{fresh}` through the opaque alias.
+   */
+  def derivesFromCapTrait(cls: ClassSymbol)(using Context): Boolean =
+    tp.typeSymbol != defn.IArrayAlias && derivesFromCapTraitDealiased(cls)
+
+  private def derivesFromCapTraitDealiased(cls: ClassSymbol)(using Context): Boolean =
+    tp.dealiasKeepAnnots match
     case tp: (TypeRef | AppliedType) =>
       val sym = tp.typeSymbol
       if sym.isClass then sym.derivesFrom(cls)
@@ -417,7 +427,13 @@ extension (tp: Type)
   def derivesFromMutable(using Context): Boolean =
     derivesFromCapTrait(defn.Caps_Mutable) || isArrayUnderStrictMut
 
-  def isArrayUnderStrictMut(using Context): Boolean = tp.classSymbol.isArrayUnderStrictMut
+  /** Like the symbol-level test, but through the type: the `IArray` opaque alias is
+   *  exempt for the same reason as in `derivesFromCapTrait` above — its interface
+   *  exposes no mutation, so it must not pick up `Array`'s strict-mutability
+   *  classification through dealiasing.
+   */
+  def isArrayUnderStrictMut(using Context): Boolean =
+    tp.typeSymbol != defn.IArrayAlias && tp.classSymbol.isArrayUnderStrictMut
 
   /** Drop @retains annotations everywhere */
   def dropAllRetains(using Context): Type = // TODO we should drop retains from inferred types before unpickling
