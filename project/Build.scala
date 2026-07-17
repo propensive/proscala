@@ -110,7 +110,7 @@ object Build {
     } else if (isBenchmark) {
       s"${baseVersion}-bin-${VersionUtil.gitHashFull}-BENCH"
     }
-    else s"${baseVersion}-bin-SNAPSHOT"
+    else s"${baseVersion}-cc1" // local patched build: cc pure-type box fix backported to 3.8.4
   }
   def isRelease = sys.env.get("RELEASEBUILD").contains("yes")
   def isNightly = sys.env.get("NIGHTLYBUILD").contains("yes")
