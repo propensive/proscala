@@ -214,7 +214,15 @@ object Capabilities:
      */
     def acceptsLevelOf(ref: Capability)(using Context): Boolean =
       if ccConfig.useLocalCapLevels && !CCState.collapseLocalCaps then
-        ccOwner.isContainedIn(ref.levelOwner.widenOwner(skipModules = true))
+        // A reference bound inside a closure that implements a method's
+        // context-function result chain is at the method's level: erasure
+        // flattens those closures' parameters into the method's parameter list.
+        // See CCState.contextResultClosures.
+        val refLevel = ref.levelOwner
+        val adjustedLevel = ccState.contextResultClosures.lookup(refLevel) match
+          case meth: Symbol => meth
+          case null => refLevel
+        ccOwner.isContainedIn(adjustedLevel.widenOwner(skipModules = true))
         || classifier.derivesFrom(defn.Caps_Unscoped)
       else ref.core match
         case ResultCap(_) | _: ParamRef => false
