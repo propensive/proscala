@@ -6,32 +6,35 @@
 # Usage (run from inside a code-branch worktree):
 #   bin/proscala-overlay [<stream>]
 #
-# The Makefile, per-stream config (mk/), the Scala.js support sources
-# (library-js-aux/) and the vendored Scala.js IR (compiler/src-scalajs-ir/, whose
-# version matches the stream's SCALAJS_VERSION) all live on `main`. This copies
-# them into the current worktree as untracked files and adds them (plus the
-# build output dirs) to this worktree's git exclude list, so `git status` still
-# shows only the branch's own change. Then just run `make`.
+# The build lives on `main`: the Makefile, the per-stream config (mk/), the
+# Scala.js scalalib support sources (library-js-aux/), the Scala 2 stdlib-overlay
+# list (project/ScalaLibraryFilesToCopy.scala) and the vendored Scala.js IR. This
+# copies them into the current worktree as untracked files and adds them (plus
+# the build output dirs) to this worktree's git exclude list, so `git status`
+# still shows only the branch's own change. Then just run `make`.
 #
-# The stream is taken from the argument, else derived from the branch name
-# (feature/<s>/*, trunk/<s>, release/<s>). Override the source ref for the build
-# files with PROSCALA_MAIN (default: origin/main, falling back to main).
+# The vendored IR is chosen by whether the branch carries the WASM/WIT feature:
+# a tree with library-js/.../scala/scalajs/wit uses the scala-wasm IR (its WASM
+# backend requires it); any other tree uses its stream's stock Scala.js IR
+# (mk/<stream>.mk BASE_SCALAJS_VERSION). The Makefile switches the matching
+# scalajs artifacts the same way.
+#
+# The stream is taken from the argument, else derived from the branch name.
+# Override the source ref with PROSCALA_MAIN (default: origin/main, else main).
 
 set -euo pipefail
 
 die() { echo >&2 "proscala-overlay: $*"; exit 1; }
 
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "not inside a git worktree"
-top="$(git rev-parse --show-toplevel)"
-cd "$top"
+cd "$(git rev-parse --show-toplevel)"
 
-# Source ref for the build files.
 MAIN_REF="${PROSCALA_MAIN:-origin/main}"
 git rev-parse --verify --quiet "$MAIN_REF^{commit}" >/dev/null 2>&1 || MAIN_REF=main
 git rev-parse --verify --quiet "$MAIN_REF:Makefile" >/dev/null 2>&1 \
   || die "no Makefile on '$MAIN_REF' — has the build been moved to main yet?"
 
-# Determine the stream.
+# Determine the stream (for the base-IR selection and STREAM default).
 stream="${1:-}"
 if [ -z "$stream" ]; then
   branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
@@ -41,47 +44,42 @@ fi
 git rev-parse --verify --quiet "$MAIN_REF:mk/$stream.mk" >/dev/null 2>&1 \
   || die "unknown stream '$stream' (no mk/$stream.mk on $MAIN_REF)"
 
-# Scala.js IR version this stream needs.
-sjsver="$(git show "$MAIN_REF:mk/$stream.mk" | sed -nE 's/^SCALAJS_VERSION[[:space:]]*:=[[:space:]]*([^[:space:]]+).*/\1/p' | head -1)"
-[ -n "$sjsver" ] || die "could not read SCALAJS_VERSION from mk/$stream.mk"
-git rev-parse --verify --quiet "$MAIN_REF:mk/scalajs-ir/$sjsver" >/dev/null 2>&1 \
-  || die "no vendored IR for Scala.js $sjsver on $MAIN_REF (mk/scalajs-ir/$sjsver)"
+# Pick the vendored IR by the WASM/WIT feature marker in *this* worktree.
+if [ -f library-js/src/scala/scalajs/wit/package.scala ]; then
+  ir="wasm"; flavour="scala-wasm"
+else
+  base="$(git show "$MAIN_REF:mk/$stream.mk" | sed -nE 's/^BASE_SCALAJS_VERSION[[:space:]]*:=[[:space:]]*([^[:space:]]+).*/\1/p' | head -1)"
+  [ -n "$base" ] || die "could not read BASE_SCALAJS_VERSION from mk/$stream.mk"
+  ir="base/$base"; flavour="Scala.js $base"
+fi
+git rev-parse --verify --quiet "$MAIN_REF:mk/scalajs-ir/$ir" >/dev/null 2>&1 \
+  || die "no vendored IR at mk/scalajs-ir/$ir on $MAIN_REF"
 
-echo ">> overlaying build files from $MAIN_REF (stream $stream, Scala.js IR $sjsver)"
+echo ">> overlaying build files from $MAIN_REF (stream $stream, $flavour IR)"
 
-# Makefile, per-stream config, and the Scala.js support sources.
-git archive "$MAIN_REF" Makefile mk/3.8.mk mk/3.9.mk mk/3.10.mk library-js-aux | tar -x
+# Always-overlaid build files, at their natural paths.
+git archive "$MAIN_REF" Makefile mk/3.8.mk mk/3.9.mk mk/3.10.mk \
+    library-js-aux project/ScalaLibraryFilesToCopy.scala | tar -x
 
-# Vendored Scala.js IR → compiler/src-scalajs-ir (version-selected).
+# Selected vendored IR -> compiler/src-scalajs-ir.
 rm -rf compiler/src-scalajs-ir
 mkdir -p compiler/src-scalajs-ir
-git archive "$MAIN_REF" "mk/scalajs-ir/$sjsver" | tar -x --strip-components=3 -C compiler/src-scalajs-ir
+git archive "$MAIN_REF" "mk/scalajs-ir/$ir" | tar -x --strip-components=3 -C compiler/src-scalajs-ir
 
-# Per-stream tree files that upstream omits for this stream (e.g.
-# project/ScalaLibraryFilesToCopy.scala on 3.8, which drives the Scala 2
-# specialized-stdlib overlay). Dropped at their real paths under the worktree.
-overlay_files=()
-if git rev-parse --verify --quiet "$MAIN_REF:mk/overlay/$stream" >/dev/null 2>&1; then
-  while IFS= read -r f; do
-    [ -n "$f" ] && overlay_files+=("/${f#mk/overlay/$stream/}")
-  done < <(git ls-tree -r --name-only "$MAIN_REF" "mk/overlay/$stream")
-  git archive "$MAIN_REF" "mk/overlay/$stream" | tar -x --strip-components=3
-fi
-
-# Keep the branch clean: exclude the overlaid files and the build output.
-exclude="$(git rev-parse --git-path info/exclude)"
-mkdir -p "$(dirname "$exclude")"
-marker="# --- proscala-overlay (managed) ---"
-if grep -qF "$marker" "$exclude" 2>/dev/null; then
-  : # already present; leave it (paths are stable for a given stream)
-else
-  {
-    echo "$marker"
-    printf '%s\n' /Makefile /mk/ /library-js-aux/ /compiler/src-scalajs-ir/ \
-                  /release/ /.build/ /bin/proscala-overlay \
-                  ${overlay_files[@]+"${overlay_files[@]}"}
-  } >> "$exclude"
-fi
+# Keep the branch clean: hide the overlaid files and the build output from
+# `git status`, scoped to THIS worktree only. We must not touch the shared
+# .git/info/exclude — on a multi-worktree checkout (as Proscala uses) that file
+# is common to every worktree, and excluding /Makefile, /mk/ etc. there would
+# stop `main` (which tracks them) from staging them. A per-worktree
+# core.excludesFile avoids that.
+git config extensions.worktreeConfig true
+excl="$(git rev-parse --git-dir)/proscala-overlay.excludes"
+{
+  printf '/%s\n' Makefile mk/ library-js-aux/ compiler/src-scalajs-ir/ \
+                 project/ScalaLibraryFilesToCopy.scala bin/proscala-overlay
+  printf '%s\n' /release/ /.build/
+} > "$excl"
+git config --worktree core.excludesFile "$excl"
 
 echo ">> done. Build with:  make          # stream auto-detected from the branch"
 echo "                    or  make STREAM=$stream"

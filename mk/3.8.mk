@@ -4,7 +4,7 @@
 
 VERSION            := 3.8.4-propensive
 REF_VERSION        := 3.8.3
-SCALAJS_VERSION    := 1.20.2
+BASE_SCALAJS_VERSION    := 1.20.2
 COMPILER_IFACE_VER := 1.10.7
 UTIL_IFACE_VER     := 1.10.7
 JLINE_VERSION      := 3.29.0

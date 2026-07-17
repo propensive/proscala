@@ -73,8 +73,6 @@ cpjoin = $(subst $(space),:,$(strip $1))
 # scalac is already multi-threaded, so higher just oversubscribes cores.
 MAKEFLAGS += -j6
 
-# leaner repl); older release trees pull pprint/fansi/sourcecode and the
-
 # ---- scala.scalajs.wit support (WASM trees only) -----------------------------
 # On trees that carry the Scala.js WIT API (library-js/.../scala/scalajs/wit),
 # the published scalajs-library must carry that API too, so downstream code can
@@ -82,6 +80,20 @@ MAKEFLAGS += -j6
 # toolchain (the scala-wasm scalajs-compiler), pulled in only when the wit
 # sources are present. WIT_SRC is empty on non-WASM trees, disabling all of this.
 WIT_SRC := $(wildcard library-js/src/scala/scalajs/wit/package.scala)
+
+# The scalajs artifacts (and the vendored IR the overlay drops in) depend on
+# whether this tree carries the WASM/WIT feature. A non-WASM tree uses its
+# stream's stock Scala.js — BASE_SCALAJS_VERSION from mk/<stream>.mk, published
+# under org/scala-js. A WASM tree (wit sources present) uses the scala-wasm fork
+# (io/github/scala-wasm), whose IR and runtime the WASM backend requires.
+ifeq ($(strip $(WIT_SRC)),)
+  SCALAJS_VERSION := $(BASE_SCALAJS_VERSION)
+  SCALAJS_GROUP   := org/scala-js
+else
+  SCALAJS_VERSION := 1.22.0-wasm.4
+  SCALAJS_GROUP   := io/github/scala-wasm
+endif
+
 WIT_TOOLCHAIN_PATHS := $(if $(WIT_SRC), \
   org/scala-lang/scala-compiler/$(SCALA2_VERSION)/scala-compiler-$(SCALA2_VERSION).jar \
   org/scala-lang/scala-reflect/$(SCALA2_VERSION)/scala-reflect-$(SCALA2_VERSION).jar \
@@ -112,8 +124,8 @@ MAVEN_PATHS := $(EXTRA_MAVEN_PATHS) $(WIT_TOOLCHAIN_PATHS) \
   org/eclipse/lsp4j/org.eclipse.lsp4j/$(LSP4J_VERSION)/org.eclipse.lsp4j-$(LSP4J_VERSION).jar \
   org/eclipse/lsp4j/org.eclipse.lsp4j.jsonrpc/$(LSP4J_VERSION)/org.eclipse.lsp4j.jsonrpc-$(LSP4J_VERSION).jar \
   com/google/code/gson/gson/$(GSON_VERSION)/gson-$(GSON_VERSION).jar \
-  org/scala-js/scalajs-library_2.13/$(SCALAJS_VERSION)/scalajs-library_2.13-$(SCALAJS_VERSION).jar \
-  org/scala-js/scalajs-javalib/$(SCALAJS_VERSION)/scalajs-javalib-$(SCALAJS_VERSION).jar
+  $(SCALAJS_GROUP)/scalajs-library_2.13/$(SCALAJS_VERSION)/scalajs-library_2.13-$(SCALAJS_VERSION).jar \
+  $(SCALAJS_GROUP)/scalajs-javalib/$(SCALAJS_VERSION)/scalajs-javalib-$(SCALAJS_VERSION).jar
 
 DEPS_STAMP := $(JARS)/.stamp
 
@@ -319,6 +331,7 @@ $(COMPILER_JAR): $(COMMON_ARGS) $(SCALA_LIB_JAR) $(INTERFACES_JAR) $(TASTY_JAR) 
 	  '"-Wconf:src=.*src-scalajs-ir/.*&msg=Implicit parameters should be provided with a `using` clause:s"' \
 	  '"-Wconf:src=.*src-scalajs-ir/.*&msg=uninitialized` instead:s"' \
 	  '"-Wconf:src=.*src-scalajs-ir/.*&msg=object AnyRefMap in package scala\.collection\.mutable is deprecated:s"' \
+	  '"-Wconf:src=.*src-scalajs-ir/.*&msg=is deprecated for wildcard arguments of types:s"' \
 	  >> $(CLASSES)/compiler.args
 	@printf '%s\n' -classpath '$(COMPILER_CP)' -d $(CLASSES)/compiler >> $(CLASSES)/compiler.args
 	@find compiler/src compiler/src-scalajs-ir \( -name '*.scala' -o -name '*.java' \) -type f | LC_ALL=C sort >> $(CLASSES)/compiler.args
