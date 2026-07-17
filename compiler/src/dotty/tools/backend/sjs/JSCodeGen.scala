@@ -27,6 +27,7 @@ import dotty.tools.dotc.report
 
 import dotty.tools.sjs.ir
 import dotty.tools.sjs.ir.{ClassKind, Position, Trees => js, Types => jstpe, WellKnownNames => jswkn}
+import dotty.tools.sjs.ir.{WasmInterfaceTypes => wit}
 import dotty.tools.sjs.ir.Names.{ClassName, LocalName, MethodName, SimpleMethodName}
 import dotty.tools.sjs.ir.OriginalName
 import dotty.tools.sjs.ir.OriginalName.NoOriginalName
@@ -84,6 +85,12 @@ class JSCodeGen()(using genCtx: Context) {
   private val thisLocalVarName = new ScopedVar[Option[LocalName]]
   private val isModuleInitialized = new ScopedVar[ScopedVar.VarBox[Boolean]]
   private val undefinedDefaultParams = new ScopedVar[mutable.Set[Symbol]]
+
+  /* WIT imports synthesized from `witImportCall` intrinsics in the current
+   * class's method bodies, keyed (and deduplicated) by their synthetic method
+   * name. Flushed into the class's `witNativeMembers` in `genScalaClass`. */
+  private val witImportCallMembers =
+    new ScopedVar[mutable.LinkedHashMap[MethodName, js.WitNativeMemberDef]]
 
   /* Contextual JS class value for some operations of nested JS classes that need one. */
   private val contextualJSClassValue = new ScopedVar[Option[js.Tree]](None)
@@ -271,6 +278,7 @@ class JSCodeGen()(using genCtx: Context) {
             currentClassSym := sym,
             delambdafyTargetDefDefs := MutableSymbolMap(),
             methodsAllowingJSAwait := mutable.Set.empty,
+            witImportCallMembers := mutable.LinkedHashMap.empty,
         ) {
           val tree = if (sym.hasAnnotation(jsdefn.WitResourceImportAnnot)) {
             // WIT resource class (trait annotated with @WitResourceImport)
@@ -526,7 +534,10 @@ class JSCodeGen()(using genCtx: Context) {
         }
       }
     }
-    val witNativeMembers = witNativeMembersBuilder.result()
+    // `@WitImport`-annotated members, plus any imports synthesized from
+    // `witImportCall` intrinsics found while generating the method bodies above.
+    val witNativeMembers =
+      witNativeMembersBuilder.result() ::: witImportCallMembers.get.values.toList
 
     // Generate member exports
     val memberExports = jsExportsGen.genMemberExports(sym)
@@ -2337,7 +2348,9 @@ class JSCodeGen()(using genCtx: Context) {
         genApplyNew(tree)
 
       case _ =>
-        if (primitives.isPrimitive(tree)) {
+        if (witCodeGen.isWitImportCall(sym)) {
+          genWitImportCallPrimitive(tree)
+        } else if (primitives.isPrimitive(tree)) {
           genPrimitiveOp(tree, isStat)
         } else if (Erasure.Boxing.isBox(sym)) {
           // Box a primitive value (cannot be Unit)
@@ -4652,6 +4665,222 @@ class JSCodeGen()(using genCtx: Context) {
     val methodName = MethodName.reflectiveProxy(NameTransformer.encode(methodNameStr), formalParamTypeRefs)
 
     js.Apply(js.ApplyFlags.empty, selectedValueTree, js.MethodIdent(methodName), actualArgs)(jstpe.AnyType)
+  }
+
+  /** Gen a call to the `scala.scalajs.wit.witImportCall` intrinsic.
+   *
+   *  `witImportCall(module, name, resultType, paramTypes, args)` performs a Wasm
+   *  Component Model import invocation *without* a hand-written `@WitImport`
+   *  facade method. It is meant to be emitted by code generators (e.g. Xenophile)
+   *  that already know the WIT function at compile time. The signature is carried
+   *  explicitly so that it survives erasure:
+   *
+   *   - `module` and `name` are constant `String` literals identifying the WIT
+   *     function;
+   *   - `resultType` is a `classOf[R]` literal and `paramTypes` an `Array` of
+   *     `classOf[P]` literals (like `Selectable.applyDynamic`);
+   *   - `args` is an `Array[Any]` of the argument values.
+   *
+   *  We recover all of that, synthesize a `WitNativeMemberDef` on the enclosing
+   *  class (deduplicated across identical imports), and emit a `WitFunctionApply`
+   *  keyed by the same synthetic method name — the same lowering used for a call
+   *  to an `@WitImport`-annotated method.
+   */
+  private def genWitImportCallPrimitive(tree: Apply): js.Tree = {
+    implicit val pos: Position = tree.span
+
+    val List(moduleArg, nameArg, sigAndArgsArg) = tree.args: @unchecked
+
+    /* Macro-emitted calls (e.g. Xenophile's `invoke`) reach the backend with their literal
+     * arguments wrapped in adaptation nodes (`Typed` to the varargs element type, trivial
+     * blocks), so unwrap before matching the literals.
+     */
+    def skipWrappers(arg: Tree): Tree = arg match {
+      case Typed(expr, _)   => skipWrappers(expr)
+      case Block(Nil, expr) => skipWrappers(expr)
+      case _                => arg
+    }
+
+    def constantString(arg: Tree, what: String): String = skipWrappers(arg) match {
+      case Literal(const) if const.tag == Constants.StringTag =>
+        const.stringValue
+      case _ =>
+        report.error(s"The $what passed to witImportCall must be a String literal.", arg.sourcePos)
+        "<erroneous>"
+    }
+
+    def classOfType(arg: Tree, what: String): Type = skipWrappers(arg) match {
+      case Literal(const) if const.tag == Constants.ClazzTag =>
+        const.typeValue
+      case _ =>
+        report.error(s"The $what passed to witImportCall must be a literal classOf[T].", arg.sourcePos)
+        defn.AnyType
+    }
+
+    val moduleName = constantString(moduleArg, "module name")
+    val functionName = constantString(nameArg, "function name")
+
+    /* The variadic `sigAndArgs` is `[classOf[R], <descriptor>, P0, arg0, P1,
+     * arg1, ...]`: the result's carrier class and structured WIT descriptor
+     * first, then a parameter type / argument pair per parameter, where each
+     * parameter type is a bare `classOf[P]` or a `witParam(classOf[P],
+     * <descriptor>)`. Passed as inline varargs, it reaches the backend as
+     * `WrapArray(JavaSeqLiteral(...))`. */
+    val sigAndArgs: List[Tree] = sigAndArgsArg match {
+      case WrapArray(seq: JavaSeqLiteral) =>
+        seq.elems
+      case _ =>
+        report.error(
+            "The variadic arguments of witImportCall must be passed inline (not as `xs: _*`).",
+            sigAndArgsArg.sourcePos)
+        Nil
+    }
+
+    if (sigAndArgs.sizeIs < 2)
+      report.error(
+          "witImportCall requires a result type (classOf) and its structured WIT descriptor.",
+          tree.sourcePos)
+
+    /* Recursively convert a structured WIT-type descriptor — a tree of calls to the `wit*` marker
+     * functions in `scala.scalajs.wit` — to a `ValType`. Matched by symbol, so no text parsing;
+     * `witNamed(classOf[X])` delegates to `toWIT`, which derives resource/record/variant/flags
+     * types from `X`'s annotations. The markers are never evaluated: the descriptor trees are
+     * consumed here and dropped.
+     */
+    def valTypeOfDescriptor(tree0: Tree): wit.ValType = {
+      def primOf(name: String): wit.ValType = name match {
+        case "bool"   => wit.BoolType
+        case "u8"     => wit.U8Type
+        case "u16"    => wit.U16Type
+        case "u32"    => wit.U32Type
+        case "u64"    => wit.U64Type
+        case "s8"     => wit.S8Type
+        case "s16"    => wit.S16Type
+        case "s32"    => wit.S32Type
+        case "s64"    => wit.S64Type
+        case "f32"    => wit.F32Type
+        case "f64"    => wit.F64Type
+        case "char"   => wit.CharType
+        case "string" => wit.StringType
+        case other =>
+          report.error(s"witPrim: unknown WIT primitive `$other`.", tree0.sourcePos)
+          wit.StringType
+      }
+
+      def arm(tree1: Tree): Option[wit.ValType] = {
+        val stripped = skipWrappers(tree1)
+        if (stripped.symbol == jsdefn.WitPackage_witUnit) None
+        else Some(valTypeOfDescriptor(stripped))
+      }
+
+      skipWrappers(tree0) match {
+        case Apply(fn, List(arg)) if fn.symbol == jsdefn.WitPackage_witPrim =>
+          primOf(constantString(arg, "witPrim name"))
+        case Apply(fn, List(arg)) if fn.symbol == jsdefn.WitPackage_witNamed =>
+          witCodeGen.toWIT(classOfType(arg, "witNamed class"))
+        case Apply(fn, List(arg)) if fn.symbol == jsdefn.WitPackage_witList =>
+          wit.ListType(valTypeOfDescriptor(arg), None)
+        case Apply(fn, List(arg)) if fn.symbol == jsdefn.WitPackage_witTuple =>
+          skipWrappers(arg) match {
+            case WrapArray(seq: JavaSeqLiteral) =>
+              wit.TupleType(seq.elems.map(valTypeOfDescriptor(_)))
+            case other =>
+              report.error("witTuple's components must be passed inline.", other.sourcePos)
+              wit.StringType
+          }
+        case Apply(fn, List(arg)) if fn.symbol == jsdefn.WitPackage_witOption =>
+          wit.OptionType(valTypeOfDescriptor(arg))
+        case Apply(fn, List(ok, err)) if fn.symbol == jsdefn.WitPackage_witResult =>
+          wit.ResultType(arm(ok), arm(err))
+        case other =>
+          report.error(
+              "The WIT result descriptor passed to witImportCall must be a tree of wit* marker " +
+              "calls (witPrim, witNamed, witList, witTuple, witOption, witResult, witUnit).",
+              other.sourcePos)
+          wit.StringType
+      }
+    }
+
+    /* The result is carried as `classOf[R]` (giving the erasure-safe IR result type) *and* the WIT
+     * result type as a structured descriptor, because `classOf` erases the nested type arguments a
+     * `list<tuple<…>>` result needs. Parameter type / argument pairs (if any) follow. */
+    val resultType =
+      sigAndArgs.headOption.fold(defn.UnitType)(classOfType(_, "result type"))
+
+    val resultWit =
+      if (resultType.typeSymbol == defn.UnitClass) None
+      else Some(valTypeOfDescriptor(sigAndArgs(1)))
+
+    val paramAndArgTrees = sigAndArgs.drop(2)
+    if (paramAndArgTrees.size % 2 != 0)
+      report.error(
+          "witImportCall parameter types and arguments must be given as (classOf[P], arg) pairs.",
+          tree.sourcePos)
+
+    val pairs = paramAndArgTrees.grouped(2).toList.filter(_.sizeIs == 2)
+
+    /* A parameter-type slot is either a bare `classOf[P]` (its WIT type derived from `P`) or a
+     * `witParam(classOf[P], <descriptor>)` carrying the exact WIT type alongside the carrier
+     * class, for parameter types `classOf` erases (e.g. `option<string>`). */
+    val paramInfos: List[(Type, Option[wit.ValType])] = pairs.map { pair =>
+      skipWrappers(pair.head) match {
+        case Apply(fn, List(cls, descriptor)) if fn.symbol == jsdefn.WitPackage_witParam =>
+          (classOfType(cls, "witParam carrier class"), Some(valTypeOfDescriptor(descriptor)))
+        case _ =>
+          (classOfType(pair.head, "parameter type"), None)
+      }
+    }
+
+    val paramTypes: List[Type] = paramInfos.map(_._1)
+    val argTrees: List[Tree] = pairs.map(pair => pair(1))
+
+    // Synthesize a stable, IR-name-safe method name keyed on (module, name), and
+    // register (deduplicated) the corresponding import member on the enclosing class.
+    val methodName = witImportCallMethodName(moduleName, functionName, paramTypes, resultType)
+    val methodIdent = js.MethodIdent(methodName)
+    val flags = js.MemberFlags.empty.withNamespace(js.MemberNamespace.PublicStatic)
+    val funcType = witCodeGen.witFuncTypeParsed(paramInfos, resultWit)
+    val memberDef = js.WitNativeMemberDef(flags, moduleName,
+        js.WitFunctionName.Function(functionName), methodIdent, funcType)
+    witImportCallMembers.get.getOrElseUpdate(methodName, memberDef)
+
+    // Lower each argument, downcasting/unboxing it from `Any` to its carrier type.
+    val loweredArgs = argTrees.zip(paramTypes).map { (argTree, paramType) =>
+      val genArg = genExpr(argTree)
+      genAsInstanceOf(genArg, paramType)(using genArg.pos)
+    }
+
+    val className = encodeClassName(currentClassSym.get)
+    val call = js.WitFunctionApply(None, className, methodIdent, loweredArgs)(toIRType(resultType))
+
+    // The intrinsic's erased result type is `Object`; a `void` import must still
+    // yield a value. Primitive/reference results are already usable as `any`.
+    toIRType(resultType) match {
+      case jstpe.VoidType => js.Block(call, js.Undefined())
+      case _              => call
+    }
+  }
+
+  /** A stable, IR-name-safe synthetic method name for a `witImportCall` import.
+   *
+   *  Injective in `(module, name)` (hex-encoded), so distinct imports never
+   *  collide and identical imports in a class share one `WitNativeMemberDef`.
+   *  The parameter/result type refs keep the `MethodName` well-formed.
+   */
+  private def witImportCallMethodName(moduleName: String, functionName: String,
+      paramTypes: List[Type], resultType: Type): MethodName = {
+    val paramTypeRefs = paramTypes.map(tpe => toParamOrResultTypeRef(toTypeRef(tpe)))
+    val resultTypeRef = toParamOrResultTypeRef(toTypeRef(resultType))
+    val key = {
+      val bytes = (moduleName + " " + functionName).getBytes(java.nio.charset.StandardCharsets.UTF_8)
+      val sb = new java.lang.StringBuilder(bytes.length * 2)
+      for (b <- bytes) {
+        sb.append(Character.forDigit((b >> 4) & 0xf, 16))
+        sb.append(Character.forDigit(b & 0xf, 16))
+      }
+      sb.toString
+    }
+    MethodName(SimpleMethodName("witImportCall$" + key), paramTypeRefs, resultTypeRef)
   }
 
   /** Gen actual actual arguments to Scala method call.
