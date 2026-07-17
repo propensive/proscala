@@ -29,7 +29,7 @@ implementation differs).
 | [samstateful](samstateful/samstateful.md) | Read-only views of constant method-result capture sets | 3.9 | bug fix | yes |
 | [skolemcap](skolemcap/skolemcap.md) | Widen skolems in retains sets to the top capability | 3.8, 3.9, 3.10 | bug fix | yes (needs Soundness classpath) |
 | [splicealias](splicealias/splicealias.md) | Give spliced type binders their spliced type as info | 3.8, 3.9 | bug fix | yes |
-| [staleread](staleread/staleread.md) | Tolerate reading newer denotations from stale run contexts | 3.9 | bug fix (crash) | FIXME |
+| [staleread](staleread/staleread.md) | Tolerate reading newer denotations from stale run contexts | 3.9 | bug fix (crash) | yes (needs Soundness classpath) |
 | [unboxedpure](unboxedpure/unboxedpure.md) | Do not box pure types with vacuous or pure-tuple capture sets | 3.8, 3.9, 3.10 | bug fix | yes |
 | [wasm](wasm/wasm.md) | WIT / WebAssembly Component Model support | 3.8, 3.9, 3.10 | feature | n/a |
 | [wasm-witcall](wasm-witcall/wasm-witcall.md) | `witImportCall`: stub-free WIT imports | 3.8, 3.9, 3.10 | feature | n/a |
