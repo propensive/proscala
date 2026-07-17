@@ -1,0 +1,77 @@
+name: Release
+
+# Publish a versioned trunk build whenever a change lands on a release stream
+# (i.e. a pull request is merged into release/<stream>). The release branch holds
+# only Scala source; the build (Makefile, per-stream config, vendored IR, …)
+# lives on the `main` branch and is overlaid at build time by bin/proscala-overlay.
+# The build compiles every module, versions it <upstream-version>-p<n> (n one
+# greater than the previous release for the stream), tags the commit, and attaches
+# a single proscala-<version>.tar.gz (a top-level lib/ of the published jars).
+on:
+  push:
+    branches:
+      - 'release/**'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the release branch (full history so tags are visible)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Overlay the build from main
+        run: |
+          set -euo pipefail
+          stream="${GITHUB_REF_NAME#release/}"
+          git fetch --no-tags --quiet origin main
+          git archive origin/main bin/proscala-overlay | tar -x
+          PROSCALA_MAIN=origin/main bin/proscala-overlay "$stream"
+
+      - name: Determine the next version
+        id: ver
+        run: |
+          set -euo pipefail
+          stream="${GITHUB_REF_NAME#release/}"
+          # VERSION lives in the stream's config (overlaid from main); the upstream
+          # base is that with the -propensive (or an existing -p<n>) suffix stripped.
+          base=$(grep -m1 '^VERSION' "mk/${stream}.mk" | sed -E 's/.*:=[[:space:]]*//; s/-propensive$//; s/-p[0-9]+$//')
+          git fetch --tags --force --quiet
+          prev=$(git tag -l "${base}-p*" | sed -nE "s/^${base}-p([0-9]+)\$/\1/p" | sort -n | tail -1)
+          next=$(( ${prev:-0} + 1 ))
+          version="${base}-p${next}"
+          echo "stream=$stream"   >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building $version (stream=$stream, previous patch=${prev:-none})"
+
+      - name: Clean build + tarball
+        run: |
+          set -euo pipefail
+          s="${{ steps.ver.outputs.stream }}"
+          v="${{ steps.ver.outputs.version }}"
+          make STREAM="$s" BRANCH=dist VERSION="$v" clean
+          make STREAM="$s" BRANCH=dist VERSION="$v" tarball
+
+      - name: Tag and publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          v="${{ steps.ver.outputs.version }}"
+          git tag "$v"
+          git push origin "refs/tags/$v"
+          gh release create "$v" \
+            --title "$v" \
+            --target "$GITHUB_SHA" \
+            --notes "Automated Proscala trunk build for the ${{ steps.ver.outputs.stream }} stream, built from ${GITHUB_SHA}." \
+            "release/dist/proscala-${v}.tar.gz"
