@@ -1,0 +1,265 @@
+#!/usr/bin/env bash
+#
+# proscala-rebase-tree — re-base a whole Proscala stream onto upstream.
+#
+# Usage:
+#   bin/proscala-rebase-tree [-n|--dry-run] <stream> [<upstream-ref>]
+#     e.g. bin/proscala-rebase-tree 3.9  upstream/release-3.9.0
+#          bin/proscala-rebase-tree 3.10 upstream/main
+#          bin/proscala-rebase-tree 3.10                 # cascade only, no ff
+#          bin/proscala-rebase-tree -n 3.10 upstream/main  # preview, touch nothing
+#
+# With an <upstream-ref> it fetches `upstream`, fast-forwards `upstream/<stream>`
+# to that ref, and replays the stream on top. With no ref it leaves
+# `upstream/<stream>` alone and just replays the stream (use this after committing
+# a change to the stream's base, e.g. a build change while `feature/<s>/make`
+# still exists).
+#
+# It rebases the stream's base (`feature/<s>/make` if that branch still exists,
+# otherwise the branches sit directly on `upstream/<s>`), then every
+# `feature/<s>/<patch>` onto its parent in dependency order (a patch named
+# `<dep>-<patch>` is built on `feature/<s>/<dep>`), and finally rebuilds
+# `trunk/<s>` as the merge of every patch. Each branch's own commits are worked
+# out as merge-base(branch, old-parent-tip) so only those commits are replayed.
+#
+# A branch that is checked out in a worktree is rebased in place, so working
+# copies are left on the right branch. A branch whose rebase hits a conflict is
+# aborted and left unchanged, its dependents are skipped, and all such branches
+# are listed at the end for hand-resolution; re-running is a no-op for branches
+# that are already up to date. Nothing is ever pushed, and `upstream/*`, `main`
+# and `release/*` are never touched.
+
+set -euo pipefail
+
+die() { echo >&2 "proscala-rebase-tree: $*"; exit 1; }
+note() { echo ">> $*"; }
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.."
+cd "$ROOT"
+
+DRY=0
+PFX=""
+case "${1:-}" in
+  -n|--dry-run) DRY=1; PFX="[dry-run] would "; shift ;;
+esac
+
+[ $# -ge 1 ] || die "usage: proscala-rebase-tree [-n] <stream> [<upstream-ref>]"
+STREAM="$1"
+UPSTREAM_REF="${2:-}"
+
+git rev-parse --git-dir >/dev/null 2>&1 || die "not a git repository"
+
+MIRROR="upstream/$STREAM"
+git show-ref --verify --quiet "refs/heads/$MIRROR" \
+  || die "no mirror branch '$MIRROR' — expected the pristine upstream mirror for the stream"
+
+# --- worktree helpers --------------------------------------------------------
+# Map each checked-out branch to its worktree path, so we can rebase in place and
+# refuse to clobber a dirty working copy.
+declare -A WT_OF
+while IFS= read -r line; do
+  case "$line" in
+    worktree\ *) _wt="${line#worktree }" ;;
+    branch\ refs/heads/*) WT_OF["${line#branch refs/heads/}"]="$_wt" ;;
+  esac
+done < <(git worktree list --porcelain)
+
+worktree_of() { printf '%s' "${WT_OF[$1]:-}"; }
+
+is_dirty() { # is_dirty <worktree-path>
+  [ -n "$(git -C "$1" status --porcelain --untracked-files=no)" ]
+}
+
+# Run a rebase/reset for <branch> either in its own worktree (if checked out) or
+# in a shared scratch worktree. Passing the branch name as the final rebase arg
+# lets a detached scratch worktree rebase a branch that lives nowhere else.
+SCRATCH=""
+scratch_worktree() {
+  if [ -z "$SCRATCH" ]; then
+    SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/proscala-rebase.XXXXXX")"
+    git worktree add --detach --quiet "$SCRATCH" "refs/heads/$MIRROR"
+  fi
+  printf '%s' "$SCRATCH"
+}
+cleanup() {
+  if [ -n "$SCRATCH" ]; then
+    git worktree remove --force "$SCRATCH" >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup EXIT
+
+# rebase_branch <branch> <onto> <from>   (replay <from>..<branch> onto <onto>)
+# Returns 0 on success, 1 on conflict (rebase aborted, branch left unchanged).
+rebase_branch() {
+  local branch="$1" onto="$2" from="$3" wt n
+  if [ "$DRY" = 1 ]; then
+    n="$(git rev-list --count "$from..$branch")"
+    wt="$(worktree_of "$branch")"
+    note "${PFX}rebase $branch onto $(git rev-parse --short "$onto") (replay $n commit(s)${wt:+, in worktree $wt})"
+    return 0
+  fi
+  wt="$(worktree_of "$branch")"
+  if [ -n "$wt" ]; then
+    if is_dirty "$wt"; then
+      echo >&2 "   ! $branch is checked out with local changes in $wt — skipping"
+      return 1
+    fi
+    if git -C "$wt" rebase --onto "$onto" "$from" >/dev/null 2>&1; then
+      return 0
+    fi
+    git -C "$wt" rebase --abort >/dev/null 2>&1 || true
+    return 1
+  fi
+  wt="$(scratch_worktree)"
+  if git -C "$wt" rebase --onto "$onto" "$from" "$branch" >/dev/null 2>&1; then
+    # leave the scratch worktree detached so the branch isn't "checked out" here
+    git -C "$wt" checkout --quiet --detach >/dev/null 2>&1 || true
+    return 0
+  fi
+  git -C "$wt" rebase --abort >/dev/null 2>&1 || true
+  git -C "$wt" checkout --quiet --detach >/dev/null 2>&1 || true
+  return 1
+}
+
+# --- enumerate the stream ----------------------------------------------------
+BASE_BRANCH="feature/$STREAM/make"
+HAVE_MAKE=0
+git show-ref --verify --quiet "refs/heads/$BASE_BRANCH" && HAVE_MAKE=1
+[ "$HAVE_MAKE" = 1 ] || BASE_BRANCH="$MIRROR"
+
+# patch leaf names (everything under feature/<s>/ except make)
+mapfile -t PATCHES < <(
+  git for-each-ref --format='%(refname:short)' "refs/heads/feature/$STREAM/" \
+    | sed "s#^feature/$STREAM/##" \
+    | grep -vx make \
+    | sort
+)
+[ "${#PATCHES[@]}" -gt 0 ] || die "no feature/$STREAM/<patch> branches found"
+
+# parent of a patch: the longest existing hyphen-prefix branch, else the base.
+parent_of() { # parent_of <leaf>
+  local leaf="$1" prefix="$1"
+  while [[ "$prefix" == *-* ]]; do
+    prefix="${prefix%-*}"
+    if printf '%s\n' "${PATCHES[@]}" | grep -qx "$prefix"; then
+      printf 'feature/%s/%s' "$STREAM" "$prefix"; return
+    fi
+  done
+  printf '%s' "$BASE_BRANCH"
+}
+
+# process order: parents before children == fewer hyphen-segments first.
+mapfile -t ORDER < <(
+  for leaf in "${PATCHES[@]}"; do
+    printf '%s\t%s\n' "$(tr -cd '-' <<<"$leaf" | wc -c | tr -d ' ')" "$leaf"
+  done | sort -n -k1,1 -k2 | cut -f2
+)
+
+# --- fetch + fast-forward the mirror ----------------------------------------
+note "fetching upstream"
+git fetch --quiet --tags upstream
+
+OLD_BASE_TIP="$(git rev-parse "$BASE_BRANCH")"
+if [ -n "$UPSTREAM_REF" ]; then
+  git rev-parse --verify --quiet "$UPSTREAM_REF^{commit}" >/dev/null \
+    || die "cannot resolve upstream ref '$UPSTREAM_REF'"
+  OLD_MIRROR="$(git rev-parse "$MIRROR")"
+  if git merge-base --is-ancestor "$MIRROR" "$UPSTREAM_REF"; then
+    [ "$DRY" = 1 ] || git branch -f "$MIRROR" "$UPSTREAM_REF"
+    note "${PFX}fast-forward $MIRROR: $(git rev-parse --short "$OLD_MIRROR") -> $(git rev-parse --short "$UPSTREAM_REF")"
+  elif [ "$(git rev-parse "$MIRROR")" = "$(git rev-parse "$UPSTREAM_REF")" ]; then
+    note "$MIRROR already at $UPSTREAM_REF"
+  else
+    die "$MIRROR cannot fast-forward to $UPSTREAM_REF (histories diverged) — resolve by hand"
+  fi
+fi
+
+FAILED=()      # branches whose rebase was aborted
+SKIPPED=()     # branches skipped because a parent failed
+declare -A OLD_TIP NEW_TIP OK
+OLD_TIP["$BASE_BRANCH"]="$OLD_BASE_TIP"
+
+# --- rebase the base (only meaningful when it is feature/<s>/make) -----------
+if [ "$HAVE_MAKE" = 1 ]; then
+  # base sits on the mirror; replay its own commits onto the (possibly new) mirror.
+  # The mirror only ever fast-forwards, so the old mirror tip stays an ancestor
+  # and merge-base gives exactly the base's fork point.
+  base_from="$(git merge-base "$BASE_BRANCH" "$MIRROR")"
+  if rebase_branch "$BASE_BRANCH" "$MIRROR" "$base_from"; then
+    NEW_TIP["$BASE_BRANCH"]="$(git rev-parse "$BASE_BRANCH")"
+    OK["$BASE_BRANCH"]=1
+    [ "$DRY" = 1 ] || note "rebased $BASE_BRANCH onto $MIRROR"
+  else
+    die "base $BASE_BRANCH conflicts with $MIRROR — resolve by hand, then re-run"
+  fi
+else
+  NEW_TIP["$BASE_BRANCH"]="$(git rev-parse "$BASE_BRANCH")"
+  OK["$BASE_BRANCH"]=1
+fi
+
+# --- rebase every patch in dependency order ----------------------------------
+for leaf in "${ORDER[@]}"; do
+  branch="feature/$STREAM/$leaf"
+  parent="$(parent_of "$leaf")"
+  OLD_TIP["$branch"]="$(git rev-parse "$branch")"
+
+  if [ -z "${OK[$parent]:-}" ]; then
+    SKIPPED+=("$branch (parent $parent unresolved)")
+    continue
+  fi
+
+  from="$(git merge-base "$branch" "${OLD_TIP[$parent]}")"
+  if rebase_branch "$branch" "${NEW_TIP[$parent]}" "$from"; then
+    NEW_TIP["$branch"]="$(git rev-parse "$branch")"
+    OK["$branch"]=1
+    [ "$DRY" = 1 ] || note "rebased $branch onto $parent"
+  else
+    FAILED+=("$branch")
+    echo >&2 "   ! $branch: rebase aborted (conflict) — left unchanged"
+  fi
+done
+
+# --- rebuild trunk as the merge of every (successful) patch ------------------
+TRUNK="trunk/$STREAM"
+if git show-ref --verify --quiet "refs/heads/$TRUNK"; then
+  if [ "$DRY" = 1 ]; then
+    note "${PFX}rebuild $TRUNK on $BASE_BRANCH by merging: ${ORDER[*]}"
+  elif [ "${#FAILED[@]}" -eq 0 ] && [ "${#SKIPPED[@]}" -eq 0 ]; then
+    twt="$(worktree_of "$TRUNK")"
+    if [ -z "$twt" ]; then
+      twt="$(scratch_worktree)"; git -C "$twt" switch --quiet "$TRUNK"
+    elif is_dirty "$twt"; then
+      die "$TRUNK is checked out with local changes in $twt — clean it and re-run"
+    fi
+    git -C "$twt" reset --hard --quiet "$BASE_BRANCH"
+    note "rebuilding $TRUNK on $BASE_BRANCH"
+    for leaf in "${ORDER[@]}"; do
+      branch="feature/$STREAM/$leaf"
+      git -C "$twt" merge --no-edit -m "Merge branch '$branch' into $TRUNK" "$branch" >/dev/null \
+        || die "merging $branch into $TRUNK conflicted (rerere may need priming) — resolve in $twt"
+    done
+    note "rebuilt $TRUNK"
+  else
+    echo >&2 ">> skipping $TRUNK rebuild: not every patch rebased cleanly"
+  fi
+fi
+
+# --- report ------------------------------------------------------------------
+echo
+if [ "$DRY" = 1 ]; then
+  note "dry run for stream $STREAM complete — nothing was changed. Re-run without -n to apply."
+  exit 0
+fi
+if [ "${#FAILED[@]}" -eq 0 ] && [ "${#SKIPPED[@]}" -eq 0 ]; then
+  note "stream $STREAM re-based cleanly. Review, build-test, then push with:"
+  echo "   git push --force-with-lease origin $MIRROR $BASE_BRANCH \\"
+  echo "     $(printf 'feature/%s/%s ' "$STREAM" "${ORDER[@]}")$TRUNK"
+else
+  echo "!! stream $STREAM re-based with unresolved branches:"
+  for b in "${FAILED[@]}";  do echo "   conflict: $b"; done
+  for b in "${SKIPPED[@]}"; do echo "   skipped:  $b"; done
+  echo "   Resolve each conflict by hand:"
+  echo "     git rebase --onto $BASE_BRANCH <old-parent> <branch>"
+  echo "   then re-run this script (it is idempotent) to finish and rebuild $TRUNK."
+  exit 1
+fi
