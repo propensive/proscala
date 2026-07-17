@@ -2290,6 +2290,30 @@ class TypeComparer(@constructorOnly initctx: Context) extends ConstraintHandling
       // but under the condition that signatures might have to match (see sigsOK)
       // This relaxed version is needed to correctly compare dependent function types.
       // See pos/i12211.scala.
+      // Under capture checking, two type-alias members whose right-hand sides both
+      // derive from `Capability` denote the same type even if one carries a universal
+      // (root) capture set and the other is bare: for a capability type the capture is
+      // implied, so `type X = C`, `type X = C^{any}` and `type X = C^{fresh}` are
+      // interchangeable. Without this, a SAM anonymous class synthesised before capture
+      // checking — whose `type Self = C` member is left bare — fails to conform to the
+      // corresponding refinement of the SAM's declared (method-result) type, which
+      // carries the implied `^{cap}`/`ResultCap`. That only arises on platforms which
+      // expand such SAMs to classes before capture checking (e.g. Scala.js, whose
+      // `isSam` rejects arbitrary traits); on the JVM the SAM stays a closure whose
+      // type is the expected refinement verbatim, so no member comparison happens.
+      def capabilityAliasesMatch(info1: Type, info2: Type): Boolean =
+        isCaptureCheckingOrSetup && {
+          def universalOrEmpty(t: Type): Boolean =
+            val cs = t.captureSet
+            cs.isAlwaysEmpty || cs.isConst && cs.elems.forall(_.isTerminalCapability)
+          (info1, info2) match
+            case (TypeAlias(alias1), TypeAlias(alias2)) =>
+              alias1.derivesFromCapability && alias2.derivesFromCapability
+              && universalOrEmpty(alias1) && universalOrEmpty(alias2)
+              && isSameType(alias1.stripCapturing, alias2.stripCapturing)
+            case _ => false
+        }
+
       def isSubInfo(info1: Type, info2: Type, symInfo: Type): Boolean =
         info2 match
           case info2: MethodType =>
@@ -2300,7 +2324,9 @@ class TypeComparer(@constructorOnly initctx: Context) extends ConstraintHandling
                 && isSubInfo(info1.resultType, info2.resultType.subst(info2, info1), symInfo1.resultType)
                 && sigsOK(symInfo1, info2)
               case _ => inFrozenGadtIf(tp1IsSingleton) { isSubType(info1, info2) }
-          case _ => inFrozenGadtIf(tp1IsSingleton) { isSubType(info1, info2) }
+          case _ =>
+            capabilityAliasesMatch(info1, info2)
+            || inFrozenGadtIf(tp1IsSingleton) { isSubType(info1, info2) }
 
       def qualifies(m: SingleDenotation): Boolean =
         val info2 = tp2.refinedInfo
