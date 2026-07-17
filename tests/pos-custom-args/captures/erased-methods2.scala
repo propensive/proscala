@@ -1,4 +1,4 @@
-// was a neg test before
+// was a neg test before context-result closure params became method-level
 import language.experimental.saferExceptions
 import language.experimental.erasedDefinitions
 import language.experimental.captureChecking
@@ -22,7 +22,7 @@ def foo9a(i: Int)
      ?=> (x$2: CT[Ex2]^)
      ?=>
       //given (CT[Ex3]^) = x$1
-      Throw(new Ex3) // error
+      Throw(new Ex3)
 
 def foo10a(i: Int)
   : (erased x$0: CT[Ex3]^)
@@ -32,4 +32,4 @@ def foo10a(i: Int)
   = (erased x$1: CT[Ex3]^)
      ?=> (erased x$2: CT[Ex2]^)
      ?=> (erased x$3: CT[Ex1]^)
-     ?=> Throw(new Ex3) // error
+     ?=> Throw(new Ex3)
