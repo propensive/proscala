@@ -624,6 +624,17 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
             |following a function arrow such as `=>` or `->`.""")
 
     if initialVariance < 0 then tp2
+    else if sym.isAliasType then
+      // Keep `caps.any` global in a type alias's own info. Capture-checked units expand
+      // aliases during Setup of each USING symbol, localizing root capabilities per use
+      // site, so the alias's own info is not consulted there. It is consulted when the
+      // signature of a symbol from a unit that was NOT capture-checked mentions the alias:
+      // such signatures are fluidified without following aliases, so rechecking dealiases
+      // late and would expose a LocalCap owned by the alias itself — a capability at the
+      // alias's own (package-)level that no use-site capability can flow into. Leaving the
+      // root global here lets recheck freshen it per application, matching the behaviour
+      // of capture-checked callees (mixed-compilation interop).
+      tp2
     else globalCapToLocal(tp2, Origin.InDecl(sym))
   end transformExplicitType
 
