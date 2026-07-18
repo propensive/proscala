@@ -1355,9 +1355,15 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
           then expr.cast(underlying)
           else expr
         val expr0 = tryEither(typedRegular) { (fallVal, fallState) =>
-          val pierced = pierceOpaque(typedExpr(tree.expr))
-          if pierced.tpe.derivesFrom(defn.SeqClass) || pierced.tpe.derivesFrom(defn.ArrayClass)
-          then pierced
+          // The retype must be speculative too: unless an opaque alias is actually
+          // pierced, the original failure is restored and nothing the retype did —
+          // fresh type variables, quote-hole registrations — may leak into the
+          // enclosing typer state.
+          val nestedCtx = ctx.fresh.setNewTyperState()
+          val bare = typedExpr(tree.expr)(using nestedCtx)
+          val pierced = pierceOpaque(bare)(using nestedCtx)
+          if (pierced ne bare) && !nestedCtx.reporter.hasErrors
+          then { nestedCtx.typerState.commit(); pierced }
           else { fallState.commit(); fallVal }
         }
         val expr1 = if ctx.explicitNulls && (!ctx.mode.is(Mode.Pattern)) then
