@@ -70,12 +70,27 @@ continue down the unchanged translation path:
 
 ```scala
 val expr0 = tryEither(typedRegular) { (fallVal, fallState) =>
-  val pierced = pierceOpaque(typedExpr(tree.expr))
-  if pierced.tpe.derivesFrom(defn.SeqClass) || pierced.tpe.derivesFrom(defn.ArrayClass)
-  then pierced
+  val nestedCtx = ctx.fresh.setNewTyperState()
+  val bare = typedExpr(tree.expr)(using nestedCtx)
+  val pierced = pierceOpaque(bare)(using nestedCtx)
+  if (pierced ne bare) && !nestedCtx.reporter.hasErrors
+  then { nestedCtx.typerState.commit(); pierced }
   else { fallState.commit(); fallVal }
 }
 ```
+
+The fallback retype is itself speculative, in a fresh typer state that is
+committed only when an opaque alias was actually pierced (`pierced ne bare`)
+and the retype succeeded. The patch's first version retyped in the enclosing
+context and accepted any retype whose type derived from `Seq`/`Array` even
+when no opaque alias was involved; when the argument was genuinely erroneous
+— e.g. a mistyped splice inside a quote, pre-typed during speculative
+overload resolution — the doubly-typed expression leaked duplicate type
+variables and quote-hole registrations into the enclosing typer state, and
+overload resolution later crashed instantiating a leftover type variable
+whose constraint entry no longer existed ("assertion failed: param = T" in
+`ConstraintHandling.approximation`). A minimal reproduction of that crash is
+in [`repro/`](repro/).
 
 The cast is a no-op at erasure — an opaque alias erases to its underlying
 type — so no wrapper is allocated and nothing changes at runtime. Element-type
