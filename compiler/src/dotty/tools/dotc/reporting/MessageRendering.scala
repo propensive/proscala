@@ -219,7 +219,7 @@ trait MessageRendering {
           |${Blue("Explanation").show}
           |${Blue("===========").show}""".stripMargin
     )
-    sb.append(EOL).append(m.explanation)
+    sb.append(EOL).append(DiagnosticMarkup.plain(m.explanation))
     if (!m.explanation.endsWith(EOL)) sb.append(EOL)
     sb.toString
   }
@@ -296,7 +296,7 @@ trait MessageRendering {
     if pos.exists && pos1.exists && pos1.source.file.exists then
       val (srcBefore, srcAfter, offset) = sourceLines(pos1)
       val marker = positionMarker(pos1)
-      val err = errorMsg(pos1, msg.message, srcAfter.nonEmpty)
+      val err = errorMsg(pos1, DiagnosticMarkup.plain(msg.message), srcAfter.nonEmpty)
       sb.append((srcBefore ::: marker :: err :: srcAfter).mkString(EOL))
 
       if inlineStack.nonEmpty then
@@ -311,7 +311,7 @@ trait MessageRendering {
             sb.append(EOL).append((srcBefore ::: marker :: srcAfter).mkString(EOL))
         sb.append(EOL).append(endBox)
       end if
-    else sb.append(msg.message)
+    else sb.append(DiagnosticMarkup.plain(msg.message))
     if dia.isVerbose then
       appendFilterHelp(dia, sb)
 
@@ -319,7 +319,7 @@ trait MessageRendering {
       sb.append(EOL).append(newBox())
       sb.append(EOL).append(offsetBox).append(" Explanation (enabled by `-explain`)")
       sb.append(EOL).append(newBox(soft = true))
-      dia.msg.explanation.split(raw"\R").foreach: line =>
+      DiagnosticMarkup.plain(dia.msg.explanation).split(raw"\R").foreach: line =>
         sb.append(EOL).append(offsetBox).append(if line.isEmpty then "" else " ").append(line)
       sb.append(EOL).append(endBox)
     else if dia.msg.canExplain then
