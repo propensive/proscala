@@ -77,8 +77,13 @@ Required: <type tasty="XKGrH5…">Box[Int]<placeholder id="0" kind="local-type"
 
 - `<message>` (and `<explanation>`, present when the message can explain) hold
   mixed content: plain text interleaved with `<type>`, `<sym name=".."
-  full="..">`, `<name isType="..">` and `<code>` elements whose text is the
-  rendered form. Line/column attributes are 1-based; `start`/`end` are
+  full="..">`, `<name isType="..">`, `<code>` and `<span>` elements whose text
+  is the rendered form. Elements may nest (a marked composite phrase contains
+  its marked constituents). An entity rendered in a non-default style — a
+  declaration (`showDcl`), a location (`showLocated`), a full name — carries a
+  `style` attribute (`dcl`, `located`, `full`) on its element. The elements of
+  rendered sequences (e.g. lists of alternatives or type arguments) are marked
+  individually. Line/column attributes are 1-based; `start`/`end` are
   character offsets.
 - `<type tasty="…">` holds the Base64 TASTy of the sanitized type.
   `tastyVersion` gives the TASTy format version (`major.minor-experimental`);
@@ -97,10 +102,16 @@ placeholder table wherever it finds a `ConstantType` string starting with
 
 ## Limitations
 
-- Messages that pre-render entities to strings before interpolation get no
-  markup for those fragments (only `TypeMismatch` has been converted to
-  interpolate types directly). Coverage improves message-by-message without
-  any format change.
+- The composite-phrase helpers in `typer/ErrorReporting.scala` (`refStr`,
+  `infoString`, `expectedTypeStr`, …) still pre-render their entities; the
+  marker format supports converting them (markers nest, and `Styled` can
+  carry any value), so coverage improves helper-by-helper without any format
+  change. A caution for those conversions: `Styled` text is evaluated eagerly
+  at the argument position on purpose — the `Seen` disambiguation machinery
+  (superscripts, `where:` clauses) is sensitive to symbol recording order, and
+  deferring a show reorders it after eagerly-evaluated sibling arguments.
+  Messages that build synthetic example code or suggested identifiers from
+  shown fragments are intentionally left as plain text.
 - The REPL and sbt use their own reporters, so the flag currently only changes
   batch `scalac` output; under other reporters the markers are stripped and
   output is plain.
