@@ -360,9 +360,15 @@ class TypeMismatch(val found: Type, expected: Type, val inTree: Option[untpd.Tre
     val (found2, expected2) =
       if (found1 frozen_<:< expected1) || reported.fbounded then (found, expected)
       else (found1, expected1)
-    val (foundStr, expectedStr) = Formatting.typeDiff(found2.normalized, expected2.normalized)
-    i"""|${preface}Found:    $foundStr
-        |Required: $expectedStr${reported.notes}"""
+    if DiagnosticMarkup.active then
+      // interpolate the types themselves so that they are marked up; a colored
+      // diff of pre-rendered strings is useless to a structured consumer
+      i"""|${preface}Found:    ${found2.normalized}
+          |Required: ${expected2.normalized}${reported.notes}"""
+    else
+      val (foundStr, expectedStr) = Formatting.typeDiff(found2.normalized, expected2.normalized)
+      i"""|${preface}Found:    $foundStr
+          |Required: $expectedStr${reported.notes}"""
   end msg
 
   override def msgPostscript(using Context): String =

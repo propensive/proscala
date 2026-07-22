@@ -437,6 +437,7 @@ private sealed trait XSettings:
   val XprintInline: Setting[Boolean] = BooleanSetting(AdvancedSetting, "Xprint-inline", "Show where inlined code comes from.")
   val XprintSuspension: Setting[Boolean] = BooleanSetting(AdvancedSetting, "Xprint-suspension", "Show when code is suspended until macros are compiled.")
   val Xprompt: Setting[Boolean] = BooleanSetting(AdvancedSetting, "Xprompt", "Display a prompt after each error (debugging option).")
+  val XsemanticDiagnostics: Setting[Boolean] = BooleanSetting(AdvancedSetting, "Xsemantic-diagnostics", "Emit diagnostics as XML with semantic markup; embed diagnostic types as Base64-encoded TASTy.")
   val XreplDisableDisplay: Setting[Boolean] = BooleanSetting(AdvancedSetting, "Xrepl-disable-display", "Do not display definitions in REPL.")
   val XreplPrintHeight: Setting[Int] = IntSetting(AdvancedSetting, "Xrepl-print-height", "Set the row height for pretty-printing in the REPL.", 50)
   val XreplInterruptInstrumentation: Setting[String] = StringSetting(

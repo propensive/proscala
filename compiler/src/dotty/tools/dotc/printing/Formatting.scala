@@ -168,7 +168,34 @@ object Formatting {
    *     against accidentally treating an interpolated value as a margin.
    */
   class StringFormatter(protected val sc: StringContext) {
-    protected def showArg(arg: Any)(using Context): String = arg.tryToShow
+    protected def showArg(arg: Any)(using Context): String =
+      val shown = arg.tryToShow
+      if reporting.DiagnosticMarkup.active then
+        try markArg(arg, shown) catch case scala.util.control.NonFatal(_) => shown
+      else shown
+
+    /** Under `-Xsemantic-diagnostics`, record what kind of entity produced the
+     *  shown text, so that `XmlReporter` can mark it up; types additionally
+     *  carry their TASTy serialization.
+     */
+    private def markArg(arg: Any, shown: String)(using Context): String =
+      import reporting.{DiagnosticMarkup, DiagnosticTypePickler}
+      arg match
+        case tp: Type =>
+          val attrs = DiagnosticTypePickler.pickle(tp) match
+            case Some(pickled) =>
+              ("tasty", pickled.tasty)
+                :: pickled.placeholders.map(p => ("p", DiagnosticMarkup.encodePlaceholder(p)))
+            case None => Nil
+          DiagnosticMarkup.wrap("type", attrs, shown)
+        case sym: Symbol =>
+          DiagnosticMarkup.wrap("sym",
+            List(("name", sym.name.show), ("full", sym.showFullName)), shown)
+        case name: Names.Name =>
+          DiagnosticMarkup.wrap("name", List(("isType", name.isTypeName.toString)), shown)
+        case _: ast.Trees.Tree[?] =>
+          DiagnosticMarkup.wrap("code", Nil, shown)
+        case _ => shown
 
     private def treatArg(arg: Shown, suffix: String)(using Context): (String, String) = arg.runCtxShow match {
       case arg: Seq[?] if suffix.indexOf('%') == 0 && suffix.indexOf('%', 1) != -1 =>
