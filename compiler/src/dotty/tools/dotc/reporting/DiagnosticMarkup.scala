@@ -67,38 +67,57 @@ object DiagnosticMarkup:
           i += 1
       b.toString
 
-  /** Wrap the shown form of an interpolated argument in a marker. */
+  /** Wrap the marked-up form of an interpolated argument in a marker. `text`
+   *  may itself contain (balanced) markers: markers nest, so that a composite
+   *  phrase such as "method foo" can be marked as a reference while "foo"
+   *  stays marked as the symbol. Unbalanced markers in `text` — which cannot
+   *  arise from this object's own output — are stripped.
+   */
   def wrap(kind: String, attrs: List[(String, String)], text: String): String =
     val attrStr = attrs.map((k, v) => s"$k=${encode(v)}").mkString(AttrSep.toString)
-    s"$Start$kind$AttrsSep$attrStr$TextSep${plain(text)}$End"
+    s"$Start$kind$AttrsSep$attrStr$TextSep${if balanced(text) then text else plain(text)}$End"
+
+  private def balanced(s: String): Boolean =
+    var depth = 0
+    var i = 0
+    while i < s.length && depth >= 0 do
+      s.charAt(i) match
+        case Start => depth += 1
+        case End   => depth -= 1
+        case _     =>
+      i += 1
+    depth == 0
 
   enum Node:
     case Text(text: String)
-    case Marked(kind: String, attrs: List[(String, String)], text: String)
+    case Marked(kind: String, attrs: List[(String, String)], children: List[Node])
 
-  /** Parse a marked-up string. Robust against truncated or stray marker
-   *  characters: anything that does not form a complete marker is dropped and
-   *  the surrounding content treated as plain text.
+  /** Parse a marked-up string into a tree. Robust against truncated or stray
+   *  marker characters: anything that does not form a complete marker is
+   *  dropped and the surrounding content treated as plain text; the children
+   *  of an unterminated marker are spliced into its parent.
    */
   def parse(s: String): List[Node] =
-    val nodes = mutable.ListBuffer[Node]()
-    val text = new StringBuilder
-    def flush() =
-      if text.nonEmpty then
-        nodes += Node.Text(text.toString)
-        text.clear()
+    final class Frame(val kind: String, val attrs: List[(String, String)]):
+      val children = mutable.ListBuffer[Node]()
+      val text = new StringBuilder
+      def flush(): Unit =
+        if text.nonEmpty then
+          children += Node.Text(text.toString)
+          text.clear()
+    val root = Frame("", Nil)
+    var stack = List(root)
     var i = 0
     while i < s.length do
       val c = s.charAt(i)
       if c == Start then
-        val end = s.indexOf(End, i + 1)
         val kindEnd = s.indexOf(AttrsSep, i + 1)
         val attrsEnd = if kindEnd < 0 then -1 else s.indexOf(TextSep, kindEnd + 1)
-        if end < 0 || kindEnd < 0 || attrsEnd < 0 || kindEnd > end || attrsEnd > end then
-          i += 1
+        val headerOk = kindEnd > 0 && attrsEnd > 0
+          && !s.substring(i + 1, attrsEnd).exists(c => c == Start || c == End)
+        if !headerOk then i += 1
         else
-          flush()
-          val kind = s.substring(i + 1, kindEnd)
+          stack.head.flush()
           val attrs = s.substring(kindEnd + 1, attrsEnd) match
             case "" => Nil
             case as =>
@@ -106,24 +125,39 @@ object DiagnosticMarkup:
                 kv.split("=", 2) match
                   case Array(k, v) => (k, decode(v))
                   case _           => (kv, "")
-          nodes += Node.Marked(kind, attrs, s.substring(attrsEnd + 1, end))
-          i = end + 1
-      else if c == End || c == AttrsSep || c == TextSep then
+          stack ::= Frame(s.substring(i + 1, kindEnd), attrs)
+          i = attrsEnd + 1
+      else if c == End then
+        stack match
+          case top :: (rest @ (parent :: _)) =>
+            top.flush()
+            parent.children += Node.Marked(top.kind, top.attrs, top.children.toList)
+            stack = rest
+          case _ => // stray End at top level
+        i += 1
+      else if c == AttrsSep || c == TextSep then
         i += 1
       else
-        text.append(c)
+        stack.head.text.append(c)
         i += 1
-    flush()
-    nodes.toList
+    // splice the children of any unterminated markers into their parents
+    while stack.tail.nonEmpty do
+      val top :: (parent :: _) = stack: @unchecked
+      top.flush()
+      parent.children ++= top.children
+      stack = stack.tail
+    root.flush()
+    root.children.toList
 
   /** The string with all markers removed, keeping only the visible text. */
   def plain(s: String): String =
     if !s.exists(c => c >= Start && c <= TextSep) then s
     else
-      parse(s).map {
-        case Node.Text(text)         => text
-        case Node.Marked(_, _, text) => text
+      def collect(nodes: List[Node]): String = nodes.map {
+        case Node.Text(text)             => text
+        case Node.Marked(_, _, children) => collect(children)
       }.mkString
+      collect(parse(s))
 
   /** A subtree of a diagnostic type that was replaced by a string-literal
    *  placeholder before pickling, so that the pickled type resolves against the
