@@ -43,18 +43,23 @@ extends Reporter with UniqueMessagePositions with HideNonSensicalMessages:
     else if level >= WARNING then "warning"
     else "info"
 
-  /** Marked-up message text as XML mixed content. */
+  /** Marked-up message text as XML mixed content. Markers nest, so a marked
+   *  composite phrase renders as an element containing further elements.
+   */
   private def content(marked: String): String =
-    DiagnosticMarkup.parse(stripAnsi(marked)).map {
+    render(DiagnosticMarkup.parse(stripAnsi(marked)))
+
+  private def render(nodes: List[Node]): String =
+    nodes.map {
       case Node.Text(text) => escape(text)
-      case Node.Marked(kind, attrs0, text) =>
+      case Node.Marked(kind, attrs0, children) =>
         val elem = kind match
-          case "type" | "sym" | "name" | "code" => kind
+          case "type" | "sym" | "name" | "code" | "span" => kind
           case _ => "span"
         val placeholders =
           attrs0.collect { case ("p", v) => v }.flatMap(DiagnosticMarkup.decodePlaceholder)
         val attrs = attrs0.collect { case (k, v) if k != "p" => attr(k, v) }.mkString
-        val body = escape(text) + placeholders.map { p =>
+        val body = render(children) + placeholders.map { p =>
           "<placeholder"
             + attr("id", p.id.toString)
             + attr("kind", p.kind)
