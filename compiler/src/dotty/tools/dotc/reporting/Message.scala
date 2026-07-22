@@ -434,6 +434,8 @@ abstract class Message(val errorId: ErrorMessageID)(using Context) { self =>
           val ctx1 = ctx.fresh.setPrinterFn(Message.Printer(seen, this, _))
           if !ctx1.property(MessageLimiter).isDefined then
             ctx1.setProperty(MessageLimiter, ErrorMessageLimiter())
+          if ctx1.settings.XsemanticDiagnostics.value then
+            ctx1.setProperty(DiagnosticMarkup.Active, ())
           ctx1
       op(using msgContext)
 
