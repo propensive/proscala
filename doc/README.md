@@ -26,7 +26,7 @@ implementation differs).
 | [permitlazy](permitlazy/permitlazy.md) | Lazy resolution of permitted subclasses in classfile parsing | 3.9, 3.10 | bug fix | yes |
 | [sambox](sambox/sambox.md) | Capability-implied captures on SAM anonymous-class type members | 3.8, 3.9, 3.10 | bug fix | yes |
 | [samstateful](samstateful/samstateful.md) | Read-only views of constant method-result capture sets | 3.9 | bug fix | yes |
-| [semdiag](semdiag/semdiag.md) | `-Xsemantic-diagnostics`: XML error output with TASTy-encoded types | 3.9 | feature | n/a |
+| [semdiag](semdiag/semdiag.md) | `-Xsemantic-diagnostics`: XML error output with TASTy-encoded types | 3.8, 3.9, 3.10 | feature | n/a |
 | [skolemcap](skolemcap/skolemcap.md) | Widen skolems in retains sets to the top capability | 3.8, 3.9, 3.10 | bug fix | yes (needs Soundness classpath) |
 | [splicealias](splicealias/splicealias.md) | Give spliced type binders their spliced type as info | 3.8, 3.9 | bug fix | yes |
 | [spliceopaque](spliceopaque/spliceopaque.md) | Splice opaque aliases over Seq and Array in vararg positions | 3.8, 3.9, 3.10 | feature | n/a |
