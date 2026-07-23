@@ -387,6 +387,8 @@ class ReplDriver(settings: Array[String],
   protected def interpret(res: ParseResult)(using state: State): State = {
     res match {
       case parsed: Parsed =>
+        for diag <- parsed.directiveDiagnostics do
+          out.println(s"[warn] ${diag.message}")
         val src = parsed.source.content().mkString
         val classified = DependencyResolver.classifyDirectives(src)
         if classified.hasDirectives then
@@ -406,7 +408,13 @@ class ReplDriver(settings: Array[String],
       case CommandThenCode(cmd, code) =>
         val stateAfterCommand = interpretCommand(cmd)
         val recorded = cmd.replayLine.fold(stateAfterCommand)(line => stateAfterCommand.recordInput(line.strip))
-        interpret(code)(using recorded)
+        interpret(ParseResult(code)(using recorded))(using recorded)
+
+      case MixedCommandsAndDirectives =>
+        out.println(
+          """Cannot mix `:` commands and `//> using` directives in the same REPL input.
+            |Submit them as separate inputs.""".stripMargin)
+        state
 
       case cmd: Command =>
         val next = interpretCommand(cmd)
@@ -730,32 +738,36 @@ class ReplDriver(settings: Array[String],
       out.println(s"""The :kind command is not currently supported.""")
       state
     case TypeOf(expr) =>
-      expr match {
-        case "" => out.println(s":type <expression>")
+      expr match
+        case "" =>
+          out.println(s":type <expression>")
+          state
         case _  =>
+          val queryState = newRun(state)
           try
-            compiler.typeOf(expr)(using newRun(state)).fold(
-              errs => displayErrors(errs, state),
+            compiler.typeOf(expr)(using queryState).fold(
+              errs => displayErrors(errs, queryState),
               res => out.println(res)  // result has some highlights
             )
           catch case NonFatal(ex) =>
             out.println(s"Error: ${ex.getMessage}")
-      }
-      state
+          queryState
 
     case DocOf(expr) =>
-      expr match {
-        case "" => out.println(s":doc <expression>")
+      expr match
+        case "" =>
+          out.println(s":doc <expression>")
+          state
         case _  =>
+          val queryState = newRun(state)
           try
-            compiler.docOf(expr)(using newRun(state)).fold(
-              errs => displayErrors(errs, state),
+            compiler.docOf(expr)(using queryState).fold(
+              errs => displayErrors(errs, queryState),
               res => out.println(res)
             )
           catch case NonFatal(ex) =>
             out.println(s"Error: ${ex.getMessage}")
-      }
-      state
+          queryState
 
     case Sh(expr) =>
       out.println(s"""The :sh command is deprecated. Use `import scala.sys.process._` and `"command".!` instead.""")
@@ -800,7 +812,8 @@ class ReplDriver(settings: Array[String],
         DependencyResolver.resolveDependencies(deps) match
           case Right(files) =>
             if files.nonEmpty then
-              inContext(state.context):
+              val classpathState = newRun(state)
+              inContext(classpathState.context):
                 val prevOutputDir = ctx.settings.outputDir.value
                 val prevClassLoader = rendering.classLoader()
                 rendering.myClassLoader = DependencyResolver.addToCompilerClasspath(
@@ -810,9 +823,11 @@ class ReplDriver(settings: Array[String],
                 )
                 val depsDescription = if deps.size == 1 then "a dependency" else s"${deps.size} dependencies"
                 out.println(s"Resolved $depsDescription (${files.size} JARs)")
+              classpathState
+            else state
           case Left(error) =>
             out.println(s"Error resolving dependencies: $error")
-        state
+            state
 
   /** shows all errors nicely formatted */
   private def displayErrors(errs: Seq[Diagnostic], state: State): State = {

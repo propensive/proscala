@@ -106,9 +106,20 @@ object CheckCaptures:
   }
 
   /** Check that a @retains annotation only mentions references that can be tracked.
-   *  This check is performed at Typer.
+   *  Also reject a postfix `^` on a capture-set variable (`CS^`, where `CS` is a
+   *  capture-set parameter or member): `^` adds the root capability `caps.any`,
+   *  which is most likely unintended -- `CS` already stands for a capture set.
+   *  See issue #24088. This check is performed at Typer.
    */
   def checkWellformedRetains(parent: Tree, ann: Tree)(using Context): Unit =
+    if ann.symbol.maybeOwner == defn.RetainsCapAnnot
+        && parent.tpe.derivesFromCapSet
+        && parent.tpe.dealias.typeSymbol != defn.Caps_CapSet
+    then
+      report.error(
+        em"""Postfix `^` is not allowed on the capture-set variable ${parent.tpe};
+            |it adds the root capability `caps.any`. Write `${parent.tpe}` or `{${parent.tpe}}` to refer to its capture set.""",
+        parent.srcPos)
     def check(elem: Type): Unit = elem match
       case ref: TypeRef =>
         val refSym = ref.symbol
@@ -1698,10 +1709,17 @@ class CheckCaptures extends Recheck, SymTransformer:
      *  where local capture roots are instantiated to root variables.
      */
     override def checkConformsExpr(actual: Type, expected: Type, tree: Tree, notes: List[Note])(using Context): Type =
-      try testAdapted(actual, expected, tree, notes)(err.typeMismatch)
+      val saved = ccState.ignoreClassifiers
+      try
+        tree match
+          case tree: TypeApply if tree.symbol == defn.Any_typeCast => ccState.ignoreClassifiers = true
+          case _ =>
+        testAdapted(actual, expected, tree, notes)(err.typeMismatch)
       catch case ex: AssertionError =>
         println(i"error while checking $tree: $actual against $expected")
         throw ex
+      finally
+        ccState.ignoreClassifiers = saved
 
     @annotation.tailrec
     private def findImpureUpperBound(tp: Type)(using Context): Type = tp match
