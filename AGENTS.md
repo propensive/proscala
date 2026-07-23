@@ -193,6 +193,26 @@ pull requests.
    PR is the only route in.
 5. **Publish.** Merging the PR triggers the release workflow (below).
 
+**Release PRs after a rebase-tree run.** Rebasing the tree rewrites trunk's
+history while the release branch keeps the pre-rebase commits, so a direct
+`trunk → release` PR can show conflicts — reliably so when upstream touched the
+CI workflow files, because release branches strip the inherited scala3
+workflows (keeping only `release.yml`), and delete-vs-modify always conflicts.
+Do not resolve such a PR by hand. Instead build a deterministic resolution
+merge on a prep branch — trunk's content with release's `.github/` — and PR
+that:
+
+    git worktree add /tmp/relprep -b prep/release-<stream> trunk/<stream>
+    cd /tmp/relprep
+    git merge -s ours --no-commit origin/release/<stream>
+    git rm -rq .github && git checkout origin/release/<stream> -- .github
+    git commit
+
+Verify before pushing: `git diff --name-only trunk/<stream> HEAD` must list
+only `.github/` paths, and `git diff origin/release/<stream> HEAD -- .github`
+must be empty. Open the PR from `prep/release-<stream>`; delete the prep
+branch after the merge. (First needed for release/3.10, PR #12, 2026-07.)
+
 Keep the streams in step with upstream out-of-band with `bin/proscala-rebase-tree`
 (see *Keeping up with upstream*), which flows into the release lines via step 4.
 
