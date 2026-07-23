@@ -407,6 +407,14 @@ SJS_CP := $(call cpjoin,$(SJS_LIBRARY_JAR) $(SJS_JAVALIB_JAR))
 # Scala.js deps do NOT provide scala/runtime, so these classes must be shipped
 # here or linking anything that reaches them — e.g. TupleN equality, LazyList,
 # var-capturing closures — fails with non-existent-class errors.)
+#
+# The main pass's -sourcepath must NOT include library-js/src: the excluded
+# BoxesRunTime.scala/ScalaNumber.scala would be sourcepath-visible there, the
+# compiler would resolve them as Scala objects, and every caller (TupleN.equals
+# etc.) would emit module-targeted ApplyStatics that nothing provides — an
+# unlinkable scalalib. Every other library-js file is compiled explicitly, so
+# the sourcepath is only ever consulted for exactly those exclusions, which
+# must resolve to library/src's .java stubs.
 $(SJS_SCALALIB_JAR): $(COMMON_ARGS) $(STAGE_JARS) $(SJS_LIBRARY_JAR) $(SJS_JAVALIB_JAR) \
                      $(shell find library-js/src library-js-aux/src -type f) $(LIBRARY_SRC)
 	@echo ">> scala-library-sjs (Scala.js stdlib)"
@@ -416,7 +424,7 @@ $(SJS_SCALALIB_JAR): $(COMMON_ARGS) $(STAGE_JARS) $(SJS_LIBRARY_JAR) $(SJS_JAVAL
 	@(cd library/src    && find . \( -name '*.scala' -o -name '*.java' \) -type f | sed 's|^\./||') | LC_ALL=C sort > $(GEN)/sjs-lib-rel.txt
 	@cp $(COMMON_ARGS) $(CLASSES)/sjs-scalalib.args
 	@printf '%s\n' -scalajs '"-Wconf:any:s"' -classpath '$(SJS_CP)' \
-	  -sourcepath 'library-js/src:library/src' -d $(CLASSES)/sjs-scalalib >> $(CLASSES)/sjs-scalalib.args
+	  -sourcepath 'library/src' -d $(CLASSES)/sjs-scalalib >> $(CLASSES)/sjs-scalalib.args
 	@grep -vE 'BoxesRunTime.scala|ScalaNumber.scala' $(GEN)/sjs-js-rel.txt | sed 's|^|library-js/src/|' >> $(CLASSES)/sjs-scalalib.args
 	@comm -23 $(GEN)/sjs-lib-rel.txt $(GEN)/sjs-js-rel.txt | grep -vE 'BoxesRunTime|ScalaNumber' | sed 's|^|library/src/|' >> $(CLASSES)/sjs-scalalib.args
 	$(STAGEC) @$(CLASSES)/sjs-scalalib.args
