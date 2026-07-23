@@ -225,9 +225,11 @@ which:
    branch — which holds only Scala source plus this workflow — can be built.
 2. **Versions** the build as `<upstream-base>-p<n>`. The base is the stream's
    `mk/<stream>.mk` `VERSION` with the `-propensive` suffix stripped; `<n>` is one
-   greater than the highest existing `-p` tag for that base (starting at `1`). A
-   stream that tracks a non-final upstream carries a `-dev` marker in its `VERSION`,
-   so it releases as `<base>-dev-p<n>`.
+   greater than the highest existing `-p` tag *anywhere in the stream family*
+   (`<stream>.*-p*`, starting at `1`), so the counter survives upstream base
+   bumps such as RC1 → RC4 and simultaneous releases across streams keep
+   matching `p`-numbers. A stream that tracks a non-final upstream carries a
+   `-dev` marker in its `VERSION`, so it releases as `<base>-dev-p<n>`.
 3. **Builds** everything cleanly (`make … tarball`).
 4. **Tags** the commit with the version and creates a **GitHub release**, attaching a
    single `proscala-<version>.tar.gz` — a top-level `lib/` of the jars we build plus
