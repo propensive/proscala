@@ -24,7 +24,7 @@ import typer.Implicits.*
 import typer.Inferencing
 import scala.util.control.NonFatal
 import StdNames.nme
-import Formatting.{hl, delay}
+import Formatting.{hl, delay, Styled, dclOf, locatedOf, fullNameOf}
 import ast.Trees.*
 import ast.untpd
 import ast.tpd
@@ -360,9 +360,15 @@ class TypeMismatch(val found: Type, expected: Type, val inTree: Option[untpd.Tre
     val (found2, expected2) =
       if (found1 frozen_<:< expected1) || reported.fbounded then (found, expected)
       else (found1, expected1)
-    val (foundStr, expectedStr) = Formatting.typeDiff(found2.normalized, expected2.normalized)
-    i"""|${preface}Found:    $foundStr
-        |Required: $expectedStr${reported.notes}"""
+    if DiagnosticMarkup.active then
+      // interpolate the types themselves so that they are marked up; a colored
+      // diff of pre-rendered strings is useless to a structured consumer
+      i"""|${preface}Found:    ${found2.normalized}
+          |Required: ${expected2.normalized}${reported.notes}"""
+    else
+      val (foundStr, expectedStr) = Formatting.typeDiff(found2.normalized, expected2.normalized)
+      i"""|${preface}Found:    $foundStr
+          |Required: $expectedStr${reported.notes}"""
   end msg
 
   override def msgPostscript(using Context): String =
@@ -372,7 +378,7 @@ class TypeMismatch(val found: Type, expected: Type, val inTree: Option[untpd.Tre
     notes.filter(!_.showAsPrefix).map(_.render).mkString ++ super.msgPostscript ++ importSuggestions
 
   override def explain(using Context) =
-    val treeStr = inTree.map(x => s"\nTree:\n\n${x.show}\n").getOrElse("")
+    val treeStr = inTree.map(x => i"\nTree:\n\n$x\n").getOrElse("")
     treeStr + "\n" + super.explain
 
   override def actions(using Context) =
@@ -552,7 +558,7 @@ extends SyntaxMsg(ObjectMayNotHaveSelfTypeID) {
         |  - Create a trait or a class instead of an object
         |  - Let the object extend a trait containing the self type:
         |
-        |    object $name extends ${selfTpt.show}"""
+        |    object $name extends $selfTpt"""
   }
 }
 
@@ -785,15 +791,13 @@ extends SyntaxMsg(WrongNumberOfTypeArgsID) {
   private val msgPrefix = if (actualCount > expectedCount) "Too many" else "Not enough"
 
   def msg(using Context) =
-    val expectedArgString = expectedArgs
-      .map(_.paramName.unexpandedName.show)
-      .mkString("[", ", ", "]")
-    val actualArgString = actual.map(_.show).mkString("[", ", ", "]")
+    val expectedArgString = i"${expectedArgs.map(_.paramName.unexpandedName)}"
+    val actualArgString = i"$actual"
     val prettyName =
       try fntpe.termSymbol match
-        case NoSymbol => fntpe.show
-        case symbol   => symbol.showFullName
-      catch case NonFatal(ex) => fntpe.show
+        case NoSymbol => Styled(fntpe, "")(fntpe.show)
+        case symbol   => fullNameOf(symbol)
+      catch case NonFatal(ex) => Styled(fntpe, "")(fntpe.show)
     i"""|$msgPrefix type arguments for $prettyName$expectedArgString
         |expected: $expectedArgString
         |actual:   $actualArgString"""
@@ -1193,11 +1197,11 @@ extends DeclarationMsg(OverridesNothingButNameExistsID) {
       else "signature"
     i"""${member} has a different $what than the overridden declaration"""
   def explain(using Context) =
-    val existingDecl: String = existing.map(_.showDcl).mkString("  \n")
+    val existingDecl: String = i"${existing.map(dclOf)}%  \n%"
     i"""|There must be a non-final field or method with the name ${member.name} and the
         |same parameter list in a super class of ${member.owner} to override it.
         |
-        |  ${member.showDcl}
+        |  ${dclOf(member)}
         |
         |The super classes of ${member.owner} contain the following members
         |named ${member.name}:
@@ -1391,12 +1395,12 @@ class SuperQualMustBeParent(qual: untpd.Ident, cls: ClassSymbol)(using Context)
 extends ReferenceMsg(SuperQualMustBeParentID) {
   def msg(using Context) = i"""|$qual does not name a parent of $cls"""
   def explain(using Context) =
-    val parents: Seq[String] = (cls.info.parents map (_.typeSymbol.name.show)).sorted
+    val parents = cls.info.parents.map(_.typeSymbol.name).sortBy(_.show)
     i"""|When a qualifier ${hl("T")} is used in a ${hl("super")} prefix of the form ${hl("C.super[T]")},
         |${hl("T")} must be a parent type of ${hl("C")}.
         |
         |In this case, the parents of $cls are:
-        |${parents.mkString("  - ", "\n  - ", "")}
+        |  - ${parents}%\n  - %
         |"""
 }
 
@@ -1422,8 +1426,8 @@ import typer.Typer.BindingPrec
 class ConstrProxyShadows(proxy: TermRef, shadowed: Type, shadowedIsApply: Boolean)(using Context)
   extends ReferenceMsg(ConstrProxyShadowsID), NoDisambiguation:
 
-  def clsString(using Context) = proxy.symbol.companionClass.showLocated
-  def shadowedString(using Context) = shadowed.termSymbol.showLocated
+  def clsString(using Context) = locatedOf(proxy.symbol.companionClass)
+  def shadowedString(using Context) = locatedOf(shadowed.termSymbol)
   def appClause = if shadowedIsApply then " the apply method of" else ""
   def appSuffix = if shadowedIsApply then ".apply" else ""
 
@@ -1525,7 +1529,7 @@ extends TypeMsg(MethodDoesNotTakeParametersId) {
   def msg(using Context) = {
     val more = if (tree.isInstanceOf[tpd.Apply]) " more" else ""
     val meth = methodSymbol
-    val methStr = if (meth.exists) meth.showLocated else "expression"
+    val methStr = if (meth.exists) i"${locatedOf(meth)}" else "expression"
     i"$methStr does not take$more parameters"
   }
 
@@ -1595,8 +1599,8 @@ class TypeDoesNotTakeParameters(tpe: Type, params: List[untpd.Tree])(using Conte
   def msg(using Context) = i"$tpe does not take type parameters$fboundsAddendum"
   def explain(using Context) =
     val ps =
-      if (params.size == 1) s"a type parameter ${params.head}"
-      else s"type parameters ${params.map(_.show).mkString(", ")}"
+      if (params.size == 1) i"a type parameter ${params.head}"
+      else i"type parameters ${params}%, %"
     i"""You specified ${NoColor(ps)} for $tpe, which is not
         |declared to take any.
         |"""
@@ -1651,7 +1655,9 @@ class MissingImplicitParameterInEmptyArguments(pname: Name, methString: String)(
 class MissingArgumentList(method: String, sym: Symbol)(using Context)
   extends TypeMsg(MissingArgumentListID) {
   def msg(using Context) =
-    val symDcl = if sym.exists then "\n\n  " + hl(sym.showDcl(using ctx.withoutColors)) else ""
+    val symDcl =
+      if sym.exists then i"\n\n  ${Styled(sym, "dcl")(hl(sym.showDcl(using ctx.withoutColors)))}"
+      else ""
     i"missing argument list for $method$symDcl"
   def explain(using Context) = {
     i"""Unapplied methods are only converted to functions when a function type is expected."""
@@ -1782,7 +1788,7 @@ class CannotExtendContextFunction(sym: Symbol)(using Context)
 
 class JavaEnumParentArgs(parent: Type)(using Context)
   extends TypeMsg(JavaEnumParentArgsID) {
-    def msg(using Context) = i"""not enough arguments for constructor Enum: ${hl("(name: String, ordinal: Int)")}: ${hl(parent.show)}"""
+    def msg(using Context) = i"""not enough arguments for constructor Enum: ${hl("(name: String, ordinal: Int)")}: ${Styled(parent, "")(hl(parent.show))}"""
     def explain(using Context) = ""
   }
 
@@ -1797,7 +1803,7 @@ class CannotHaveSameNameAs(sym: Symbol, cls: Symbol, reason: CannotHaveSameNameA
           |""".stripMargin
   }
 
-  def msg(using Context) = i"""$sym cannot have the same name as ${cls.showLocated} -- """ + reasonMessage
+  def msg(using Context) = i"""$sym cannot have the same name as ${locatedOf(cls)} -- """ + reasonMessage
   def explain(using Context) = ""
 }
 object CannotHaveSameNameAs {
@@ -2091,7 +2097,7 @@ class DuplicateNamedTypeParameter(name: Name)(using Context)
 
 class UndefinedNamedTypeParameter(undefinedName: Name, definedNames: List[Name])(using Context)
   extends SyntaxMsg(UndefinedNamedTypeParameterID) {
-  def msg(using Context) = i"Type parameter $undefinedName is undefined. Expected one of ${definedNames.map(_.show).mkString(", ")}."
+  def msg(using Context) = i"Type parameter $undefinedName is undefined. Expected one of ${definedNames}%, %."
   def explain(using Context) = ""
 }
 
@@ -2325,7 +2331,7 @@ extends ReferenceMsg(BadSymbolicReferenceID) {
       else ("", "the signature")
 
     i"""Bad symbolic reference. A signature$location
-        |refers to $denotationName in ${denotationOwner.showKind} ${denotationOwner.showFullName} which is not available.
+        |refers to $denotationName in ${denotationOwner.showKind} ${fullNameOf(denotationOwner)} which is not available.
         |It may be completely missing from the current classpath, or the version on
         |the classpath might be incompatible with the version used when compiling $src."""
   }
@@ -2340,9 +2346,9 @@ class UnableToExtendSealedClass(pclazz: Symbol)(using Context) extends SyntaxMsg
 
 class SymbolHasUnparsableVersionNumber(symbol: Symbol, errorMessage: String)(using Context)
 extends SyntaxMsg(SymbolHasUnparsableVersionNumberID) {
-  def msg(using Context) = i"${symbol.showLocated} has an unparsable version number: $errorMessage"
+  def msg(using Context) = i"${locatedOf(symbol)} has an unparsable version number: $errorMessage"
   def explain(using Context) =
-    i"""The ${symbol.showLocated} is marked with ${hl("@migration")} indicating it has changed semantics
+    i"""The ${locatedOf(symbol)} is marked with ${hl("@migration")} indicating it has changed semantics
         |between versions and the ${hl("-Xmigration")} settings is used to warn about constructs
         |whose behavior may have changed since version change."""
 }
@@ -2352,9 +2358,9 @@ class SymbolChangedSemanticsInVersion(
   migrationVersion: ScalaVersion,
   migrationMessage: String
 )(using Context) extends SyntaxMsg(SymbolChangedSemanticsInVersionID) {
-  def msg(using Context) = i"${symbol.showLocated} has changed semantics in version $migrationVersion: $migrationMessage"
+  def msg(using Context) = i"${locatedOf(symbol)} has changed semantics in version $migrationVersion: $migrationMessage"
   def explain(using Context) =
-    i"""The ${symbol.showLocated} is marked with ${hl("@migration")} indicating it has changed semantics
+    i"""The ${locatedOf(symbol)} is marked with ${hl("@migration")} indicating it has changed semantics
         |between versions and the ${hl("-Xmigration")} settings is used to warn about constructs
         |whose behavior may have changed since version change."""
 }
@@ -2481,8 +2487,8 @@ extends NamingMsg(DoubleDefinitionID):
 
     atPhase(typerPhase) {
       i"""$clashDescription:
-          |${previousDecl.showDcl} ${symLocation(previousDecl)} and
-          |${decl.showDcl} ${symLocation(decl)}
+          |${dclOf(previousDecl)} ${symLocation(previousDecl)} and
+          |${dclOf(decl)} ${symLocation(decl)}
           |"""
     } + details
   }
@@ -2519,8 +2525,8 @@ extends NamingMsg(DoubleDefinitionID):
         |
         |In your code the two declarations
         |
-        |  ${atPhase(typerPhase)(previousDecl.showDcl)}
-        |  ${atPhase(typerPhase)(decl.showDcl)}
+        |  ${Styled(previousDecl, "dcl")(atPhase(typerPhase)(previousDecl.showDcl))}
+        |  ${Styled(decl, "dcl")(atPhase(typerPhase)(decl.showDcl))}
         |
         |erase to the identical signature
         |
@@ -2535,7 +2541,7 @@ extends NamingMsg(DoubleDefinitionID):
         |   bytecode-level name via `@targetName`; for example:
         |
         |      @targetName("${decl.name.show}_2")
-        |      ${atPhase(typerPhase)(decl.showDcl)}
+        |      ${Styled(decl, "dcl")(atPhase(typerPhase)(decl.showDcl))}
         |
         |Choose the `@targetName` argument carefully: it is the name that will be used
         |when calling the method externally, so it should be unique and descriptive.
@@ -2544,20 +2550,20 @@ extends NamingMsg(DoubleDefinitionID):
 end DoubleDefinition
 
 class ImportedTwice(sel: Name)(using Context) extends SyntaxMsg(ImportedTwiceID) {
-  def msg(using Context) = s"${sel.show} is imported twice on the same import line."
+  def msg(using Context) = i"$sel is imported twice on the same import line."
   def explain(using Context) = ""
 }
 
 class UnimportedAndImported(sel: Name, isImport: Boolean)(using Context) extends SyntaxMsg(UnimportedAndImportedID) {
   def msg(using Context) =
     val otherStr = if isImport then "and imported" else "twice"
-    s"${sel.show} is unimported $otherStr on the same import line."
+    i"$sel is unimported $otherStr on the same import line."
   def explain(using Context) = ""
 }
 
 class TypeTestAlwaysDiverges(scrutTp: Type, testTp: Type)(using Context) extends SyntaxMsg(TypeTestAlwaysDivergesID) {
   def msg(using Context) =
-    s"This type test will never return a result since the scrutinee type ${scrutTp.show} does not contain any value."
+    i"This type test will never return a result since the scrutinee type $scrutTp does not contain any value."
   def explain(using Context) = ""
 }
 
@@ -2782,27 +2788,27 @@ class IllegalSuperAccessor(base: Symbol, memberName: Name, targetName: Name,
 class TraitParameterUsedAsParentPrefix(cls: Symbol)(using Context)
   extends DeclarationMsg(TraitParameterUsedAsParentPrefixID) {
   def msg(using Context) =
-    s"${cls.show} cannot extend from a parent that is derived via its own parameters"
+    i"$cls cannot extend from a parent that is derived via its own parameters"
   def explain(using Context) =
     i"""
-       |The parent class/trait that ${cls.show} extends from is obtained from
-       |the parameter of ${cls.show}. This is disallowed in order to prevent
+       |The parent class/trait that $cls extends from is obtained from
+       |the parameter of $cls. This is disallowed in order to prevent
        |outer-related Null Pointer Exceptions in Scala.
        |
        |In order to fix this issue consider directly extending from the parent rather
-       |than obtaining it from the parameters of ${cls.show}.
+       |than obtaining it from the parameters of $cls.
        |"""
 }
 
 class UnknownNamedEnclosingClassOrObject(name: TypeName)(using Context)
   extends ReferenceMsg(UnknownNamedEnclosingClassOrObjectID) {
   def msg(using Context) =
-    i"""no enclosing class or object is named '${hl(name.show)}'"""
+    i"""no enclosing class or object is named '${Styled(name, "")(hl(name.show))}'"""
   def explain(using Context) =
     i"""
-    |The class or object named '${hl(name.show)}' was used as a visibility
+    |The class or object named '${Styled(name, "")(hl(name.show))}' was used as a visibility
     |modifier, but could not be resolved. Make sure that
-    |'${hl(name.show)}' is not misspelled and has been imported into the
+    |'${Styled(name, "")(hl(name.show))}' is not misspelled and has been imported into the
     |current scope.
     """
   }
@@ -2874,7 +2880,7 @@ class ExtensionCanOnlyHaveDefs(mdef: untpd.Tree)(using Context)
   def msg(using Context) = i"Only methods allowed here, since collective parameters are given"
   def explain(using Context) =
     i"""Extension clauses can only have `def`s
-        | `${mdef.show}` is not a valid expression here.
+        | `$mdef` is not a valid expression here.
         |"""
 }
 
@@ -2882,7 +2888,7 @@ class UnexpectedPatternForSummonFrom(tree: Tree[?])(using Context)
   extends SyntaxMsg(UnexpectedPatternForSummonFromID) {
   def msg(using Context) = i"Unexpected pattern for summonFrom. Expected ${hl("`x: T`")} or ${hl("`_`")}"
   def explain(using Context) =
-    i"""|The pattern "${tree.show}" provided in the ${hl("case")} expression of the ${hl("summonFrom")},
+    i"""|The pattern "$tree" provided in the ${hl("case")} expression of the ${hl("summonFrom")},
         | needs to be of the form ${hl("`x: T`")} or ${hl("`_`")}.
         |
         | Example usage:
@@ -2902,7 +2908,7 @@ class AnonymousInstanceCannotBeEmpty(impl:  untpd.Template)(using Context)
   def msg(using Context) = i"anonymous instance must implement a type or have at least one extension method"
   def explain(using Context) =
     i"""|Anonymous instances cannot be defined with an empty body. The block
-        |`${impl.show}` should either contain an implemented type or at least one extension method.
+        |`$impl` should either contain an implemented type or at least one extension method.
         |"""
 }
 
@@ -2941,7 +2947,7 @@ class ImplicitSearchTooLargeWarning(limit: Int, openSearchPairs: List[(Candidate
   extends TypeMsg(ImplicitSearchTooLargeID):
   override def showAlways = true
   def showQuery(query: (Candidate, Type))(using Context): String =
-    i"  ${query._1.ref.symbol.showLocated}  for  ${query._2}}"
+    i"  ${locatedOf(query._1.ref.symbol)}  for  ${query._2}}"
   def msg(using Context) =
     i"""Implicit search problem too large.
         |an implicit search was terminated with failure after trying $limit expressions.
@@ -3143,7 +3149,7 @@ class MissingImplicitArgument(
             i"""$headline.
               |I found:
               |
-              |    ${original.show.replace("\n", "\n    ")}
+              |    ${Styled(original, "")(original.show.replace("\n", "\n    "))}
               |
               |But ${tpe.explanation}."""
           case _ => headline
@@ -3227,15 +3233,15 @@ class MissingImplicitArgument(
       case _ =>
         // show all available additional info
         def hiddenImplicitNote(s: SearchSuccess) =
-          i"\n\nNote: ${s.ref.symbol.showLocated} was not considered because it was not imported with `import given`."
+          i"\n\nNote: ${locatedOf(s.ref.symbol)} was not considered because it was not imported with `import given`."
         def showImplicitAndConversions(imp: TermRef, convs: Iterable[TermRef]) =
-          i"\n- ${imp.symbol.showDcl}${convs.map(c => "\n    - " + c.symbol.showDcl).mkString}"
+          i"\n- ${dclOf(imp.symbol)}${convs.map(c => i"\n    - ${dclOf(c.symbol)}").mkString}"
         def noChainConversionsNote(ignoredConvertibleImplicits: Iterable[TermRef]): Option[String] =
           Option.when(ignoredConvertibleImplicits.nonEmpty)(
             i"\n\nNote: implicit conversions are not automatically applied to arguments of using clauses. " +
             i"You will have to pass the argument explicitly.\n" +
-            i"The following implicits in scope can be implicitly converted to ${pt.show}:" +
-            ignoredConvertibleImplicits.map { imp => s"\n- ${imp.symbol.showDcl}"}.mkString
+            i"The following implicits in scope can be implicitly converted to $pt:" +
+            ignoredConvertibleImplicits.map { imp => i"\n- ${dclOf(imp.symbol)}"}.mkString
           )
         def importSuggestionAddendum: String =
           arg.tpe match
@@ -3263,7 +3269,7 @@ extends ReferenceMsg(CannotBeAccessedID):
       case Nil =>
         i"$name cannot"
       case sym :: Nil =>
-        i"${if (sym.owner == pre.typeSymbol) sym.show else sym.showLocated} cannot"
+        i"${if (sym.owner == pre.typeSymbol) Styled(sym, "")(sym.show) else locatedOf(sym)} cannot"
       case _ =>
         i"none of the overloaded alternatives named $name can"
     val where = if (ctx.owner.exists) i" from ${ctx.owner.enclosingClass}" else ""
@@ -3274,13 +3280,13 @@ extends ReferenceMsg(CannotBeAccessedID):
       val location: String =
         if alt.is(Protected) then
           if alt.privateWithin.exists && alt.privateWithin != owner then
-            if owner.is(Final) then alt.privateWithin.showLocated
-            else s"${alt.privateWithin.showLocated}, or ${owner.showLocated} or one of its subclasses"
+            if owner.is(Final) then i"${locatedOf(alt.privateWithin)}"
+            else i"${locatedOf(alt.privateWithin)}, or ${locatedOf(owner)} or one of its subclasses"
           else
-            if owner.is(Final) then owner.showLocated
-            else s"${owner.showLocated} or one of its subclasses"
+            if owner.is(Final) then i"${locatedOf(owner)}"
+            else i"${locatedOf(owner)} or one of its subclasses"
         else
-          alt.privateWithin.orElse(owner).showLocated
+          i"${locatedOf(alt.privateWithin.orElse(owner))}"
       val accessMod = if alt.is(Protected) then "protected" else "private"
       val within = if alt.privateWithin.exists then i"[${alt.privateWithin.name}]"
         else ""
@@ -3381,7 +3387,7 @@ class UnstableInlineAccessor(accessed: Symbol, accessorTree: tpd.Tree)(using Con
        |be checked using MiMa. If binary compatibility is broken, you should add the
        |old accessor explicitly in the source code. The following code should be
        |added to $where:
-       |  @publicInBinary private[$within] ${accessorTree.show}
+       |  @publicInBinary private[$within] $accessorTree
        |"""
 
   private def accessor = accessorTree.symbol
@@ -3653,7 +3659,7 @@ class MatchIsNotPartialFunction(using Context) extends SyntaxMsg(MatchIsNotParti
 
 final class PointlessAppliedConstructorType(tpt: untpd.Tree, args: List[untpd.Tree], tpe: Type)(using Context) extends TypeMsg(PointlessAppliedConstructorTypeID):
   override protected def msg(using Context): String =
-    val act = i"$tpt(${args.map(_.show).mkString(", ")})"
+    val act = i"$tpt(${args}%, %)"
     i"""|Applied constructor type $act has no effect.
         |The resulting type of $act is the same as its base type, namely: $tpe""".stripMargin
 
@@ -3851,7 +3857,7 @@ final class TypeParameterShadowsType(shadow: Symbol, parent: Symbol, shadowed: S
     extends NamingMsg(TypeParameterShadowsTypeID):
   override protected def msg(using Context): String =
     if shadowed.exists then
-      i"Type parameter ${shadow.name} for $parent shadows the type defined by ${shadowed.showLocated}"
+      i"Type parameter ${shadow.name} for $parent shadows the type defined by ${locatedOf(shadowed)}"
     else
       i"Type parameter ${shadow.name} for $parent shadows an explicitly renamed type : ${shadow.name}"
   override protected def explain(using Context): String =
@@ -3862,7 +3868,7 @@ final class TypeParameterShadowsType(shadow: Symbol, parent: Symbol, shadowed: S
 final class PrivateShadowsType(shadow: Symbol, shadowed: Symbol)(using Context)
     extends NamingMsg(PrivateShadowsTypeID):
   override protected def msg(using Context): String =
-    i"${shadow.showLocated} shadows field ${shadowed.name} inherited from ${shadowed.owner}"
+    i"${locatedOf(shadow)} shadows field ${shadowed.name} inherited from ${shadowed.owner}"
   override protected def explain(using Context): String =
     i"""A private field shadows an inherited field with the same name.
        |This can lead to confusion as the inherited field becomes inaccessible.
