@@ -387,8 +387,18 @@ extension (tp: Type)
         this(acc, upperBound)
     accumulate(true, tp)
 
-  /** Tests whether the type derives from capability class `cls`. */
-  def derivesFromCapTrait(cls: ClassSymbol)(using Context): Boolean = tp.dealiasKeepAnnots match
+  /** Tests whether the type derives from capability class `cls`.
+   *  `IArray` derives from none: although it dealiases to (mutable, and under
+   *  strict mutability capability-classified) `Array`, its interface exposes no
+   *  mutation, so a fresh `IArray` is immutable from birth — construction is
+   *  semantically `caps.freeze`. Without this, every stdlib `IArray` factory
+   *  result is spuriously `^{fresh}` through the opaque alias.
+   */
+  def derivesFromCapTrait(cls: ClassSymbol)(using Context): Boolean =
+    tp.typeSymbol != defn.IArrayAlias && derivesFromCapTraitDealiased(cls)
+
+  private def derivesFromCapTraitDealiased(cls: ClassSymbol)(using Context): Boolean =
+    tp.dealiasKeepAnnots match
     case tp: (TypeRef | AppliedType) =>
       val sym = tp.typeSymbol
       if sym.isClass
