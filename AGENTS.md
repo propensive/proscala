@@ -218,7 +218,7 @@ Current streams and their release versions:
 | Stream | Tracks | Version |
 | ------ | --------------------------- | ------------------- |
 | `3.8`  | `scala/scala3 release-3.8.4` | `3.8.4-p<n>`        |
-| `3.9`  | `scala/scala3 release-3.9.0` | `3.9.0-RC1-p<n>`    |
+| `3.9`  | `scala/scala3 release-3.9.0` | `3.9.0-RC4-p<n>`    |
 | `3.10` | `scala/scala3 main`          | `3.10.0-dev-p<n>`   |
 
 The GitHub token needs `contents: write` (declared in the workflow). Because the
