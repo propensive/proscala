@@ -38,7 +38,7 @@ object Formatting {
 
       def toStr(x: Shown)(using Context): String = x match
         case seq: Seq[?] => seq.map(toStr).mkString("[", ", ", "]")
-        case res         => res.tryToShow
+        case res         => showValue(res)
 
     import Shown.runCtxShow
 
@@ -131,6 +131,7 @@ object Formatting {
       given Show[ast.untpd.Mod] with
         def show(x: ast.untpd.Mod) = CtxShow(s"Mod(${toStr(x.flags)})")
 
+      given Show[Styled]                              = ShowAny
       given Show[Showable]                            = ShowAny
       given Show[Shown]                               = ShowAny
       given Show[Int]                                 = ShowAny
@@ -167,8 +168,71 @@ object Formatting {
    *     of the string context *before* inserting the arguments. That way, we guard
    *     against accidentally treating an interpolated value as a margin.
    */
+  /** A value rendered with a non-default style (a declaration, a location, a
+   *  full name, a composite phrase), which still carries the value itself so
+   *  that semantic markup can record its identity. The text is evaluated
+   *  eagerly, at the argument position: printing order relative to the other
+   *  interpolated arguments must not change, because the `Seen` disambiguation
+   *  machinery assigns superscripts and `where:` clauses by recording order.
+   */
+  final class Styled(val value: Any, val style: String, val text: String)
+
+  object Styled:
+    def apply(value: Any, style: String)(text: String): Styled =
+      new Styled(value, style, text)
+
+  def dclOf(sym: Symbol)(using Context): Styled      = Styled(sym, "dcl")(sym.showDcl)
+  def dclOf(d: Denotations.SingleDenotation)(using Context): Styled = Styled(d.symbol, "dcl")(d.showDcl)
+  def locatedOf(sym: Symbol)(using Context): Styled  = Styled(sym, "located")(sym.showLocated)
+  def fullNameOf(sym: Symbol)(using Context): Styled = Styled(sym, "full")(sym.showFullName)
+
+  /** The string form of an interpolated value, marked up with its semantic
+   *  identity when `-Xsemantic-diagnostics` is active. Used both for direct
+   *  arguments (`StringFormatter.showArg`) and for the elements of shown
+   *  containers (`ShownDef.Shown.toStr`), so that the types in a shown
+   *  `Seq[Type]` are marked individually.
+   */
+  def showValue(arg: Any)(using Context): String = arg match
+    case st: Styled =>
+      val text = st.text
+      if reporting.DiagnosticMarkup.active then
+        try markValue(st.value, text, st.style)
+        catch case scala.util.control.NonFatal(_) => text
+      else text
+    case _ =>
+      val shown = arg.tryToShow
+      if reporting.DiagnosticMarkup.active then
+        try markValue(arg, shown, "")
+        catch case scala.util.control.NonFatal(_) => shown
+      else shown
+
+  /** Record what kind of entity produced the shown text, so that `XmlReporter`
+   *  can mark it up; types additionally carry their TASTy serialization.
+   */
+  private def markValue(arg: Any, shown: String, style: String)(using Context): String =
+    import reporting.{DiagnosticMarkup, DiagnosticTypePickler}
+    def styleAttrs = if style.isEmpty then Nil else List(("style", style))
+    arg match
+      case tp: Type =>
+        val attrs = DiagnosticTypePickler.pickle(tp) match
+          case Some(pickled) =>
+            ("tasty", pickled.tasty)
+              :: pickled.placeholders.map(p => ("p", DiagnosticMarkup.encodePlaceholder(p)))
+          case None => Nil
+        DiagnosticMarkup.wrap("type", attrs ::: styleAttrs, shown)
+      case sym: Symbol =>
+        DiagnosticMarkup.wrap("sym",
+          ("name", sym.name.show) :: ("full", sym.showFullName) :: styleAttrs, shown)
+      case name: Names.Name =>
+        DiagnosticMarkup.wrap("name", ("isType", name.isTypeName.toString) :: styleAttrs, shown)
+      case _: ast.Trees.Tree[?] =>
+        DiagnosticMarkup.wrap("code", styleAttrs, shown)
+      case _ =>
+        if style.isEmpty then shown
+        else DiagnosticMarkup.wrap("span", styleAttrs, shown)
+
   class StringFormatter(protected val sc: StringContext) {
-    protected def showArg(arg: Any)(using Context): String = arg.tryToShow
+    protected def showArg(arg: Any)(using Context): String = showValue(arg)
 
     private def treatArg(arg: Shown, suffix: String)(using Context): (String, String) = arg.runCtxShow match {
       case arg: Seq[?] if suffix.indexOf('%') == 0 && suffix.indexOf('%', 1) != -1 =>
