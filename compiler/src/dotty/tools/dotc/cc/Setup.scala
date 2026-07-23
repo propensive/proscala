@@ -252,6 +252,13 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
   private trait SetupTypeMap extends FollowAliasesMap:
     private var isTopLevel = true
 
+    // Guards against cyclic `LazyRef` graphs: `mapConserveSuper` forces a LazyRef's
+    // underlying type eagerly, and a reference cycle (reachable e.g. through denotations
+    // surviving a compilation-suspension re-run) would otherwise recurse without bound.
+    // A re-entered LazyRef is returned unmapped; its underlying type is transformed when
+    // it is forced in a context outside this traversal.
+    protected val mappingLazyRefs = util.HashSet[Type]()
+
     protected def innerApply(tp: Type): Type
 
     // Types that map to themselves (`eq`) contain nothing for Setup to transform under any
@@ -565,7 +572,12 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
                   isContextual = defn.isContextFunctionClass(tycon.classSymbol)),
                 t.dealiasKeepAnnots))
               .showing(i"convert dep $t to $result", capt)
-          case t: (LazyRef | TypeVar) =>
+          case t: LazyRef =>
+            if mappingLazyRefs.contains(t) then t
+            else
+              mappingLazyRefs += t
+              try mapConserveSuper(t) finally mappingLazyRefs.remove(t)
+          case t: TypeVar =>
             mapConserveSuper(t)
           case t =>
             val t1 = normalizeCaptures(mapFollowingAliases(mapOver(t)))
