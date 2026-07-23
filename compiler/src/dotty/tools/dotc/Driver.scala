@@ -96,6 +96,8 @@ class Driver {
                 report.error(em"Not a reporter: ${ctx.settings.Yreporter.value}")
           catch case e: ReflectiveOperationException =>
             report.error(em"Could not create reporter ${ctx.settings.Yreporter.value}: $e")
+        else if ctx.settings.XsemanticDiagnostics.value then
+          ictx.setReporter(new XmlReporter)
         val files = fileNames.map(ctx.getFile)
         (files, fromTastySetup(files))
       )
