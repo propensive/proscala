@@ -47,7 +47,9 @@ jobs:
           # base is that with the -propensive (or an existing -p<n>) suffix stripped.
           base=$(grep -m1 '^VERSION' "mk/${stream}.mk" | sed -E 's/.*:=[[:space:]]*//; s/-propensive$//; s/-p[0-9]+$//')
           git fetch --tags --force --quiet
-          prev=$(git tag -l "${base}-p*" | sed -nE "s/^${base}-p([0-9]+)\$/\1/p" | sort -n | tail -1)
+          # The patch counter is per *stream*, not per upstream base, so it
+          # keeps counting across upstream version bumps (e.g. RC1 -> RC4).
+          prev=$(git tag -l "${stream}.*-p*" | sed -nE 's/^.*-p([0-9]+)$/\1/p' | sort -n | tail -1)
           next=$(( ${prev:-0} + 1 ))
           version="${base}-p${next}"
           echo "stream=$stream"   >> "$GITHUB_OUTPUT"
