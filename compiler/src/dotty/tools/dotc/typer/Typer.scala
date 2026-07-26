@@ -1342,6 +1342,15 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
           case tp: AppliedType if tp.tycon.typeSymbol.isOpaqueAlias =>
             seeThrough(tp.translucentSuperType)
           case _ => tp
+        // A covariant alias over `IArray` uncovers as `Array[? <: T]`, whose repeated
+        // translation is the wildcard-argument `(? <: T)*` — a form the capture
+        // checker cannot translate back (TypeBounds of a TypeBounds argument). Cast
+        // to `Array[T]` instead: the erasure is the same, and the vararg adaptation
+        // reconstructs the `Array[? <: T]` view where it needs it.
+        def dropArrayWildcard(tp: Type)(using Context): Type = tp match
+          case AppliedType(tycon, List(arg: TypeBounds)) if tp.derivesFrom(defn.ArrayClass) =>
+            tycon.appliedTo(arg.hi)
+          case _ => tp
         // An opaque alias whose underlying type is a Seq or an Array may be spliced
         // directly: the alias erases to its underlying type, so the inserted cast is
         // a no-op at erasure. The alias only fails to conform when its opacity is in
@@ -1352,7 +1361,7 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
           if (underlying ne wide)
              && !wide.derivesFrom(defn.SeqClass) && !wide.derivesFrom(defn.ArrayClass)
              && (underlying.derivesFrom(defn.SeqClass) || underlying.derivesFrom(defn.ArrayClass))
-          then expr.cast(underlying)
+          then expr.cast(dropArrayWildcard(underlying))
           else expr
         val expr0 = tryEither(typedRegular) { (fallVal, fallState) =>
           // The retype must be speculative too: unless an opaque alias is actually
