@@ -92,6 +92,19 @@ whose constraint entry no longer existed ("assertion failed: param = T" in
 `ConstraintHandling.approximation`). A minimal reproduction of that crash is
 in [`repro/`](repro/).
 
+When the underlying type is an `Array` with a wildcard element —
+`Array[? <: T]`, which is what any covariant alias over `IArray` uncovers as —
+the cast targets `Array[T]` (the element's upper bound) rather than the
+wildcard form. The two erase identically, so this changes nothing at runtime,
+but it matters under `-Ycc-new`: the repeated translation of `Array[? <: T]`
+is the wildcard-argument `(? <: T)*`, and when the capture checker
+re-translates that back to an array (`translateFromRepeated`, which wraps the
+element in `TypeBounds.upper`) it builds bounds-of-bounds and trips the
+`TypeBounds` constructor assertion. The patch's first version cast to the
+wildcard form and crashed the capture checker on any cc-checked splice of an
+`IArray`-flavoured alias; a minimal reproduction is in
+[`repro-cc/`](repro-cc/).
+
 The cast is a no-op at erasure — an opaque alias erases to its underlying
 type — so no wrapper is allocated and nothing changes at runtime. Element-type
 conformance is still enforced by the ordinary adaptation of the resulting
@@ -116,9 +129,9 @@ at the cost of a library addition; for now splicing only reveals what
 `translucentSuperType` already reveals to inlining.
 
 Verified with capture checking (`-Ycc-new`, impure element types such as
-`List[() => Unit]`), under separate compilation, and against the real
-Soundness `proscenium` prelude, where `f(series*)` now compiles with no
-`.stdlib*` bridge.
+`List[() => Unit]`, and `IArray`-flavoured aliases — see `repro-cc/`), under
+separate compilation, and against the real Soundness `proscenium` prelude,
+where `f(series*)` now compiles with no `.stdlib*` bridge.
 
 One capture-checking interaction: the inserted cast is a cast type
 application, so under `-Ycc-new` its type argument needs the boxing that the
