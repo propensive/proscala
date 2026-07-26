@@ -1335,7 +1335,46 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
         // irrespective of whether the method we're calling is a Java or Scala method,
         // so the expected type is the union `Seq[T] | Array[_ <: T]`.
         val ptArg = fromRepeated(pt)
-        val expr0 = typedExpr(tree.expr, ptArg)
+        def typedRegular(using Context): Tree = typedExpr(tree.expr, ptArg)
+        def seeThrough(tp: Type)(using Context): Type = tp match
+          case tp: TypeRef if tp.symbol.isOpaqueAlias =>
+            seeThrough(tp.translucentSuperType)
+          case tp: AppliedType if tp.tycon.typeSymbol.isOpaqueAlias =>
+            seeThrough(tp.translucentSuperType)
+          case _ => tp
+        // A covariant alias over `IArray` uncovers as `Array[? <: T]`, whose repeated
+        // translation is the wildcard-argument `(? <: T)*` — a form the capture
+        // checker cannot translate back (TypeBounds of a TypeBounds argument). Cast
+        // to `Array[T]` instead: the erasure is the same, and the vararg adaptation
+        // reconstructs the `Array[? <: T]` view where it needs it.
+        def dropArrayWildcard(tp: Type)(using Context): Type = tp match
+          case AppliedType(tycon, List(arg: TypeBounds)) if tp.derivesFrom(defn.ArrayClass) =>
+            tycon.appliedTo(arg.hi)
+          case _ => tp
+        // An opaque alias whose underlying type is a Seq or an Array may be spliced
+        // directly: the alias erases to its underlying type, so the inserted cast is
+        // a no-op at erasure. The alias only fails to conform when its opacity is in
+        // force (outside the defining scope), so the pierce lives on the failure path.
+        def pierceOpaque(expr: Tree)(using Context): Tree =
+          val wide = expr.tpe.widenDealias
+          val underlying = seeThrough(wide)
+          if (underlying ne wide)
+             && !wide.derivesFrom(defn.SeqClass) && !wide.derivesFrom(defn.ArrayClass)
+             && (underlying.derivesFrom(defn.SeqClass) || underlying.derivesFrom(defn.ArrayClass))
+          then expr.cast(dropArrayWildcard(underlying))
+          else expr
+        val expr0 = tryEither(typedRegular) { (fallVal, fallState) =>
+          // The retype must be speculative too: unless an opaque alias is actually
+          // pierced, the original failure is restored and nothing the retype did —
+          // fresh type variables, quote-hole registrations — may leak into the
+          // enclosing typer state.
+          val nestedCtx = ctx.fresh.setNewTyperState()
+          val bare = typedExpr(tree.expr)(using nestedCtx)
+          val pierced = pierceOpaque(bare)(using nestedCtx)
+          if (pierced ne bare) && !nestedCtx.reporter.hasErrors
+          then { nestedCtx.typerState.commit(); pierced }
+          else { fallState.commit(); fallVal }
+        }
         val expr1 = if ctx.explicitNulls && (!ctx.mode.is(Mode.Pattern)) then
             if expr0.tpe.isNullType then
               // If the type of the argument is `Null`, we cast it to array directly.
