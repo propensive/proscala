@@ -17,6 +17,7 @@ implementation differs).
 | [ctxresult](ctxresult/ctxresult.md) | Context-result closures level-checked at the method's level | 3.8, 3.9, 3.10 | bug fix | yes |
 | [dictcaps](dictcaps/dictcaps.md) | Infer the capture set of recursive-implicit dictionary instances | 3.8, 3.9, 3.10 | bug fix | yes |
 | [iarraypure](iarraypure/iarraypure.md) | Treat `IArray` as pure under capture checking | 3.8, 3.9, 3.10 | bug fix | yes |
+| [iarraypure-mutalias](iarraypure-mutalias/iarraypure-mutalias.md) | Classify opaque aliases over mutable types under capture checking | 3.8, 3.9, 3.10 | bug fix | yes |
 | [inertcache](inertcache/inertcache.md) | Cache inert types in capture-checking Setup | 3.9, 3.10 | bug fix (hang) | yes |
 | [inlineupdate](inlineupdate/inlineupdate.md) | Propagate update classification to inline accessors | 3.8, 3.9, 3.10 | bug fix | yes |
 | [integratemap](integratemap/integratemap.md) | Evaluate IntegrateMap symbols in the spliced run context | 3.10 | bug fix (crash) | yes |
