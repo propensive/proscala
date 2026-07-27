@@ -404,6 +404,8 @@ extension (tp: Type)
     case tp: (TypeRef | AppliedType) =>
       val sym = tp.typeSymbol
       if sym.isClass then sym.derivesFrom(cls)
+      else if sym.isOpaqueAlias && !(sym eq defn.IArrayAlias)
+      then tp.translucentSuperType.derivesFromCapTrait(cls)
       else tp.superType.derivesFromCapTrait(cls)
     case tp: (TypeProxy & ValueType) =>
       tp.superType.derivesFromCapTrait(cls)
