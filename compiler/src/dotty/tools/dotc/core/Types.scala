@@ -3925,6 +3925,13 @@ object Types extends TypeUtils {
      */
     private class IntegrateMap(from: List[Symbol], to: List[Type])(using Context) extends TypeMap:
       override def apply(tp: Type) =
+        // The anonymous constructor `using Context` would otherwise win implicit
+        // resolution over the inherited `mapCtx` var: when a lazy type containing this
+        // map is forced in a later run, the run-splicing in `mapOver`'s `LazyRef` case
+        // updates `mapCtx`, and symbol computations must follow it rather than the
+        // frozen creation-time context (which would bring denotations backward and
+        // fail `updateValidity`).
+        given Context = mapCtx
         // Same implementation as in `SubstMap`, except the `derivedSelect` in
         // the `NamedType` case, and the default case that just calls `mapOver`.
         tp match
@@ -3943,6 +3950,7 @@ object Types extends TypeUtils {
           case _ => mapOver(tp)
 
       override final def derivedSelect(tp: NamedType, pre: Type): Type =
+        given Context = mapCtx  // see `apply`
         if tp.prefix eq pre then tp
         else
           pre match
