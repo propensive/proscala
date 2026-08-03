@@ -22,6 +22,7 @@ import ContextOps.*
 import Variances.Invariant
 import TastyUnpickler.NameTable
 import typer.ConstFold
+import dotty.tools.backend.sjs.JSDefinitions
 import typer.Checking.checkNonCyclic
 import typer.Nullables.*
 import util.Spans.*
@@ -415,7 +416,7 @@ class TreeUnpickler(reader: TastyReader,
                 // Note that the lambda "rt => ..." is not equivalent to a wildcard closure!
                 // Eta expansion of the latter puts readType() out of the expression.
             case APPLIEDtype =>
-              readType().appliedTo(until(end)(readType()))
+              pseudoUnionAware(readType(), until(end)(readType()))
             case TYPEBOUNDS =>
               val lo = readType()
               if nothingButMods(end) then AliasingBounds(readVariances(lo))
@@ -462,6 +463,42 @@ class TreeUnpickler(reader: TastyReader,
         assert(currentAddr == end, s"$start $currentAddr $end ${astTagToString(tag)}")
         result
       }
+
+      /** Apply `tycon` to `args`, reinterpreting Scala.js's pseudo-union as a real union.
+       *
+       *  `Scala2Unpickler` already does this for `scala.scalajs.js.|[A, B]` read from Scala 2
+       *  pickles, because the Scala.js library encodes union types as that class while Scala 3
+       *  consumers must see real unions. A library compiled by Scala 3 carries the same
+       *  encoding in its Tasty — its own sources need the class, for the wildcard bounds and
+       *  qualified-private annotations it uses internally — so Tasty has to be reinterpreted
+       *  identically, or one library would present different types depending on which
+       *  compiler built it.
+       *
+       *  Matched by owner and name rather than against `jsdefn.PseudoUnionClass`, as in
+       *  `Scala2Unpickler`, so that reading Tasty never has to complete `js.|`.
+       */
+      def pseudoUnionAware(tycon: Type, args: List[Type])(using Context): Type =
+        def isPseudoUnion =
+          val sym = tycon.typeSymbol
+          sym.name == tpnme.raw.BAR
+          && sym.maybeOwner == JSDefinitions.jsdefn.ScalaJSJSPackageClass
+
+        // `js.UndefOr[+A] = (A @uncheckedVariance) | Unit` needs the annotation for the
+        // library's own variance check, because `js.|` is invariant. Scala 2 does not carry
+        // it into its pickles, so the union it yields has a bare operand; drop it here too,
+        // or the two provenances would disagree and `A | Unit` would stop conforming to
+        // `UndefOr[A]`.
+        def bare(tp: Type): Type = tp match
+          case AnnotatedType(parent, annot) if annot.symbol == defn.UncheckedVarianceAnnot =>
+            bare(parent)
+          case _ => tp
+
+        // Wildcard arguments are left alone: the library bounds its own `UnionOps` by
+        // `|[_, _]`, and a union needs value types for operands.
+        if ctx.settings.scalajs.value && args.length == 2 && args.forall(_.isValueType)
+           && isPseudoUnion
+        then OrType(bare(args(0)), bare(args(1)), soft = false)
+        else tycon.appliedTo(args)
 
       def readSimpleType(): Type = (tag: @switch) match {
         case TYPEREFdirect | TERMREFdirect =>
