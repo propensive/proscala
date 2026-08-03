@@ -1,8 +1,8 @@
 # Reproduction: capture-checker crash on an Array-flavoured pierce
 
 Reproduces the `TypeBounds` assertion crash fixed by the "Cast Array-flavoured
-pierces to the element's upper bound" commit on the spliceopaque patch
-branches.
+pierces to the element's upper bound" commit on the patch branches then
+named `spliceopaque`, now `spreadable`.
 
 `repro.scala` splices a covariant opaque alias over `scala.IArray` into a
 vararg position in a module compiled with `-Ycc-new`. `IArray[T]` uncovers as
@@ -36,6 +36,6 @@ whose repeated translation `T*` round-trips through the capture checker.
 
 Stock upstream rejects the splice with a type error at the same position
 (`Found: IArr[Node], Required: Seq[Node] | Array[? <: Node]`), since it has no
-spliceopaque; the crash needed the pierce to let the opaque through. Without
+such elaboration; the crash needed the opaque to be let through. Without
 `-Ycc-new` the original pierce also compiled — the wildcard repeated type only
 breaks under the capture checker's re-checking pass.

@@ -48,7 +48,7 @@ does not exist.
 
 The recursion now pierces opaque aliases with `translucentSuperType` (the
 alias's right-hand side, as `asSeenFrom` its prefix — the same lens the
-spliceopaque patch uses at vararg splices):
+spreadable patch uses at vararg splices):
 
 ```scala
 else if sym.isOpaqueAlias && !(sym eq defn.IArrayAlias)

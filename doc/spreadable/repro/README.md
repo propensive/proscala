@@ -1,8 +1,8 @@
 # Reproduction: crash on an erroneous splice argument
 
 Reproduces the "assertion failed: param = T" compiler crash fixed by the
-"Keep the opaque-splice fallback retype speculative" commit on the
-spliceopaque patch branches.
+"Keep the opaque-splice fallback retype speculative" commit on the patch
+branches then named `spliceopaque`, now `spreadable`.
 
 `macro.scala` passes an opaque `Lst` where `Varargs` requires a plain
 `Seq[Expr[String]]` — a genuine type error — at a `xs*` splice position
