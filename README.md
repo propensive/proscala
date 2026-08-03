@@ -25,7 +25,7 @@ major Scala 3 release line, and its name omits the minor/patch number:
 | Stream | Tracks upstream                | Release versions   |
 | ------ | ------------------------------ | ------------------ |
 | `3.8`  | `scala/scala3` `release-3.8.4` | `3.8.4-p<n>`       |
-| `3.9`  | `scala/scala3` `release-3.9.0` | `3.9.0-RC1-p<n>`   |
+| `3.9`  | `scala/scala3` `release-3.9.0` | `3.9.0-RC4-p<n>`   |
 | `3.10` | `scala/scala3` `main`          | `3.10.0-dev-p<n>`  |
 
 The Branches

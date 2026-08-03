@@ -2,11 +2,11 @@
 
 A compiler intrinsic, `scala.scalajs.wit.witImportCall`, that lowers directly to a Wasm Component Model import invocation, so code generators can call imported WIT functions without hand-written `@WitImport` facade methods.
 
-Branch: `feature/3.9/wasm-witcall`, based on `feature/3.9/wasm` (the WIT/WASM support feature, not `make`).
+Branch: `feature/<stream>/wasm-witcall`, based on `feature/<stream>/wasm` (the WIT/WASM support feature) — a genuine dependency, not an aggregation.
 
 ## Context
 
-The Wasm Component Model describes a component's interface in WIT (Wasm Interface Type) files: named functions grouped into interfaces like `wasi:random/random@0.2.0`, with a rich type language (records, variants, resources, `list`, `tuple`, `option`, `result`). The `feature/3.9/wasm` base branch lets Scala call such imports, but only through a *facade*: a method annotated `@WitImport("module", "name")` with body `wit.native`, whose Scala signature the backend translates into the import's WIT signature. That works for hand-written bindings, but a code generator (such as Xenophile, which resolves WIT files at compile time via macros) would have to synthesize whole annotated classes just to make one call.
+The Wasm Component Model describes a component's interface in WIT (Wasm Interface Type) files: named functions grouped into interfaces like `wasi:random/random@0.2.0`, with a rich type language (records, variants, resources, `list`, `tuple`, `option`, `result`). The `feature/<stream>/wasm` base branch lets Scala call such imports, but only through a *facade*: a method annotated `@WitImport("module", "name")` with body `wit.native`, whose Scala signature the backend translates into the import's WIT signature. That works for hand-written bindings, but a code generator (such as Xenophile, which resolves WIT files at compile time via macros) would have to synthesize whole annotated classes just to make one call.
 
 An *intrinsic* is a function the compiler recognizes by symbol and lowers specially: the call never executes as ordinary code; the backend consumes it at compile time and emits something else. `witImportCall` is such an intrinsic — a single call expression that carries everything needed (module, name, signature, arguments) and lowers to the same Component Model import invocation as an `@WitImport` method call.
 
