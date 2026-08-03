@@ -966,6 +966,11 @@ class Definitions {
       val methodName = if CanEqualClass.name == tpnme.Eql then nme.eqlAny else nme.canEqualAny
       CanEqualClass.companionModule.requiredMethod(methodName)
 
+  // Looked up leniently: a splice consults it only on the failure path, so a
+  // library without `scala.Spreadable` simply never matches.
+  @tu lazy val SpreadableClass: Symbol = getClassIfDefined("scala.Spreadable")
+    def Spreadable_spread(using Context): Symbol = SpreadableClass.requiredMethod(nme.spread)
+
   @tu lazy val CanThrowClass: ClassSymbol = requiredClass("scala.CanThrow")
   @tu lazy val throwsAlias: Symbol = ScalaRuntimePackageVal.requiredType(tpnme.THROWS)
 
