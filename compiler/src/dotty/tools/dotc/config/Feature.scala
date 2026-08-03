@@ -39,6 +39,7 @@ object Feature:
   val modularity = experimental("modularity")
   val quotedPatternsWithPolymorphicFunctions = experimental("quotedPatternsWithPolymorphicFunctions")
   val multiSpreads = experimental("multiSpreads")
+  val spreadable = experimental("spreadable")
   val subCases = experimental("subCases")
   val relaxedLambdaSyntax = experimental("relaxedLambdaSyntax")
   val safe = experimental("safe")
@@ -77,6 +78,7 @@ object Feature:
     (separationChecking, "Enable experimental separation checking (implies captureChecking)"),
     (modularity, "Enable experimental modularity features"),
     (multiSpreads, "Enable experimental varargs with multi-spreads"),
+    (spreadable, "Enable splicing types with a Spreadable instance into vararg positions"),
     (subCases, "Enable experimental match expressions with sub-cases"),
     (relaxedLambdaSyntax, "Enable experimental relaxed lambda syntax"),
     (safe, "Require safe mode"),

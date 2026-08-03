@@ -365,6 +365,12 @@ object language {
     @compileTimeOnly("`multiSpreads` can only be used at compile time in import statements")
     object multiSpreads
 
+    /** Experimental support for splicing a type that has a `Spreadable`
+     *  instance into a vararg position.
+     */
+    @compileTimeOnly("`spreadable` can only be used at compile time in import statements")
+    object spreadable
+
     /** Experimental support for match expressions with sub cases.
      */
     @compileTimeOnly("`subCases` can only be used at compile time in import statements")
