@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+#
+# proscala-check-docs — check the documentation on `main` against the facts it
+# describes, so the copies cannot drift apart unnoticed.
+#
+# Usage:
+#   bin/proscala-check-docs            # check everything, exit 1 on any problem
+#   bin/proscala-check-docs -v         # also list the checks that passed
+#
+# Each fact has exactly one source of truth; the docs are copies, and this
+# checks the copies against it:
+#
+#   which patches a stream carries  ->  features/<stream>
+#   which scala/scala3 branch it mirrors ->  UPSTREAM_REF in mk/<stream>.mk
+#   the release version base        ->  VERSION in mk/<stream>.mk
+#   whether a repro exists          ->  the filesystem, doc/<patch>/repro*/
+#
+# It reads only `main`'s own files plus, opportunistically, the `origin/*` refs
+# (branch-level checks are skipped when those are not present). It changes
+# nothing.
+
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.."
+cd "$ROOT" || exit 1
+
+VERBOSE=0
+[ "${1:-}" = "-v" ] && VERBOSE=1
+
+PROBLEMS=()
+problem() { PROBLEMS+=("$*"); }
+pass() { [ "$VERBOSE" = 1 ] && echo "   ok: $*"; return 0; }
+section() { echo ">> $*"; }
+
+[ -d features ] || { echo >&2 "proscala-check-docs: no features/ — run from a 'main' checkout"; exit 1; }
+mapfile -t STREAMS < <(cd features && ls | sort -V)
+
+# patches(<stream>) — the stream's patch ids, one per line
+patches() { sed 's/#.*//' "features/$1" | tr -d '[:blank:]' | grep -v '^$' | sort; }
+# mkvar(<stream> <name>) — a := assignment from mk/<stream>.mk
+mkvar() { sed -nE "s/^$2[[:space:]]*:=[[:space:]]*([^[:space:]]+).*/\1/p" "mk/$1.mk" | head -1; }
+
+# doc/README.md table: emit "<feature>\t<streams>\t<kind>\t<repro>"
+table() {
+  awk -F'|' '/^\| *\[/ {
+    f=$2; sub(/^ *\[/,"",f); sub(/\].*/,"",f)
+    s=$4; k=$5; r=$6
+    gsub(/^ +| +$/,"",s); gsub(/^ +| +$/,"",k); gsub(/^ +| +$/,"",r)
+    printf "%s\t%s\t%s\t%s\n", f, s, k, r
+  }' doc/README.md
+}
+
+# --- 1. doc/README.md Streams column vs features/<stream> --------------------
+section "feature table vs features/<stream>"
+while IFS=$'\t' read -r feat streams _ _; do
+  expected=""
+  for s in "${STREAMS[@]}"; do
+    patches "$s" | grep -qx "$feat" && expected="${expected:+$expected, }$s"
+  done
+  got="$(printf '%s' "$streams" | tr -d ' ')"
+  want="$(printf '%s' "$expected" | tr -d ' ')"
+  if [ -z "$expected" ]; then
+    problem "doc/README.md lists '$feat', which is in no features/<stream> list"
+  elif [ "$got" != "$want" ]; then
+    problem "doc/README.md '$feat' Streams = '$streams', but the lists say '$expected'"
+  else
+    pass "$feat streams"
+  fi
+done < <(table)
+
+# every listed patch has a doc directory and a table row
+for s in "${STREAMS[@]}"; do
+  while IFS= read -r p; do
+    [ -f "doc/$p/$p.md" ] || problem "features/$s lists '$p' but doc/$p/$p.md is missing"
+    table | cut -f1 | grep -qx "$p" || problem "features/$s lists '$p' but doc/README.md has no row for it"
+  done < <(patches "$s")
+done
+
+# every doc directory is either in the table or deliberately not a patch
+for d in doc/*/; do
+  f="$(basename "$d")"
+  table | cut -f1 | grep -qx "$f" && continue
+  [ "$f" = make ] && continue   # the build, documented but not a patch
+  problem "doc/$f/ has no row in doc/README.md (and is not the build)"
+done
+
+# --- 2. Repro column vs the filesystem ---------------------------------------
+section "repro column vs the filesystem"
+while IFS=$'\t' read -r feat _ _ repro; do
+  has_readme=0; [ -f "doc/$feat/repro/README.md" ] && has_readme=1
+  has_fixme=0;  [ -f "doc/$feat/repro/FIXME.md" ] && has_fixme=1
+  case "$repro" in
+    yes*)   [ "$has_readme" = 1 ] || problem "doc/README.md '$feat' Repro says '$repro' but doc/$feat/repro/README.md is missing" ;;
+    FIXME*) [ "$has_fixme" = 1 ]  || problem "doc/README.md '$feat' Repro says '$repro' but doc/$feat/repro/FIXME.md is missing" ;;
+    n/a|"not extracted")
+            if [ "$has_readme" = 1 ] || [ "$has_fixme" = 1 ]; then
+              problem "doc/README.md '$feat' Repro says '$repro' but doc/$feat/repro/ exists"
+            fi ;;
+    *)      problem "doc/README.md '$feat' Repro = '$repro' — expected yes…, FIXME…, n/a or 'not extracted'" ;;
+  esac
+  # every repro directory must be self-describing, and extra ones must be named
+  for rd in doc/"$feat"/repro*/; do
+    [ -d "$rd" ] || continue
+    rn="$(basename "$rd")"
+    [ -f "$rd/README.md" ] || [ -f "$rd/FIXME.md" ] \
+      || problem "$rd has neither README.md nor FIXME.md"
+    if [ "$rn" != repro ] && ! printf '%s' "$repro" | grep -q "$rn"; then
+      problem "doc/$feat/$rn/ exists but the Repro column ('$repro') does not mention it"
+    fi
+  done
+done < <(table)
+
+# --- 3. stream tables in README.md and AGENTS.md vs mk/<stream>.mk -----------
+section "stream tables vs mk/<stream>.mk"
+for s in "${STREAMS[@]}"; do
+  [ -f "mk/$s.mk" ] || { problem "features/$s exists but mk/$s.mk does not"; continue; }
+  uref="$(mkvar "$s" UPSTREAM_REF)"
+  vers="$(mkvar "$s" VERSION)"
+  [ -n "$uref" ] || { problem "mk/$s.mk has no UPSTREAM_REF"; continue; }
+  [ -n "$vers" ] || { problem "mk/$s.mk has no VERSION"; continue; }
+  relver="${vers%-propensive}-p<n>"
+  for f in README.md AGENTS.md; do
+    row="$(grep -n "^| *\`$s\` " "$f" | head -1)"
+    if [ -z "$row" ]; then
+      problem "$f has no stream-table row for $s"
+      continue
+    fi
+    printf '%s' "$row" | grep -q -- "$uref" \
+      || problem "$f stream row for $s does not name '$uref' (mk/$s.mk UPSTREAM_REF) — got: ${row#*:}"
+    printf '%s' "$row" | grep -qF -- "$relver" \
+      || problem "$f stream row for $s does not give version '$relver' (from mk/$s.mk VERSION) — got: ${row#*:}"
+    pass "$f stream row $s"
+  done
+  # AGENTS.md also states the mapping as a bullet in "Branch naming"
+  if grep -q "upstream/$s\` →" AGENTS.md; then
+    grep "upstream/$s\` →" AGENTS.md | grep -q -- "$uref" \
+      || problem "AGENTS.md 'upstream/$s →' bullet does not name '$uref'"
+  else
+    problem "AGENTS.md has no 'upstream/$s →' mapping bullet"
+  fi
+  # and quotes the patch count
+  if grep -qE "^ +features/$s +[0-9]+ patches" AGENTS.md; then
+    stated="$(grep -oE "^ +features/$s +[0-9]+" AGENTS.md | grep -oE '[0-9]+$' | head -1)"
+    actual="$(patches "$s" | wc -l | tr -d ' ')"
+    [ "$stated" = "$actual" ] \
+      || problem "AGENTS.md says features/$s has $stated patches; it has $actual"
+  fi
+done
+
+# --- 4. feature docs must not hardcode a stream ------------------------------
+section "feature docs vs stream-specific references"
+while IFS=$'\t' read -r feat streams _ _; do
+  doc="doc/$feat/$feat.md"
+  [ -f "$doc" ] || continue
+  mapfile -t named < <(grep -oE 'feature/3\.[0-9]+/' "$doc" | grep -oE '3\.[0-9]+' | sort -u)
+  [ "${#named[@]}" -eq 0 ] && { pass "$feat has no hardcoded stream"; continue; }
+  count="$(printf '%s' "$streams" | tr ',' '\n' | grep -c '[0-9]')"
+  if [ "$count" -gt 1 ]; then
+    problem "$doc names ${named[*]} but the patch is in $streams — use feature/<stream>/"
+  else
+    only="$(printf '%s' "$streams" | tr -d ' ')"
+    for n in "${named[@]}"; do
+      [ "$n" = "$only" ] || problem "$doc names feature/$n/ but the patch is only in $only"
+    done
+  fi
+done < <(table)
+
+# --- 5. relative links resolve ------------------------------------------------
+# Markdown prose only: fenced blocks and inline code spans are dropped first, or
+# Scala like `apply[tag](value: Any)` reads as a link target.
+section "relative links"
+prose() { # prose <file>
+  awk '/^[[:space:]]*```/ { fence = !fence; next } !fence' "$1" | sed -E 's/`[^`]*`//g'
+}
+while IFS= read -r md; do
+  dir="$(dirname "$md")"
+  while IFS= read -r link; do
+    case "$link" in http*|"#"*|mailto:*|"") continue ;; esac
+    target="${link%%#*}"
+    [ -z "$target" ] && continue
+    [ -e "$dir/$target" ] || problem "$md links to '$target', which does not exist"
+  done < <(prose "$md" | grep -oE '\[[^]]*\]\([^)]+\)' | sed -E 's/^\[[^]]*\]\(//; s/\)$//')
+done < <(find . -name '*.md' -not -path './.git/*' | sort)
+
+# --- 6. branch-level checks (skipped when the refs are absent) ---------------
+section "branches vs features/<stream>"
+for s in "${STREAMS[@]}"; do
+  if ! git rev-parse --verify --quiet "origin/trunk/$s" >/dev/null 2>&1; then
+    echo "   (skipped $s: origin/trunk/$s not present)"
+    continue
+  fi
+  # every origin branch is listed
+  while IFS= read -r b; do
+    leaf="${b#origin/feature/$s/}"
+    patches "$s" | grep -qx "$leaf" \
+      || problem "branch origin/feature/$s/$leaf exists but is not in features/$s"
+  done < <(git for-each-ref --format='%(refname:short)' "refs/remotes/origin/feature/$s/")
+  # every listed patch exists as a branch and is merged into trunk
+  while IFS= read -r p; do
+    if git rev-parse --verify --quiet "origin/feature/$s/$p" >/dev/null 2>&1; then
+      git merge-base --is-ancestor "origin/feature/$s/$p" "origin/trunk/$s" \
+        || problem "origin/feature/$s/$p is not merged into origin/trunk/$s"
+    else
+      problem "features/$s lists '$p' but origin/feature/$s/$p does not exist"
+    fi
+  done < <(patches "$s")
+  pass "$s branches"
+done
+
+# --- report -------------------------------------------------------------------
+echo
+if [ "${#PROBLEMS[@]}" -eq 0 ]; then
+  echo ">> documentation is consistent (${#STREAMS[@]} streams)"
+  exit 0
+fi
+echo "!! ${#PROBLEMS[@]} inconsistenc$([ "${#PROBLEMS[@]}" -eq 1 ] && echo y || echo ies):"
+for p in "${PROBLEMS[@]}"; do echo "   - $p"; done
+exit 1

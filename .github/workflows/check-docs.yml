@@ -1,0 +1,32 @@
+name: Check docs
+
+# Check the documentation on `main` against the facts it describes. Each fact has
+# one source of truth — features/<stream> for a stream's patches, UPSTREAM_REF and
+# VERSION in mk/<stream>.mk for what it mirrors and releases as, the filesystem for
+# which reproductions exist — and the prose is a copy. bin/proscala-check-docs
+# compares the copies against the source and fails on any divergence.
+#
+# The checkout is shallow and single-branch, so the branch-level checks (every
+# feature branch listed, every listed patch merged into trunk) find no origin/*
+# refs and skip themselves; those run locally, where the refs are present.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+
+      - name: Check documentation consistency
+        run: bin/proscala-check-docs -v
