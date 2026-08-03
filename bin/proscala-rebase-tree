@@ -3,17 +3,26 @@
 # proscala-rebase-tree — re-base a whole Proscala stream onto upstream.
 #
 # Usage:
-#   bin/proscala-rebase-tree [-n|--dry-run] <stream> [<upstream-ref>]
+#   bin/proscala-rebase-tree [-n|--dry-run] [-u|--configured] <stream> [<upstream-ref>]
 #     e.g. bin/proscala-rebase-tree 3.9  upstream/release-3.9.0
 #          bin/proscala-rebase-tree 3.10 upstream/main
+#          bin/proscala-rebase-tree -u 3.10              # same, ref from mk/3.10.mk
 #          bin/proscala-rebase-tree 3.10                 # cascade only, no ff
-#          bin/proscala-rebase-tree -n 3.10 upstream/main  # preview, touch nothing
+#          bin/proscala-rebase-tree -n -u 3.10           # preview, touch nothing
 #
 # With an <upstream-ref> it fetches `upstream`, fast-forwards `upstream/<stream>`
-# to that ref, and replays the stream on top. With no ref it leaves
+# to that ref, and replays the stream on top. `-u` supplies that ref from the
+# stream's `UPSTREAM_REF` in `mk/<stream>.mk`, which is the authoritative record
+# of which scala/scala3 branch a stream mirrors. With neither it leaves
 # `upstream/<stream>` alone and just replays the stream (use this after committing
 # a change to the stream's base, e.g. a build change while `feature/<s>/make`
 # still exists).
+#
+# The stream's patches are read from `features/<stream>` on `main` — that list,
+# not the set of branches this clone happens to hold, defines the stream. A
+# listed patch with no local branch is created from origin; a `feature/<s>/*`
+# branch that is not listed is an error (trunk is rebuilt from the list, so an
+# unlisted branch would be silently dropped from it).
 #
 # It rebases the stream's base (`feature/<s>/make` if that branch still exists,
 # otherwise the branches sit directly on `upstream/<s>`), then every
@@ -37,15 +46,41 @@ note() { echo ">> $*"; }
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.."
 cd "$ROOT"
 
+# Read a file that lives on `main`: from the working tree when we are in a `main`
+# checkout, otherwise straight out of the ref.
+main_file() { # main_file <path>
+  local path="$1" ref
+  if [ -f "$path" ]; then cat "$path"; return; fi
+  ref="${PROSCALA_MAIN:-origin/main}"
+  git rev-parse --verify --quiet "$ref^{commit}" >/dev/null 2>&1 || ref=main
+  git show "$ref:$path" 2>/dev/null || die "no '$path' here or on $ref — see AGENTS.md"
+}
+
 DRY=0
 PFX=""
-case "${1:-}" in
-  -n|--dry-run) DRY=1; PFX="[dry-run] would "; shift ;;
-esac
+USE_CONFIG=0
+while :; do
+  case "${1:-}" in
+    -n|--dry-run)   DRY=1; PFX="[dry-run] would "; shift ;;
+    -u|--configured) USE_CONFIG=1; shift ;;
+    *) break ;;
+  esac
+done
 
-[ $# -ge 1 ] || die "usage: proscala-rebase-tree [-n] <stream> [<upstream-ref>]"
+[ $# -ge 1 ] || die "usage: proscala-rebase-tree [-n] [-u] <stream> [<upstream-ref>]"
 STREAM="$1"
 UPSTREAM_REF="${2:-}"
+
+# -u: take the ref from the stream's UPSTREAM_REF in mk/<stream>.mk, so the
+# mapping lives in one place instead of being retyped on every run.
+if [ "$USE_CONFIG" = 1 ]; then
+  [ -z "$UPSTREAM_REF" ] || die "-u and an explicit <upstream-ref> are mutually exclusive"
+  configured="$(main_file "mk/$STREAM.mk" \
+    | sed -nE 's/^UPSTREAM_REF[[:space:]]*:=[[:space:]]*([^[:space:]]+).*/\1/p' | head -1)"
+  [ -n "$configured" ] || die "no UPSTREAM_REF in mk/$STREAM.mk"
+  UPSTREAM_REF="upstream/$configured"
+  note "configured upstream ref for $STREAM: $UPSTREAM_REF"
+fi
 
 git rev-parse --git-dir >/dev/null 2>&1 || die "not a git repository"
 
@@ -66,6 +101,14 @@ done < <(git worktree list --porcelain)
 
 worktree_of() { printf '%s' "${WT_OF[$1]:-}"; }
 
+# The ref to read a branch's tip from. Normally the branch itself; during a dry
+# run a listed patch may have no local branch yet (it would be created from
+# origin), so fall back to origin's copy — the tip it would be created at.
+ref_of() { # ref_of <branch>
+  if git show-ref --verify --quiet "refs/heads/$1"; then printf '%s' "$1"
+  else printf 'origin/%s' "$1"; fi
+}
+
 is_dirty() { # is_dirty <worktree-path>
   [ -n "$(git -C "$1" status --porcelain --untracked-files=no)" ]
 }
@@ -74,12 +117,15 @@ is_dirty() { # is_dirty <worktree-path>
 # in a shared scratch worktree. Passing the branch name as the final rebase arg
 # lets a detached scratch worktree rebase a branch that lives nowhere else.
 SCRATCH=""
+# Creates the shared scratch worktree on first use and leaves its path in
+# $SCRATCH. Call it as a plain statement, never as "$(scratch_worktree)": a
+# command substitution runs in a subshell, so the assignment would be lost, a
+# fresh worktree created per call, and none of them ever seen by cleanup.
 scratch_worktree() {
   if [ -z "$SCRATCH" ]; then
     SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/proscala-rebase.XXXXXX")"
     git worktree add --detach --quiet "$SCRATCH" "refs/heads/$MIRROR"
   fi
-  printf '%s' "$SCRATCH"
 }
 cleanup() {
   if [ -n "$SCRATCH" ]; then
@@ -93,7 +139,7 @@ trap cleanup EXIT
 rebase_branch() {
   local branch="$1" onto="$2" from="$3" wt n
   if [ "$DRY" = 1 ]; then
-    n="$(git rev-list --count "$from..$branch")"
+    n="$(git rev-list --count "$from..$(ref_of "$branch")")"
     wt="$(worktree_of "$branch")"
     note "${PFX}rebase $branch onto $(git rev-parse --short "$onto") (replay $n commit(s)${wt:+, in worktree $wt})"
     return 0
@@ -110,7 +156,7 @@ rebase_branch() {
     git -C "$wt" rebase --abort >/dev/null 2>&1 || true
     return 1
   fi
-  wt="$(scratch_worktree)"
+  scratch_worktree; wt="$SCRATCH"
   if git -C "$wt" rebase --onto "$onto" "$from" "$branch" >/dev/null 2>&1; then
     # leave the scratch worktree detached so the branch isn't "checked out" here
     git -C "$wt" checkout --quiet --detach >/dev/null 2>&1 || true
@@ -127,14 +173,41 @@ HAVE_MAKE=0
 git show-ref --verify --quiet "refs/heads/$BASE_BRANCH" && HAVE_MAKE=1
 [ "$HAVE_MAKE" = 1 ] || BASE_BRANCH="$MIRROR"
 
-# patch leaf names (everything under feature/<s>/ except make)
-mapfile -t PATCHES < <(
-  git for-each-ref --format='%(refname:short)' "refs/heads/feature/$STREAM/" \
-    | sed "s#^feature/$STREAM/##" \
-    | grep -vx make \
-    | sort
-)
-[ "${#PATCHES[@]}" -gt 0 ] || die "no feature/$STREAM/<patch> branches found"
+# Patch leaf names come from the stream's feature list on `main`, NOT from
+# whichever branches this clone happens to have. A clone missing a branch would
+# otherwise rebuild trunk without that patch and report success — silently
+# dropping it. See AGENTS.md ("The stream feature lists").
+FEATURES="features/$STREAM"
+mapfile -t PATCHES < <(main_file "$FEATURES" | sed 's/#.*//' | tr -d '[:blank:]' | grep -v '^$' | grep -vx make | sort)
+[ "${#PATCHES[@]}" -gt 0 ] || die "feature list '$FEATURES' is empty"
+
+# Reconcile the list with the branches actually present. Anything listed but
+# missing locally is materialised from origin (a listed patch that exists
+# nowhere is fatal); anything present but unlisted is fatal, because trunk is
+# rebuilt from the list and would silently omit it.
+MISSING=()
+for leaf in "${PATCHES[@]}"; do
+  git show-ref --verify --quiet "refs/heads/feature/$STREAM/$leaf" && continue
+  if git show-ref --verify --quiet "refs/remotes/origin/feature/$STREAM/$leaf"; then
+    MISSING+=("$leaf")
+  else
+    die "'$FEATURES' lists '$leaf' but feature/$STREAM/$leaf exists neither locally nor on origin"
+  fi
+done
+if [ "${#MISSING[@]}" -gt 0 ]; then
+  note "${PFX}create ${#MISSING[@]} local branch(es) from origin: ${MISSING[*]}"
+  if [ "$DRY" != 1 ]; then
+    for leaf in "${MISSING[@]}"; do
+      git branch --quiet "feature/$STREAM/$leaf" "origin/feature/$STREAM/$leaf"
+    done
+  fi
+fi
+while IFS= read -r leaf; do
+  [ -n "$leaf" ] || continue
+  [ "$leaf" = make ] && continue
+  printf '%s\n' "${PATCHES[@]}" | grep -qx "$leaf" \
+    || die "branch feature/$STREAM/$leaf is not in '$FEATURES' — add it there, or delete the branch"
+done < <(git for-each-ref --format='%(refname:short)' "refs/heads/feature/$STREAM/" | sed "s#^feature/$STREAM/##")
 
 # parent of a patch: the longest existing hyphen-prefix branch, else the base.
 parent_of() { # parent_of <leaf>
@@ -201,16 +274,16 @@ fi
 for leaf in "${ORDER[@]}"; do
   branch="feature/$STREAM/$leaf"
   parent="$(parent_of "$leaf")"
-  OLD_TIP["$branch"]="$(git rev-parse "$branch")"
+  OLD_TIP["$branch"]="$(git rev-parse "$(ref_of "$branch")")"
 
   if [ -z "${OK[$parent]:-}" ]; then
     SKIPPED+=("$branch (parent $parent unresolved)")
     continue
   fi
 
-  from="$(git merge-base "$branch" "${OLD_TIP[$parent]}")"
+  from="$(git merge-base "$(ref_of "$branch")" "${OLD_TIP[$parent]}")"
   if rebase_branch "$branch" "${NEW_TIP[$parent]}" "$from"; then
-    NEW_TIP["$branch"]="$(git rev-parse "$branch")"
+    NEW_TIP["$branch"]="$(git rev-parse "$(ref_of "$branch")")"
     OK["$branch"]=1
     [ "$DRY" = 1 ] || note "rebased $branch onto $parent"
   else
@@ -227,7 +300,7 @@ if git show-ref --verify --quiet "refs/heads/$TRUNK"; then
   elif [ "${#FAILED[@]}" -eq 0 ] && [ "${#SKIPPED[@]}" -eq 0 ]; then
     twt="$(worktree_of "$TRUNK")"
     if [ -z "$twt" ]; then
-      twt="$(scratch_worktree)"; git -C "$twt" switch --quiet "$TRUNK"
+      scratch_worktree; twt="$SCRATCH"; git -C "$twt" switch --quiet "$TRUNK"
     elif is_dirty "$twt"; then
       die "$TRUNK is checked out with local changes in $twt — clean it and re-run"
     fi
@@ -251,9 +324,15 @@ if [ "$DRY" = 1 ]; then
   exit 0
 fi
 if [ "${#FAILED[@]}" -eq 0 ] && [ "${#SKIPPED[@]}" -eq 0 ]; then
+  # One ref per patch, in order; $BASE_BRANCH is the mirror itself unless the
+  # stream still carries feature/<s>/make, so only name it once.
+  push_refs=("$MIRROR")
+  [ "$BASE_BRANCH" = "$MIRROR" ] || push_refs+=("$BASE_BRANCH")
+  for leaf in "${ORDER[@]}"; do push_refs+=("feature/$STREAM/$leaf"); done
+  push_refs+=("$TRUNK")
   note "stream $STREAM re-based cleanly. Review, build-test, then push with:"
-  echo "   git push --force-with-lease origin $MIRROR $BASE_BRANCH \\"
-  echo "     $(printf 'feature/%s/%s ' "$STREAM" "${ORDER[@]}")$TRUNK"
+  echo "   git push --force-with-lease origin \\"
+  echo "     ${push_refs[*]}"
 else
   echo "!! stream $STREAM re-based with unresolved branches:"
   for b in "${FAILED[@]}";  do echo "   conflict: $b"; done

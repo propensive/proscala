@@ -4,6 +4,9 @@
 # tree-detected. $(JARS) is defined by the Makefile before this file is included.
 
 VERSION            := 3.10.0-dev-propensive
+# The branch of scala/scala3 that upstream/3.10 mirrors. Authoritative: the docs
+# are checked against it, and `proscala-rebase-tree -u` fast-forwards to it.
+UPSTREAM_REF       := main
 REF_VERSION        := 3.9.0-RC1
 BASE_SCALAJS_VERSION    := 1.22.0
 COMPILER_IFACE_VER := 1.12.0
