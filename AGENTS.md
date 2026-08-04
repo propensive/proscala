@@ -90,7 +90,7 @@ streams: a patch only exists where it is needed, and some are upstreamed or beco
 obsolete in a later stream.
 
     features/3.9    21 patches   carries castbox, splicealias, samstateful, staleread
-    features/3.10   19 patches   adds anykindcap, integratemap; drops those four
+    features/3.10   20 patches   adds anykindcap, integratemap, modulepath; drops those four
 
 Seventeen patches are common to both streams.
 

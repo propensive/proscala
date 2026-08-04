@@ -13,6 +13,7 @@ inertcache
 inlineupdate
 integratemap
 lazycycle
+modulepath
 nullreceiver
 permitlazy
 sambox
