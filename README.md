@@ -24,7 +24,6 @@ major Scala 3 release line, and its name omits the minor/patch number:
 
 | Stream | Tracks upstream                | Release versions   |
 | ------ | ------------------------------ | ------------------ |
-| `3.8`  | `scala/scala3` `release-3.8.4` | `3.8.4-p<n>`       |
 | `3.9`  | `scala/scala3` `release-3.9.0` | `3.9.0-RC4-p<n>`   |
 | `3.10` | `scala/scala3` `main`          | `3.10.0-dev-p<n>`  |
 
@@ -101,7 +100,7 @@ to `release/<branch>/`:
 into a single `release/<branch>/proscala-<version>.tar.gz`, and `make clean` removes
 the current branch's build. Both `release/` and `.build/` are git-ignored. The
 stream is derived from the branch name; from a detached checkout pass it with
-`make STREAM=3.8|3.9|3.10`.
+`make STREAM=3.9|3.10`.
 
 Releases
 --------

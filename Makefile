@@ -48,7 +48,7 @@ DEPS     := $(RELEASE)/deps
 STREAM ?= $(word 2,$(subst /, ,$(BRANCH)))
 STREAM_MK := $(ROOT)/mk/$(STREAM).mk
 ifeq ($(wildcard $(STREAM_MK)),)
-  $(error Cannot determine stream from branch '$(BRANCH)'. Pass STREAM=3.8|3.9|3.10, \
+  $(error Cannot determine stream from branch '$(BRANCH)'. Pass STREAM=3.9|3.10, \
     e.g. `make STREAM=3.10`. Looked for $(STREAM_MK).)
 endif
 include $(STREAM_MK)

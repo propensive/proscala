@@ -31,7 +31,7 @@ deviations from upstream.
 
 Proscala maintains a set of patches on top of upstream Scala 3, organised into
 **streams**. A stream corresponds to one major Scala 3 release, and its name omits
-the minor/patch number: `3.8`, `3.9`, `3.10`.
+the minor/patch number: `3.9`, `3.10`.
 
 ### Branch naming
 
@@ -39,7 +39,6 @@ the minor/patch number: `3.8`, `3.9`, `3.10`.
   fast-forwarded periodically. Everything else in the stream is rebased onto it.
   Which branch each mirrors is recorded as `UPSTREAM_REF` in `mk/<stream>.mk`, and
   that is the authoritative copy — the mapping below is checked against it:
-  - `upstream/3.8` → `scala/scala3` `release-3.8.4`
   - `upstream/3.9` → `scala/scala3` `release-3.9.0`
   - `upstream/3.10` → `scala/scala3` `main`
 - **`feature/<stream>/<patch>`** — one branch per patch per stream, a **pure-source
@@ -90,13 +89,10 @@ lines and `#` comments ignored and order irrelevant. The lists differ between
 streams: a patch only exists where it is needed, and some are upstreamed or become
 obsolete in a later stream.
 
-    features/3.8    16 patches   the only stream with boundscap
-    features/3.9    21 patches   drops boundscap; adds inertcache, lazycycle,
-                                 nullreceiver, permitlazy, samstateful, staleread
-    features/3.10   18 patches   adds integratemap; drops castbox, splicealias,
-                                 samstateful, staleread
+    features/3.9    21 patches   carries castbox, splicealias, samstateful, staleread
+    features/3.10   18 patches   adds integratemap; drops those four
 
-Thirteen patches are common to all three streams.
+Seventeen patches are common to both streams.
 
 **This list is authoritative, not descriptive.** `bin/proscala-rebase-tree`
 rebuilds `trunk/<stream>` as the merge of exactly these patches, so the list — not
@@ -174,7 +170,7 @@ Requirements for the doc file:
 
 One doc covers every stream that carries the patch; where streams genuinely
 differ, the directory carries a clearly named variant file (e.g.
-`doc/iarraypure/iarraypure-3.8.md`).
+a clearly named variant file).
 
 ### Building a distribution
 
@@ -213,7 +209,7 @@ the published jars into a single `release/<branch>/proscala-<version>.tar.gz` �
 a release attaches), `make clean` / `make distclean` (remove a branch's output).
 Override the output path with `make BRANCH=<name>`. The stream is derived from the
 branch name; from a detached checkout (e.g. CI) pass it explicitly with
-`make STREAM=3.8|3.9|3.10`.
+`make STREAM=3.9|3.10`.
 
 ### Keeping up with upstream
 
@@ -323,7 +319,6 @@ Current streams and their release versions:
 
 | Stream | Tracks | Version |
 | ------ | --------------------------- | ------------------- |
-| `3.8`  | `scala/scala3 release-3.8.4` | `3.8.4-p<n>`        |
 | `3.9`  | `scala/scala3 release-3.9.0` | `3.9.0-RC4-p<n>`    |
 | `3.10` | `scala/scala3 main`          | `3.10.0-dev-p<n>`   |
 

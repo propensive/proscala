@@ -1,5 +1,10 @@
 # Keep TypeBounds out of capability wrapping in CC Setup
 
+> **Retired.** This patch applied only to the 3.8 stream, which was dropped in
+> August 2026. The bug does not occur on 3.9 or 3.10 — their classification maps
+> arrays to `Caps_Mutable` inside `derivesFromCapTrait`, verified by compiling
+> `repro/repro.scala` cleanly on both. Kept as a record; there is no branch.
+
 Stops the capture checker's Setup phase from wrapping a type member's `TypeBounds`
 (in particular the `TypeAlias` info of an opaque type member) in a `CapturingType`,
 which produced an ill-formed refinement and crashed the compiler with an

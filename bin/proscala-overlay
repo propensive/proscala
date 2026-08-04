@@ -58,7 +58,7 @@ git rev-parse --verify --quiet "$MAIN_REF:mk/scalajs-ir/$ir" >/dev/null 2>&1 \
 echo ">> overlaying build files from $MAIN_REF (stream $stream, $flavour IR)"
 
 # Always-overlaid build files, at their natural paths.
-git archive "$MAIN_REF" Makefile mk/3.8.mk mk/3.9.mk mk/3.10.mk \
+git archive "$MAIN_REF" Makefile mk/3.9.mk mk/3.10.mk \
     library-js-aux project/ScalaLibraryFilesToCopy.scala | tar -x
 
 # Selected vendored IR -> compiler/src-scalajs-ir.
