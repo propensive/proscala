@@ -20,6 +20,7 @@ its analysis and reproduction are kept as a record.
 | ------- | ----------- | ------- | ---- | ----- |
 | [aliascap](aliascap/aliascap.md) | Keep root capabilities global in type alias infos | 3.9, 3.10 | bug fix | yes |
 | [anykindcap](anykindcap/anykindcap.md) | Do not constrain type arguments by an `AnyKind` bound's capture set | 3.10 | bug fix | yes |
+| [blockimport](blockimport/blockimport.md) | Recheck a block's result expression in its statements' context | 3.9, 3.10 | bug fix | yes |
 | [castbox](castbox/castbox.md) | Box opaque-external type arguments in cast type applications | 3.9 | bug fix | yes |
 | [ctxresult](ctxresult/ctxresult.md) | Context-result closures level-checked at the method's level | 3.9, 3.10 | bug fix | yes |
 | [dictcaps](dictcaps/dictcaps.md) | Infer the capture set of recursive-implicit dictionary instances | 3.9, 3.10 | bug fix | yes |
