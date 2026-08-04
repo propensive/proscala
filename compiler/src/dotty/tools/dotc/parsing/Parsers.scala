@@ -109,7 +109,10 @@ object Parsers {
      *  If `t` does not have a span yet, set its span to the given one.
      */
     def atSpan[T <: Positioned](span: Span)(t: T): T =
-      if (t.span.isSourceDerived) t else t.withSpan(span.union(t.span))
+      if t.span.isSourceDerived then t
+      else t match
+        case tree: Tree if tree.isEmpty => t
+        case _ => t.withSpan(span.union(t.span))
 
     def atSpan[T <: Positioned](start: Offset, point: Offset, end: Offset)(t: T): T =
       atSpan(Span(start, end, point))(t)
@@ -2108,7 +2111,7 @@ object Parsers {
         t
     }
 
-    /** WithType ::= AnnotType {`with' AnnotType}    (deprecated)
+    /** WithType ::= AnnotType {`with' AnnotType}    (error since 3.10, deprecated since 3.4)
      *
      *  `inPatternType` indicates that this type appears in a typed pattern
      *  position (such as `case x: A with B =>` or `case given A with B =>`).

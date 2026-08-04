@@ -888,6 +888,7 @@ object CaptureSet:
       if !elems.contains(elem) then
         if debugVars && id == debugTarget then
           println(i"###INCLUDE $elem in $this")
+          //new Error().printStackTrace()
         elems += elem
         TypeComparer.logUndoAction: () =>
           elems -= elem
@@ -1096,8 +1097,9 @@ object CaptureSet:
           def fail = i"attempting to add $elem to $this"
 
           def hideIn(ac: LocalCap): Boolean =
-            assert(elem.tryClassifyAs(ac.hiddenSet.classifier), fail)
-            if isRefining then
+            if !elem.tryClassifyAs(ac.hiddenSet.classifier) then
+              false
+            else if isRefining then
               // If a variable is added by addCaptureRefinements in a synthetic
               // refinement of a class type, don't do level checking. The problem is
               // that the variable might be matched against a type that does not have
@@ -1197,7 +1199,6 @@ object CaptureSet:
 
     if debugVars && id == debugTarget then
       println(i"variable $id is derived from $source")
-      assert(false)
 
     override def tryInclude(elem: Capability, origin: CaptureSet)(using Context, VarState): Boolean =
       if origin eq source then
@@ -1504,7 +1505,7 @@ object CaptureSet:
         case cs: EmptyOfBoxed =>
           trailing:
             val (boxed, unboxed) =
-              if cs.tp1.isBoxedCapturing then (cs.tp1, cs.tp2) else (cs.tp2, cs.tp1)
+              if cs.tp1.isBoxed then (cs.tp1, cs.tp2) else (cs.tp2, cs.tp1)
             i"${cs.tp1} does not conform to ${cs.tp2} because $boxed is boxed but $unboxed is not"
         case _ =>
           def why =
@@ -1815,8 +1816,9 @@ object CaptureSet:
         case tp: (TypeRef | TypeParamRef) =>
           if tp.derivesFromCapSet then tp.captureSet
           else empty
-        case CapturingOrRetainsType(parent, refs) =>
-          recur(parent) ++ refs
+        case tp @ CapturingOrRetainsType(parent, refs) =>
+          if parent.isBoxed && !tp.isBoxed then refs
+          else recur(parent) ++ refs
         case tpd @ defn.RefinedFunctionOf(rinfo: MethodOrPoly) if followResult =>
           ofType(tpd.parent, followResult = false)            // pick up capture set from parent type
           ++ recur(rinfo.resType).freeInResult(rinfo)         // add capture set of result
