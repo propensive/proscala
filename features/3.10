@@ -4,6 +4,7 @@
 # and #-comments are ignored. Do not list `make` (the build lives on `main`).
 
 aliascap
+anykindcap
 ctxresult
 dictcaps
 iarraypure
