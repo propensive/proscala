@@ -1351,28 +1351,52 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
           case AppliedType(tycon, List(arg: TypeBounds)) if tp.derivesFrom(defn.ArrayClass) =>
             tycon.appliedTo(arg.hi)
           case _ => tp
-        // An opaque alias whose underlying type is a Seq or an Array may be spliced
-        // directly: the alias erases to its underlying type, so the inserted cast is
-        // a no-op at erasure. The alias only fails to conform when its opacity is in
-        // force (outside the defining scope), so the pierce lives on the failure path.
-        def pierceOpaque(expr: Tree)(using Context): Tree =
+        // A type that is not itself a `Seq` or `Array` may still be spliced if its
+        // author granted permission with a `Spreadable` instance. Unlike a
+        // `Conversion`, that permission is confined to this position: it is consulted
+        // only here, so it never fires on a member selection.
+        //
+        // Where the value's representation already is a `Seq`/`Array` — an opaque
+        // alias over a `Vector`, say — the splice is a cast, which is a no-op at
+        // erasure and calls nothing; otherwise `spread` is invoked to convert.
+        def spreadable(expr: Tree)(using Context): Tree =
           val wide = expr.tpe.widenDealias
-          val underlying = seeThrough(wide)
-          if (underlying ne wide)
-             && !wide.derivesFrom(defn.SeqClass) && !wide.derivesFrom(defn.ArrayClass)
-             && (underlying.derivesFrom(defn.SeqClass) || underlying.derivesFrom(defn.ArrayClass))
-          then expr.cast(dropArrayWildcard(underlying))
-          else expr
+          def spliceable(tp: Type) =
+            tp.derivesFrom(defn.SeqClass) || tp.derivesFrom(defn.ArrayClass)
+          // Test the type before looking anything up. An expression that already is
+          // a Seq/Array failed for some unrelated reason, and must not cause
+          // `scala.Spreadable` to be resolved here: forcing that symbol part-way
+          // through typing quoted code disturbs it.
+          if spliceable(wide) || !defn.SpreadableClass.exists then expr
+          else
+            val formal = defn.SpreadableClass.typeRef.appliedTo(wide)
+            val instance = inferImplicitArg(formal, tree.span)
+            if instance.tpe.isError || instance.tpe.isInstanceOf[SearchFailureType] then expr
+            else
+              // Cast to the *representation*, never to the instance's `Out`: an
+              // instance naming an `Out` its type does not actually have would
+              // otherwise be a ClassCastException at runtime rather than an error.
+              val under = seeThrough(wide)
+              if spliceable(under) then expr.cast(dropArrayWildcard(under))
+              else
+                // A genuinely different type: convert through the instance. `Out` may
+                // itself be an opaque alias (`IArray`), so see through it in turn.
+                val converted = instance.select(defn.Spreadable_spread).appliedTo(expr)
+                val outWide = converted.tpe.widenDealias
+                val outUnder = seeThrough(outWide)
+                if !spliceable(outUnder) then expr        // `Out` left abstract
+                else if outUnder ne outWide then converted.cast(dropArrayWildcard(outUnder))
+                else converted
         val expr0 = tryEither(typedRegular) { (fallVal, fallState) =>
-          // The retype must be speculative too: unless an opaque alias is actually
-          // pierced, the original failure is restored and nothing the retype did —
-          // fresh type variables, quote-hole registrations — may leak into the
-          // enclosing typer state.
+          // The retype must be speculative too: unless the expression really is
+          // spreadable, the original failure is restored and nothing the retype or
+          // the implicit search did — fresh type variables, quote-hole
+          // registrations — may leak into the enclosing typer state.
           val nestedCtx = ctx.fresh.setNewTyperState()
           val bare = typedExpr(tree.expr)(using nestedCtx)
-          val pierced = pierceOpaque(bare)(using nestedCtx)
-          if (pierced ne bare) && !nestedCtx.reporter.hasErrors
-          then { nestedCtx.typerState.commit(); pierced }
+          val spread = spreadable(bare)(using nestedCtx)
+          if (spread ne bare) && !nestedCtx.reporter.hasErrors
+          then { nestedCtx.typerState.commit(); spread }
           else { fallState.commit(); fallVal }
         }
         val expr1 = if ctx.explicitNulls && (!ctx.mode.is(Mode.Pattern)) then
