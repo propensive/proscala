@@ -1031,6 +1031,8 @@ class CheckCaptures extends Recheck, SymTransformer:
     /** Check that capture set of type argument subcaptures capture set of bounds.
      *  We don't check if
      *   - the bound is exactly any since that is capture polymorphic top, or
+     *   - the bound is AnyKind, which is the top of the kind lattice and so says
+     *     nothing about captures, exactly as Any says nothing, or
      *   - the bound is FromJavaObject (the `Object` bound of Java type parameters),
      *     which is the capture polymorphic top for Java interop, or
      *   - the bound is singleton, since that's not a "real" bound, or
@@ -1044,9 +1046,11 @@ class CheckCaptures extends Recheck, SymTransformer:
       val argRefs = argType.captureSet
       val hiBound = formal.bounds.hi
       val boundRefs = hiBound.captureSet
-      // Is `hiBound` exactly `Any`, or `FromJavaObject` (Java's `Object` bound)?
-      // These are capture polymorphic top types, so they do not constrain arguments.
-      val isPolymorphicTop = hiBound.isExactlyAny || hiBound.isFromJavaObject
+      // Is `hiBound` exactly `Any`, `AnyKind`, or `FromJavaObject` (Java's `Object`
+      // bound)? These are capture polymorphic top types, so they do not constrain
+      // arguments.
+      val isPolymorphicTop =
+        hiBound.isExactlyAny || hiBound.isRef(defn.AnyKindClass) || hiBound.isFromJavaObject
       val canCheck =
         !isPolymorphicTop && !hiBound.isRef(defn.SingletonClass)
         && !boundRefs.elems.exists:
