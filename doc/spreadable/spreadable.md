@@ -166,6 +166,21 @@ weaker than the unconditional pierce it replaces, which compiles that splice.
 Element types capturing a *named* capability are unaffected. This limitation
 was accepted deliberately when the feature was adopted.
 
+Read the other way round, it is the discipline rather than a gap: **a
+capture-carrying collection is not spreadable — freeze it first.** An instance
+keyed on the frozen form is what admits the value, which is exactly how
+Soundness's `proscenium` declares its mutable array alias:
+
+```scala
+given [element] => (Spreadable[Array[element]^{}] { type Out = scala.Array[element]^{} })
+```
+
+A frozen `Array[element]^{}` has an empty capture set, so it instantiates `T`
+without difficulty and splices under `-Ycc-new`; a mutable `Array[element]^`
+does not, and should not. No compiler support is needed for this: verified on
+the 3.10 stream, which carries no `castbox`, where the frozen splice compiles
+and the capture-carrying instance is refused at its declaration.
+
 ## History
 
 Replaces `spliceopaque`, which pierced *any* opaque alias over a `Seq` or
