@@ -1043,7 +1043,8 @@ class CheckCaptures extends Recheck, SymTransformer:
       val hiBound = formal.bounds.hi
       val boundRefs = hiBound.captureSet
       val canCheck =
-        !hiBound.isExactlyAny && !hiBound.isRef(defn.SingletonClass)
+        !hiBound.isExactlyAny && !hiBound.isRef(defn.AnyKindClass)
+        && !hiBound.isRef(defn.SingletonClass)
         && !boundRefs.elems.exists:
           case ref: TypeParamRef => ref.binder == binder // F-bounded
           case ref => ref.isTerminalCapability // GlobalCaps cannot constrain arguments
