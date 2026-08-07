@@ -5,8 +5,9 @@ name: Release
 # only Scala source; the build (Makefile, per-stream config, vendored IR, …)
 # lives on the `main` branch and is overlaid at build time by bin/proscala-overlay.
 # The build compiles every module, versions it <upstream-version>-p<n> (n one
-# greater than the previous release for the stream), tags the commit, and attaches
-# a single proscala-<version>.tar.gz (a top-level lib/ of the published jars).
+# greater than the previous release for the stream), tags the commit, attaches
+# a single proscala-<version>.tar.gz (a top-level lib/ of the published jars),
+# and publishes the same jars to Maven Central under `dev.propensive`.
 on:
   push:
     branches:
@@ -30,6 +31,45 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+
+      # Checked before anything irreversible happens. A release that builds,
+      # tags and publishes to GitHub but then cannot reach Maven Central leaves
+      # a half-published version behind, and Central is append-only — so the
+      # credentials are verified up front rather than an hour into the job.
+      - name: Check publishing credentials
+        env:
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          missing=""
+          for name in SONATYPE_USERNAME SONATYPE_PASSWORD GPG_PRIVATE_KEY GPG_PASSPHRASE; do
+            eval "value=\${$name:-}"
+            [ -n "$value" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "release: missing repository secret(s):$missing" >&2
+            echo "         set them under Settings -> Secrets and variables -> Actions." >&2
+            exit 1
+          fi
+          echo "All four publishing secrets are present."
+
+      # Imported before the build for the same reason: an unusable signing key
+      # should stop the job in seconds, not after a full compile.
+      - name: Import the signing key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --quiet --import
+          # Prove the key can actually sign non-interactively before relying on
+          # it later; `make publish` uses exactly these gpg options.
+          printf 'release' | gpg --batch --yes --pinentry-mode loopback \
+            --passphrase "$GPG_PASSPHRASE" --armor --detach-sign --output /dev/null
+          echo "Signing key imported and verified."
 
       - name: Overlay the build from main
         run: |
@@ -78,3 +118,20 @@ jobs:
             --target "$GITHUB_SHA" \
             --notes "Automated Proscala trunk build for the ${{ steps.ver.outputs.stream }} stream, built from ${GITHUB_SHA}." \
             "release/dist/proscala-${v}.tar.gz"
+
+      # Last, because Maven Central is append-only: a published version can never
+      # be replaced, only superseded by the next -p<n>. Everything reversible has
+      # already succeeded by this point, so a failure here can be retried by hand
+      # for the *same* version with
+      #   make STREAM=<s> BRANCH=dist VERSION=<v> publish
+      # whereas re-running the whole workflow would allocate the next -p<n>.
+      - name: Publish to Maven Central
+        env:
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+          PROSCALA_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          s="${{ steps.ver.outputs.stream }}"
+          v="${{ steps.ver.outputs.version }}"
+          make STREAM="$s" BRANCH=dist VERSION="$v" publish
