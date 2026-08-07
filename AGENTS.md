@@ -337,7 +337,9 @@ same artifact names as the mainline Scala releases**, at `<upstream-base>-p<n>`:
 `scala3-tasty-inspector_3`, `scala3-repl_3`, `scala3-sbt-bridge`,
 `scala3-presentation-compiler_3`, `scalajs-scalalib_2.13` and
 `scala3-library_sjs1_3`. Matching the mainline names is what lets sbt's
-`scalaOrganization := "dev.propensive"` swap the fork in wholesale.
+`scalaOrganization := "dev.propensive"` swap the fork in wholesale. A WASM tree
+publishes a fourteenth, `scalajs-library_2.13` — see below. Both release streams
+carry the `wasm` patch, so a real release publishes fourteen.
 
 Each gets a POM, a sources jar and an (empty) javadoc jar, all GPG-signed with
 md5/sha1 checksums, bundled into one zip and uploaded to the Central Portal with
@@ -351,16 +353,42 @@ second copy to drift. It matches the graph Soundness already resolves the fork
 through (the `repo` task in its `build.mill`), plus the two modules Soundness
 does not use.
 
-One wrinkle is worth knowing. `scalajs-library_2.13` depends on
-`scalajs-scalalib_2.13` — the Scala 2.13 Scala.js stdlib. Upstream publishes
-*its* Scala 3 stdlib to that **same coordinate** at the Scala version, so version
-conflict resolution evicts the 2.13 one; that is why a Scala 3 artifact carries a
-`_2.13` suffix at all. We publish under `dev.propensive`, a different coordinate,
-so nothing is evicted and a consumer would get **both** copies of the stdlib
-`.sjsir`, which the Scala.js linker rejects as duplicate definitions. Our
-`scala3-library_sjs1_3` POM therefore carries an explicit `<exclusion>` on the
-dependency that drags it in. The excluded group follows the tree: `org.scala-js`
-on a stock tree, `io.github.scala-wasm` on a WASM one.
+#### The Scala.js artifacts
+
+Two wrinkles here, both stemming from the same thing: on the classpath, Scala.js
+artifacts must be present exactly once, because the linker treats a class defined
+in two jars as a duplicate definition and refuses it.
+
+**The stdlib.** `scalajs-library_2.13` depends on `scalajs-scalalib_2.13` — the
+Scala 2.13 Scala.js stdlib. Upstream publishes *its* Scala 3 stdlib to that
+**same coordinate** at the Scala version, so version-conflict resolution evicts
+the 2.13 one; that is why a Scala 3 artifact carries a `_2.13` suffix at all.
+Publishing under `dev.propensive` is a different coordinate, so nothing is
+evicted. On a **stock tree** our `scala3-library_sjs1_3` POM therefore carries an
+explicit `<exclusion>` on the dependency that drags the 2.13 one in, with the
+excluded group following the tree (`org.scala-js`, or `io.github.scala-wasm` on
+the scala-wasm fork).
+
+**The library itself, on a WASM tree.** The `$(SJS_LIB_SHIP)` recipe does not
+merely add to the Scala.js library: it *replaces* its `scala/scalajs/wit/package*`
+with Proscala's — the fork's version has only `native`, ours adds nine `wit*`
+intrinsics including `witImportCall` — and *deletes* all of
+`scala/scalajs/wasi/*`, so those facades reach the classpath only from the
+scalalib. That single provenance matters: mixed provenance reorders WIT variant
+cases, so (for example) `wasi:http`'s `get` encodes as the `post` discriminant —
+a silent miscompilation, not an error.
+
+Neither half can be shipped as an extra jar beside the stock library: the wit
+package would be a duplicate class rather than an addition, and nothing can
+remove entries from someone else's jar. So a WASM tree publishes the patched
+library as `dev.propensive:scalajs-library_2.13`, at the Scala version, and
+consumers resolve that instead — the same substitution Soundness makes locally in
+its `build.mill` `repo` task. Its POM records the provenance and the Apache-2.0
+licence of the original.
+
+A pleasant consequence: with library *and* scalalib both under `dev.propensive`,
+no stock Scala.js artifact enters our graph at all, so on a WASM tree the
+`<exclusion>` above is unnecessary and is not emitted.
 
 Four repository secrets are required (Settings → Secrets and variables →
 Actions); the workflow fails fast if any is missing:

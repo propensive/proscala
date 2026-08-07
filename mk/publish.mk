@@ -83,7 +83,7 @@ D_SJSJAVA  := $(subst /,.,$(SCALAJS_GROUP)):scalajs-javalib:$(SCALAJS_VERSION)
 # io.github.scala-wasm:scalajs-scalalib_2.13 instead. Hard-coding org.scala-js
 # would silently fail to exclude anything on precisely the trees we ship.
 SJS_SCALALIB_COORD := $(subst /,.,$(SCALAJS_GROUP)):scalajs-scalalib_2.13
-D_SJSLIB   := $(subst /,.,$(SCALAJS_GROUP)):scalajs-library_2.13:$(SCALAJS_VERSION)^$(SJS_SCALALIB_COORD)
+
 
 # ---- Our own modules, at this build's version --------------------------------
 P_SCALALIB   := $(PUB_GROUP):scala-library:$(VERSION)
@@ -118,6 +118,38 @@ DIRECTIVES_DEP := $(if $(HAS_DIRECTIVES),$(P_DIRECTIVES))
 comma     := ,
 join_deps  = $(subst $(space),$(comma),$(strip $1))
 
+# ---- The Scala.js library: stock, or ours on a WASM tree ---------------------
+# Defined here, below `join_deps` and the P_* coordinates, because these are
+# simply-expanded (`:=`) and would otherwise silently expand to nothing.
+#
+# On a WASM tree the build does not merely *add* to the Scala.js library: the
+# $(SJS_LIB_SHIP) recipe in the Makefile replaces its `scala/scalajs/wit/package*`
+# with Proscala's (nine `wit*` intrinsics that the scala-wasm fork's one-member
+# version lacks) and *deletes* all of `scala/scalajs/wasi/*`, so those facades
+# reach the classpath only from the scalalib, with a single provenance — mixed
+# provenance reorders WIT variant cases, which miscompiles silently.
+#
+# Neither half can be delivered by an extra jar alongside the stock one: the wit
+# package would be a duplicate class rather than an addition (a hard error for
+# the Scala.js linker, and resolution-order roulette at compile time), and
+# nothing can remove entries from someone else's jar. So on a WASM tree the
+# patched library is published as ours and consumers resolve that instead — the
+# same substitution Soundness makes locally in its build.mill `repo` task.
+#
+# With library and scalalib both under $(PUB_GROUP), no stock Scala.js artifact
+# enters our graph at all, so no <exclusion> is needed. A stock tree still points
+# at Scala.js proper, and still needs the exclusion described above.
+ifeq ($(strip $(WIT_SRC)),)
+  SJS_LIB_DEP := $(subst /,.,$(SCALAJS_GROUP)):scalajs-library_2.13:$(SCALAJS_VERSION)^$(SJS_SCALALIB_COORD)
+  PUB_SJSLIB  :=
+else
+  SJS_LIB_DEP := $(PUB_GROUP):scalajs-library_2.13:$(VERSION)
+  # Mirrors the stock POM's dependencies with our scalalib substituted for
+  # theirs. `scalajs-javalib-intf` is omitted: it is `provided` there, so it is
+  # not propagated to consumers, and this generator has no scope support.
+  PUB_SJSLIB  := scalajs-library_2.13|scalajs-library_2.13-$(SCALAJS_VERSION).jar|-|$(call join_deps,org.scala-lang:scala-library:$(SCALA2_VERSION) $(D_SJSJAVA) $(P_SJSSCALA))
+endif
+
 PUB_TABLE := \
   scala-library|scala-library.jar|library/src|- \
   scala3-library_3|scala3-library.jar|-|$(P_SCALALIB) \
@@ -131,7 +163,8 @@ PUB_TABLE := \
   scala3-sbt-bridge|scala3-sbt-bridge.jar|sbt-bridge/src|$(call join_deps,$(P_COMPILER) $(P_REPL)) \
   scala3-presentation-compiler_3|scala3-presentation-compiler.jar|presentation-compiler/src|$(call join_deps,$(P_COMPILER) $(DIRECTIVES_DEP) $(D_LZ4) $(D_COURSIER) $(D_MTAGS) $(D_GUAVA) $(D_LSP4J)) \
   scalajs-scalalib_2.13|scalajs-scalalib_2.13.jar|library-js/src,library/src|$(D_SJSJAVA) \
-  scala3-library_sjs1_3|scala3-library_sjs1.jar|-|$(call join_deps,$(P_SCALALIB) $(D_SJSLIB) $(P_SJSSCALA))
+  $(PUB_SJSLIB) \
+  scala3-library_sjs1_3|scala3-library_sjs1.jar|-|$(call join_deps,$(P_SCALALIB) $(SJS_LIB_DEP) $(P_SJSSCALA))
 
 # ==============================================================================
 # Targets
@@ -166,6 +199,11 @@ publish-stage: publish-check-version
 	 group_path=$$(printf '%s' '$(PUB_GROUP)' | tr . /); \
 	 emit_pom() { \
 	   id="$$1"; deps="$$2"; out="$$3"; \
+	   case "$$id" in \
+	     scalajs-library_2.13) \
+	       desc='The Scala.js standard library from the scala-wasm fork (io.github.scala-wasm:scalajs-library_2.13), redistributed with Proscala&apos;s scala.scalajs.wit API spliced in and the scala/scalajs/wasi facades removed (they ship in scalajs-scalalib_2.13 instead, so that they have a single provenance). Original work by the Scala.js authors and the scala-wasm project, under the Apache License 2.0.' ;; \
+	     *) desc="$(PUB_DESC) ($$id)." ;; \
+	   esac; \
 	   { printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' \
 	       '<project xmlns="http://maven.apache.org/POM/4.0.0"' \
 	       '         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"' \
@@ -176,7 +214,7 @@ publish-stage: publish-check-version
 	     printf '  <version>%s</version>\n'       '$(VERSION)'; \
 	     printf '  <packaging>jar</packaging>\n'; \
 	     printf '  <name>%s</name>\n'             "$$id"; \
-	     printf '  <description>%s (%s).</description>\n' '$(PUB_DESC)' "$$id"; \
+	     printf '  <description>%s</description>\n' "$$desc"; \
 	     printf '  <url>%s</url>\n'               '$(PUB_URL)'; \
 	     printf '%s\n' '  <licenses><license>' \
 	       '    <name>Apache-2.0</name>' \
