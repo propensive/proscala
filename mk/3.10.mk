@@ -24,3 +24,6 @@ WERROR_FLAGS       := -Werror
 # needs no extra Maven artifacts beyond the common set.
 EXTRA_MAVEN_PATHS  :=
 REPL_EXTRA_JARS    :=
+# The same jars as Maven coordinates, for the published scala3-repl_3 POM (see
+# mk/publish.mk). Keep in step with REPL_EXTRA_JARS above.
+REPL_EXTRA_COORDS  :=

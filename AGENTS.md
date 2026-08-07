@@ -177,7 +177,8 @@ a clearly named variant file).
 Any build is produced from a code branch — a single `feature/<stream>/<patch>`,
 or `trunk/<stream>` for the whole stream — by overlaying the build from `main` and
 running `make`. The build is a plain `make` (GNU make, plus `curl`, `javac`, `jar`
-and a JDK ≥ 17). From a checkout of any code branch:
+and a JDK ≥ 17; publishing to Maven Central additionally needs `gpg` and `zip`).
+From a checkout of any code branch:
 
     git archive origin/main bin/proscala-overlay | tar -x   # bootstrap the helper
     bin/proscala-overlay                                     # drop the build in
@@ -303,6 +304,8 @@ Keep the streams in step with upstream out-of-band with `bin/proscala-rebase-tre
 Merging into a `release/<stream>` branch runs `.github/workflows/release.yml`,
 which:
 
+0. **Checks the four publishing secrets and imports the signing key**, before
+   anything irreversible happens — see *Publishing to Maven Central* below.
 1. **Overlays** the build from `main` (`bin/proscala-overlay`), so the release
    branch — which holds only Scala source plus this workflow — can be built.
 2. **Versions** the build as `<upstream-base>-p<n>`. The base is the stream's
@@ -314,6 +317,70 @@ which:
 4. **Tags** the commit with the version and creates a **GitHub release**, attaching a
    single `proscala-<version>.tar.gz` — a top-level `lib/` of the jars we build plus
    the Scala.js / scala-wasm runtime; third-party dependencies are not published.
+5. **Publishes the same jars to Maven Central** (`make … publish`), under
+   `dev.propensive`, at the same version.
+
+### Publishing to Maven Central
+
+Every release also goes to Maven Central, from the same trigger. The machinery
+is `mk/publish.mk` on `main` (overlaid with the rest of the build), so it is a
+**single commit on `main`** like any other build change — the release branches
+only carry the workflow step that invokes it.
+
+    make VERSION=<v> publish-bundle   # build, stage, sign, zip — no upload
+    make VERSION=<v> publish          # ... and upload to the Central Portal
+
+Thirteen artifacts are published, under the group `dev.propensive` and with **the
+same artifact names as the mainline Scala releases**, at `<upstream-base>-p<n>`:
+`scala-library`, `scala3-library_3`, `scala3-interfaces`, `tasty-core_3`,
+`scala3-compiler_3`, `scala3-directives-parser_3`, `scala3-staging_3`,
+`scala3-tasty-inspector_3`, `scala3-repl_3`, `scala3-sbt-bridge`,
+`scala3-presentation-compiler_3`, `scalajs-scalalib_2.13` and
+`scala3-library_sjs1_3`. Matching the mainline names is what lets sbt's
+`scalaOrganization := "dev.propensive"` swap the fork in wholesale.
+
+Each gets a POM, a sources jar and an (empty) javadoc jar, all GPG-signed with
+md5/sha1 checksums, bundled into one zip and uploaded to the Central Portal with
+`publishingType=AUTOMATIC` — so a release goes live unattended. **Maven Central
+is append-only**: a published version can never be replaced, only superseded by
+the next `-p<n>`.
+
+The POM dependency graph is derived from the same `mk/<stream>.mk` variables the
+compile classpaths use, so a version bump moves the POMs with it and there is no
+second copy to drift. It matches the graph Soundness already resolves the fork
+through (the `repo` task in its `build.mill`), plus the two modules Soundness
+does not use.
+
+One wrinkle is worth knowing. `scalajs-library_2.13` depends on
+`scalajs-scalalib_2.13` — the Scala 2.13 Scala.js stdlib. Upstream publishes
+*its* Scala 3 stdlib to that **same coordinate** at the Scala version, so version
+conflict resolution evicts the 2.13 one; that is why a Scala 3 artifact carries a
+`_2.13` suffix at all. We publish under `dev.propensive`, a different coordinate,
+so nothing is evicted and a consumer would get **both** copies of the stdlib
+`.sjsir`, which the Scala.js linker rejects as duplicate definitions. Our
+`scala3-library_sjs1_3` POM therefore carries an explicit `<exclusion>` on the
+dependency that drags it in. The excluded group follows the tree: `org.scala-js`
+on a stock tree, `io.github.scala-wasm` on a WASM one.
+
+Four repository secrets are required (Settings → Secrets and variables →
+Actions); the workflow fails fast if any is missing:
+
+| Secret | What it is |
+| ------ | ---------- |
+| `SONATYPE_USERNAME` | Central **user token** name (not portal login) |
+| `SONATYPE_PASSWORD` | Central user token secret |
+| `GPG_PRIVATE_KEY`   | ASCII-armoured private key (`gpg --armor --export-secret-keys <id>`) |
+| `GPG_PASSPHRASE`    | that key's passphrase |
+
+Locally the same target reads `SONATYPE_USERNAME` / `SONATYPE_PASSWORD` from the
+environment, and leaves `gpg-agent` in charge when `PROSCALA_GPG_PASSPHRASE` is
+unset — so it prompts through pinentry exactly as `consequent`'s `etc/ci/release.sh`
+does. Sourcing the credentials from the macOS keychain, as consequent documents:
+
+    export SONATYPE_USERNAME=$(security find-generic-password -a proscala-release \
+      -s proscala.sonatype.username -w)
+    export SONATYPE_PASSWORD=$(security find-generic-password -a proscala-release \
+      -s proscala.sonatype.password -w)
 
 Current streams and their release versions:
 

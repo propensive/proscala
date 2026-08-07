@@ -598,3 +598,8 @@ tarball: release
 	@rm -f $(TARBALL)
 	@tar -czf $(TARBALL) -C $(RELEASE) lib
 	@echo "  tarball : $(TARBALL)"
+
+# ---- Maven Central publication -----------------------------------------------
+# Included last: it names the module jars, $(HAS_DIRECTIVES) and the classpath
+# version variables above, and adds only `publish*` targets of its own.
+include $(ROOT)/mk/publish.mk

@@ -28,3 +28,8 @@ EXTRA_MAVEN_PATHS := \
 REPL_EXTRA_JARS := \
   $(JARS)/pprint_3-0.9.3.jar $(JARS)/fansi_3-0.5.1.jar \
   $(JARS)/sourcecode_3-0.4.4.jar $(JARS)/using_directives-1.1.4.jar
+# The same jars as Maven coordinates, for the published scala3-repl_3 POM (see
+# mk/publish.mk). Keep in step with REPL_EXTRA_JARS above.
+REPL_EXTRA_COORDS := \
+  com.lihaoyi:pprint_3:0.9.3 com.lihaoyi:fansi_3:0.5.1 \
+  com.lihaoyi:sourcecode_3:0.4.4 org.virtuslab:using_directives:1.1.4
