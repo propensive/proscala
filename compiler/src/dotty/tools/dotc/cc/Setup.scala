@@ -594,7 +594,21 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
 
     val tp1 = ccState.withNoVarsMapped(toCapturing(tp))
     if tp1 ne tp then capt.println(i"expanded explicit in ${ctx.owner}: $tp  -->  $tp1")
-    val tp2 = if sym.isType then stripImpliedCaptureSet(tp1) else tp1
+    // A type member's own info normally drops the universal capture set implied by a
+    // capability parent (`type X = C` rather than `type X = C^{any}`), matching the
+    // canonical spelling of a standalone type alias. But a synthetic type member of an
+    // anonymous class synthesised for a SAM conversion (`ExpandSAMs`) must stay boxed so
+    // that the class is internally consistent: its abstract method's parameter, typed
+    // `C^`, has to conform to the inherited `stream(value: Self)` seen through this very
+    // member. Leaving it bare makes `C^ <: C` fail. The declared SAM refinement it must
+    // ultimately match keeps the implied set too (as a method result), and the two root
+    // flavours (`caps.any` here vs a method `ResultCap` there) are reconciled by the
+    // capability-alias relaxation in `TypeComparer.hasMatchingMember`. This only arises
+    // on platforms that expand such SAMs to classes before capture checking (e.g.
+    // Scala.js, whose `isSam` rejects arbitrary traits); on the JVM the SAM stays a
+    // closure with no separate type-member symbol.
+    val keepImplied = sym.is(Synthetic) && sym.owner.isAnonymousClass
+    val tp2 = if sym.isType && !keepImplied then stripImpliedCaptureSet(tp1) else tp1
     if tp2.containsGlobalFreshDirectly then
       fail(
         em"""`fresh` occurs outside function result in $tp2.
