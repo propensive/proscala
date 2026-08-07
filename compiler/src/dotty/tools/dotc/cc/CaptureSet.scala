@@ -649,7 +649,28 @@ object CaptureSet:
         false
       }
 
-    def toReader()(using Context) = failWith(MutAdaptFailure(this))
+    def toReader()(using Context) =
+      // A constant set whose every element is the existential capability of a *method
+      // result* can be viewed read-only: such a capability stands for whatever the
+      // concrete result captures and occurs in covariant result position, so a read-only
+      // result conforms to it. The JVM reaches the same conclusion via the equivalent
+      // fresh `Var` (whose `toReader` mutates it to `Reader`); a constant cannot record
+      // that mutation and would otherwise fail. This is deliberately restricted to a
+      // method-result root — a `ResultCap`, or a `LocalCap` localised from `caps.any`
+      // with a method declaration as its origin — and does NOT cover a genuine exclusive
+      // requirement such as `caps.any` in a value type ascription, where widening an
+      // empty or read-only capture stays an error (see `mut-widen-empty`). It surfaces
+      // when a SAM anonymous class (Scala.js) overrides a stateful-returning method: the
+      // inherited result capability is a constant, whereas the JVM closure carries a
+      // fresh mutable one.
+      def isMethodResultRoot(elem: Capability): Boolean = elem.core match
+        case _: ResultCap => true
+        case lc: LocalCap => lc.origin match
+          case Origin.InDecl(sym, _) => sym.is(Method)
+          case _ => false
+        case _ => false
+      if !elems.isEmpty && elems.forall(isMethodResultRoot) then true
+      else failWith(MutAdaptFailure(this))
 
     def addDependent(cs: CaptureSet)(using Context, VarState) = true
 
