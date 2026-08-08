@@ -80,10 +80,11 @@ done
 for d in doc/*/; do
   f="$(basename "$d")"
   table | cut -f1 | grep -qx "$f" && continue
-  # Docs that legitimately have no row: the build (not a patch), and patches
-  # retired with a dropped stream, kept as a record.
-  case "$f" in make|boundscap) continue ;; esac
-  problem "doc/$f/ has no row in doc/README.md (and is not the build or a retired patch)"
+  # Docs that legitimately have no row: the build (not a patch), patches
+  # retired with a dropped stream kept as a record, and documented upstream
+  # behaviours the fork deliberately does not patch.
+  case "$f" in make|boundscap|localroots) continue ;; esac
+  problem "doc/$f/ has no row in doc/README.md (and is not the build, a retired patch or an unpatched upstream record)"
 done
 
 # --- 2. Repro column vs the filesystem ---------------------------------------

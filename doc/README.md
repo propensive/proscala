@@ -15,6 +15,11 @@ has no `feature/<stream>/make` branch and no row below — but it is documented
 alongside the features, in [make/make.md](make/make.md). [boundscap](boundscap/boundscap.md)
 likewise has no row: it applied only to the 3.8 stream, retired in August 2026, and
 its analysis and reproduction are kept as a record.
+[localroots](localroots/localroots.md) also has no row: it documents an upstream
+3.10 capture-checking behaviour (memoized local roots failing the second inline
+expansion in a unit) that the fork deliberately does **not** patch — every
+affected Soundness site was fixed honestly at source — kept with its two
+reproductions so the diagnostic is recognisable when it next appears.
 
 | Feature | Description | Streams | Kind | Repro |
 | ------- | ----------- | ------- | ---- | ----- |
