@@ -1067,12 +1067,17 @@ class Inliner(val call: tpd.Tree)(using Context):
 
           // We dealias opaque types because their aliases might not be visible
           // at the expansion site. See `tests/run-macros/opaque-inline`.
+          // Ordinary aliases are stripped first (`tp.dealias`): an opaque hidden
+          // behind a plain alias (`type Date = Timestamp {...}` over an opaque
+          // `Timestamp`) must be revealed the same way on both sides, or the
+          // conformance check below compares an opaque-revealed expected type
+          // against an unrevealed actual type and fails on well-typed expansions.
           val dealiasOpaques = new TypeMap:
-            def apply(tp: Type): Type = tp match
+            def apply(tp: Type): Type = tp.dealias match
               case tp: TypeRef if tp.typeSymbol.isOpaqueAlias =>
                 val sym = tp.typeSymbol
                 apply(sym.opaqueAlias.asSeenFrom(tp.prefix, sym.owner))
-              case _ =>
+              case tp =>
                 mapOver(tp)
 
           val actualTp = dealiasOpaques(res.tpe)
