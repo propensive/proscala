@@ -364,8 +364,16 @@ abstract class Recheck extends Phase, SymTransformer:
             case arg :: args1 =>
               val argType = recheckArg(arg, normalizeByName(formals.head), prefs.head, tree)
               val formals1 =
-                if fntpe.isParamDependent
-                then formals.tail.map(_.substParam(prefs.head, argType))
+                if fntpe.isParamDependent then
+                  // Substitute the argument's stable path type (as Typer did) rather than
+                  // the capture-adapted rechecked type: box adaptation can widen/dealias a
+                  // singleton argument, and substituting the widened type turns a later
+                  // formal's `x.Result` selection into a type projection that the actual
+                  // argument no longer conforms to. This mirrors the singleton conservation
+                  // recheckApplication#instArgs already performs for dependent results.
+                  val substArg =
+                    if !argType.isSingleton && arg.tpe.isStable then arg.tpe else argType
+                  formals.tail.map(_.substParam(prefs.head, substArg))
                 else formals.tail
               argType :: recheckArgs(args1, formals1, prefs.tail)
             case Nil =>
@@ -450,7 +458,13 @@ abstract class Recheck extends Phase, SymTransformer:
       // result type of a method with a return must be given explicitly.
       val avoidMap = new TypeOps.AvoidMap:
         def toAvoid(tp: NamedType) =
-           tp.symbol.is(Case) && tp.symbol.owner.isContainedIn(ctx.owner)
+           // Only term symbols: this map exists to avoid pattern-bound *singleton*
+           // alternatives (see the comment below). Case-flagged *type* symbols —
+           // notably quote-pattern type variables — also appear in the label's
+           // recorded return prototype (through skolem infos), so avoiding them
+           // in the found type but not the expected type breaks conformance the
+           // typer already established.
+           tp.symbol.isTerm && tp.symbol.is(Case) && tp.symbol.owner.isContainedIn(ctx.owner)
 
       // The pattern matching translation, which runs before this phase
       // sometimes instantiates return types with singleton type alternatives

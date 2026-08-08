@@ -32,7 +32,7 @@ object Versions {
    *  During release candidate cycle incremented by the release officer before publishing a subsequent RC version;
    *  During final, stable release is set exactly to `developedVersion`.
   */
-  val baseVersion = s"$developedVersion-RC4"
+  val baseVersion = s"$developedVersion-RC5"
 
   /** The version of TASTY that should be emitted, checked in runtime test
    *  For details on how TASTY version should be set see related discussions:
@@ -88,11 +88,6 @@ object Versions {
    *   - `3.(M-1).0` if `P = 0`
    */
   val mimaPreviousDottyVersion = "3.8.0"
-
-  /** Version of Scala CLI to download */
-  val scalaCliLauncherVersion = "1.15.0"
-  /** Version of Coursier to download for initializing the local maven repo of Scala command */
-  val coursierJarVersion = "2.1.25-M26"
 
   /* Tests TASTy version invariants during NIGHLY, RC or Stable releases */
   def checkReleasedTastyVersion(): Unit = {
