@@ -97,6 +97,10 @@ object Synthetics:
           case _ =>
             if paramInfo.hasAnnotation(defn.ConsumeAnnot)
             then CapturingType(tp, CaptureSet.universal)
+            // A nullary case class's synthesized unapply returns Boolean, not the
+            // scrutinee; substituting `x.type` retypes `case C() =>` patterns to the
+            // scrutinee singleton where Boolean is required.
+            else if tp.widenDealias.isRef(defn.BooleanClass) then tp
             else trackedParam
         info.derivedLambdaType(paramInfos = newParamInfo :: Nil, resType = newResult(info.resType))
           .showing(i"augment unapply type $info to $result", capt)
