@@ -506,8 +506,40 @@ extension (tp: Type)
       tp
 
   def inheritedClassifier(using Context): ClassSymbol =
+    // The least upper bound of two classifiers: the more general of the two if
+    // they are comparable, otherwise their closest common ancestor classifier,
+    // or `AnyClass` if there is none. This differs from `greatestClassifier`,
+    // which picks the more specific class when the two are comparable; here we
+    // need the more general one, since a joined classifier must permit every
+    // capability that either operand's classifier permits.
+    def lubClassifier(cls1: ClassSymbol, cls2: ClassSymbol): ClassSymbol =
+      if cls2.isSubClass(cls1) then cls1
+      else if cls1.isSubClass(cls2) then cls2
+      else cls1.classDenot.baseClasses
+        .find(bc => bc.isClassifiedCapabilityClass && cls2.isSubClass(bc))
+        .getOrElse(defn.AnyClass)
+    // The classifier contributed by one member of a union type. A value of a
+    // union type is a value of one of the union's members, so a member that is
+    // always pure (e.g. `Unset` in `Unset | Array[Byte]`, or `Int` in
+    // `Int | Array[Int]`) contributes no capabilities at all and yields
+    // `NothingClass`, the identity of `lubClassifier`. Any other member yields
+    // its own inherited classifier (`AnyClass` if it is unclassified, which
+    // absorbs the other members' classifiers). Without this, a union would
+    // fall through to `classSymbols`, which sees only the members' common
+    // superclasses (e.g. `Object`, `Matchable`) whose classifier is `Any`; so
+    // under strict mutability `Unset | Array[Byte]` would classify as `Any`
+    // even though a bare `Array[Byte]` classifies as `Unscoped`.
+    def memberClassifier(part: Type): ClassSymbol = part.dealias match
+      case part: OrType =>
+        lubClassifier(memberClassifier(part.tp1), memberClassifier(part.tp2))
+      case part =>
+        if part.isAlwaysPure then defn.NothingClass else part.inheritedClassifier
     if tp.isArrayUnderStrictMut then defn.Caps_Unscoped
-    else tp.classSymbols.map(_.classifier).foldLeft(defn.AnyClass)(leastClassifier)
+    else tp.dealias match
+      case tp: OrType =>
+        lubClassifier(memberClassifier(tp.tp1), memberClassifier(tp.tp2))
+      case _ =>
+        tp.classSymbols.map(_.classifier).foldLeft(defn.AnyClass)(leastClassifier)
 
   /** The classifiers of all terminal capabilities in the span capture set of `tp` */
   def embeddedLocalCaps(using Context): List[Capability] =
