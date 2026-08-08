@@ -26,6 +26,18 @@ class RetainingAnnotation(tpe: Type) extends CompactAnnotation(tpe) {
   override protected def sanitize(tp: Type)(using Context): Type = tp match
     case SkolemType(_) =>
       SkolemType(defn.AnyType)
+    case _: TypeBounds =>
+      // An ApproximatingTypeMap turned a retained element into a range: e.g.
+      // `deskolemized` (applied to inferred result types in Namer#inferredResultType)
+      // maps a skolem element of a dependent method's capture set to a range, which
+      // `derivedOrType` merges with neighbouring elements and `derivedAppliedType`
+      // re-packs as a wildcard argument `>: lo <: hi` of @retains. A TypeBounds is
+      // not a legal capability: it either crashes the pickler ("no TypeBounds
+      // allowed") or surfaces as "Illegal capture reference" when the annotation is
+      // converted to a capture set, e.g. for an export forwarder of a transparent
+      // inline method. Capture sets are covariant and the range's upper bound has
+      // absorbed the surviving refs, so approximate by the top capability.
+      defn.Caps_any.termRef
     case tp @ AnnotatedType(parent, ann: RetainingAnnotation)
     if parent.typeSymbol != defn.Caps_CapSet && ann.symbol != defn.RetainsCapAnnot =>
       AnnotatedType(parent, RetainingAnnotation(defn.RetainsCapAnnot))
