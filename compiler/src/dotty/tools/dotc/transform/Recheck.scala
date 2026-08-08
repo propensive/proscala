@@ -364,8 +364,16 @@ abstract class Recheck extends Phase, SymTransformer:
             case arg :: args1 =>
               val argType = recheckArg(arg, normalizeByName(formals.head), prefs.head, tree)
               val formals1 =
-                if fntpe.isParamDependent
-                then formals.tail.map(_.substParam(prefs.head, argType))
+                if fntpe.isParamDependent then
+                  // Substitute the argument's stable path type (as Typer did) rather than
+                  // the capture-adapted rechecked type: box adaptation can widen/dealias a
+                  // singleton argument, and substituting the widened type turns a later
+                  // formal's `x.Result` selection into a type projection that the actual
+                  // argument no longer conforms to. This mirrors the singleton conservation
+                  // recheckApplication#instArgs already performs for dependent results.
+                  val substArg =
+                    if !argType.isSingleton && arg.tpe.isStable then arg.tpe else argType
+                  formals.tail.map(_.substParam(prefs.head, substArg))
                 else formals.tail
               argType :: recheckArgs(args1, formals1, prefs.tail)
             case Nil =>
