@@ -335,7 +335,12 @@ class Inliner(val call: tpd.Tree)(using Context):
       else argtpe.widen
     // If the call result type used a skolem for this argument, use the same skolem
     // as the proxy type. `?1` has `argtpe.widen` as its underlying type.
-    val proxySkolem = if argIsBottom then None else skolem
+    // Under capture checking, keep the pre-RC5 widened proxy type: cc has its own
+    // healing of inline-proxy captures, and a skolem-typed proxy bakes the local
+    // binding's capture (and skolem identity) into the expansion type, where it can
+    // neither be avoided into a pure declared result nor unified across a macro
+    // resplice retype (upstream #26563 casualties).
+    val proxySkolem = if argIsBottom || config.Feature.ccEnabled then None else skolem
     val bindingType = proxySkolem match
       case Some(sk) => if isByName then ExprType(sk) else sk
       case None => baseBindingType
@@ -1067,12 +1072,17 @@ class Inliner(val call: tpd.Tree)(using Context):
 
           // We dealias opaque types because their aliases might not be visible
           // at the expansion site. See `tests/run-macros/opaque-inline`.
+          // Ordinary aliases are stripped first (`tp.dealias`): an opaque hidden
+          // behind a plain alias (`type Date = Timestamp {...}` over an opaque
+          // `Timestamp`) must be revealed the same way on both sides, or the
+          // conformance check below compares an opaque-revealed expected type
+          // against an unrevealed actual type and fails on well-typed expansions.
           val dealiasOpaques = new TypeMap:
-            def apply(tp: Type): Type = tp match
+            def apply(tp: Type): Type = tp.dealias match
               case tp: TypeRef if tp.typeSymbol.isOpaqueAlias =>
                 val sym = tp.typeSymbol
                 apply(sym.opaqueAlias.asSeenFrom(tp.prefix, sym.owner))
-              case _ =>
+              case tp =>
                 mapOver(tp)
 
           val actualTp = dealiasOpaques(res.tpe)

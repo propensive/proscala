@@ -87,7 +87,7 @@ extends Reporter with UniqueMessagePositions with HideNonSensicalMessages:
         + s"-${dotty.tools.tasty.TastyFormat.ExperimentalVersion}"))
     val pos = dia.pos
     if pos.exists && pos.source.exists then
-      sb.append(attr("file", pos.source.file.path))
+      sb.append(attr("file", pos.source.path))
       sb.append(attr("line", (pos.line + 1).toString))
       sb.append(attr("column", (pos.column + 1).toString))
       sb.append(attr("endLine", (pos.endLine + 1).toString))

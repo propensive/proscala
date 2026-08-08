@@ -121,7 +121,7 @@ object DiagnosticTypePickler:
       val definedAt =
         try
           if sym.exists && sym.span.exists && sym.source.exists
-          then s"${sym.source.file.path}:${sym.sourcePos.line + 1}"
+          then s"${sym.source.path}:${sym.sourcePos.line + 1}"
           else ""
         catch case NonFatal(_) => ""
       val printed = try tp.show catch case NonFatal(_) => ""

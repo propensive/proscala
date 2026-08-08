@@ -868,6 +868,15 @@ class CheckCaptures extends Recheck, SymTransformer:
                && arg.tpe.isTrackableRef   // isTrackableRef --> we can get back original capture set by adaptation
                && !nuType.hasBoxedCapset // !isBoxed --> no risk of losing uses when unboxing in result
               => arg.tpe
+            case (nuType @ CapturingType(_, _), _) => nuType
+            case (nuType, arg: Tree)
+            // Rechecking widened a stable argument to a plain non-capturing type
+            // (e.g. box adaptation dealiasing a doubly-nested refining alias): keep
+            // the path, or a dependent result selecting a member through this
+            // parameter becomes a projection the call result no longer matches.
+            // No captures can be lost: the rechecked type has no capture set.
+            if !nuType.isSingleton && arg.tpe.isStable
+              => arg.tpe
             case (nuType, _) => nuType
           if argTypes1 ne argTypes then
             capt.println(i"improve $argTypes to $argTypes1 in $tree")
@@ -1031,6 +1040,10 @@ class CheckCaptures extends Recheck, SymTransformer:
     /** Check that capture set of type argument subcaptures capture set of bounds.
      *  We don't check if
      *   - the bound is exactly any since that is capture polymorphic top, or
+     *   - the bound is AnyKind, which is the top of the kind lattice and so says
+     *     nothing about captures, exactly as Any says nothing, or
+     *   - the bound is FromJavaObject (the `Object` bound of Java type parameters),
+     *     which is the capture polymorphic top for Java interop, or
      *   - the bound is singleton, since that's not a "real" bound, or
      *   - the bound capture set has terminal capabilities, since we don't
      *     want to upper-bound capsets by GlobalAny, or
@@ -1042,9 +1055,13 @@ class CheckCaptures extends Recheck, SymTransformer:
       val argRefs = argType.captureSet
       val hiBound = formal.bounds.hi
       val boundRefs = hiBound.captureSet
+      // Is `hiBound` exactly `Any`, `AnyKind`, or `FromJavaObject` (Java's `Object`
+      // bound)? These are capture polymorphic top types, so they do not constrain
+      // arguments.
+      val isPolymorphicTop =
+        hiBound.isExactlyAny || hiBound.isRef(defn.AnyKindClass) || hiBound.isFromJavaObject
       val canCheck =
-        !hiBound.isExactlyAny && !hiBound.isRef(defn.AnyKindClass)
-        && !hiBound.isRef(defn.SingletonClass)
+        !isPolymorphicTop && !hiBound.isRef(defn.SingletonClass)
         && !boundRefs.elems.exists:
           case ref: TypeParamRef => ref.binder == binder // F-bounded
           case ref => ref.isTerminalCapability // GlobalCaps cannot constrain arguments
@@ -2003,6 +2020,11 @@ class CheckCaptures extends Recheck, SymTransformer:
         // Get wildcards out of the way
         expected match
           case _: WildcardType => return actual
+          case _ =>
+
+        actual match
+          case actual: FlexibleType =>
+            return actual.derivedFlexibleType(recur(actual.hi, expected, covariant))
           case _ =>
 
         // Decompose the actual type into the inner shape type, the capture set and the box status
