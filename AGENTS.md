@@ -89,10 +89,10 @@ lines and `#` comments ignored and order irrelevant. The lists differ between
 streams: a patch only exists where it is needed, and some are upstreamed or become
 obsolete in a later stream.
 
-    features/3.9    26 patches   carries castbox, splicealias, samstateful, staleread
-    features/3.10   26 patches   adds anykindcap, integratemap, macroalias, modulepath; drops those four
+    features/3.9    27 patches   carries castbox, splicealias, samstateful, staleread
+    features/3.10   27 patches   adds anykindcap, integratemap, macroalias, modulepath; drops those four
 
-Twenty-two patches are common to both streams.
+Twenty-three patches are common to both streams.
 
 **This list is authoritative, not descriptive.** `bin/proscala-rebase-tree`
 rebuilds `trunk/<stream>` as the merge of exactly these patches, so the list — not

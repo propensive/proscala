@@ -23,6 +23,7 @@ its analysis and reproduction are kept as a record.
 | [blockimport](blockimport/blockimport.md) | Recheck a block's result expression in its statements' context | 3.9, 3.10 | bug fix | yes |
 | [castbox](castbox/castbox.md) | Box opaque-external type arguments in cast type applications | 3.9 | bug fix | yes |
 | [ctxresult](ctxresult/ctxresult.md) | Context-result closures level-checked at the method's level | 3.9, 3.10 | bug fix | yes |
+| [dependarg](dependarg/dependarg.md) | Conserve stable argument paths in dependent-application rechecking | 3.9, 3.10 | bug fix | yes |
 | [dictcaps](dictcaps/dictcaps.md) | Infer the capture set of recursive-implicit dictionary instances | 3.9, 3.10 | bug fix | yes |
 | [givencache](givencache/givencache.md) | Keep given aliases cached when capture checking is enabled | 3.9, 3.10 | bug fix (crash) | yes |
 | [iarraypure](iarraypure/iarraypure.md) | Treat `IArray` as pure under capture checking | 3.9, 3.10 | bug fix | yes |
