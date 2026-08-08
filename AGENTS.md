@@ -90,7 +90,7 @@ streams: a patch only exists where it is needed, and some are upstreamed or beco
 obsolete in a later stream.
 
     features/3.9    28 patches   carries castbox, splicealias, samstateful, staleread, virtualdir
-    features/3.10   28 patches   adds anykindcap, integratemap, macroalias, modulepath, unioncaps; drops those five
+    features/3.10   29 patches   adds anykindcap, boolunapply, integratemap, macroalias, modulepath, unioncaps; drops those five
 
 Twenty-three patches are common to both streams.
 
