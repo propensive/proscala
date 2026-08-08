@@ -47,6 +47,7 @@ its analysis and reproduction are kept as a record.
 | [spreadable](spreadable/spreadable.md) | Splice any type with a `Spreadable` instance into a vararg position | 3.9, 3.10 | feature | yes (2: `repro`, `repro-cc`) |
 | [staleread](staleread/staleread.md) | Tolerate reading newer denotations from stale run contexts | 3.9 | bug fix (crash) | yes (needs Soundness classpath) |
 | [unboxedpure](unboxedpure/unboxedpure.md) | Do not box pure types with vacuous or pure-tuple capture sets | 3.9, 3.10 | bug fix | yes |
+| [unioncaps](unioncaps/unioncaps.md) | Classify and preserve capture information on union types | 3.10 | bug fix | yes |
 | [wasm](wasm/wasm.md) | WIT / WebAssembly Component Model support | 3.9, 3.10 | feature | n/a |
 | [wasm-witcall](wasm-witcall/wasm-witcall.md) | `witImportCall`: stub-free WIT imports | 3.9, 3.10 | feature | n/a |
 
