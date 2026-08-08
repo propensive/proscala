@@ -399,8 +399,11 @@ abstract class Recheck extends Phase, SymTransformer:
       TypeOps.avoid(tp, symsToAvoid)
 
     private def recheckBlock(stats: List[Tree], expr: Tree, pt: Type)(using Context): Type =
-      recheckStats(stats)
-      val exprType = recheck(expr, pt)
+      // The result expression is rechecked in the context the statements leave
+      // behind, since an `import` among them is in scope for it too — exactly as
+      // Typer rechecks it in the context `typedBlockStats` returns.
+      val exprCtx = recheckStats(stats)
+      val exprType = recheck(expr, pt)(using exprCtx)
       avoidLocals(exprType, localSyms(stats).filterConserve(_.isTerm))
 
     def recheckBlock(tree: Block, pt: Type)(using Context): Type = tree match
@@ -514,14 +517,19 @@ abstract class Recheck extends Phase, SymTransformer:
     def recheckStat(stat: Tree)(using Context): Unit =
       recheck(stat)
 
-    def recheckStats(stats: List[Tree])(using Context): Unit =
-      @tailrec def traverse(stats: List[Tree])(using Context): Unit = stats match
+    /** Recheck all statements, returning the context they leave in scope: an
+     *  `import` among them applies to whatever follows the statement list as
+     *  well, so callers that have a trailing expression must recheck it in the
+     *  returned context rather than their own.
+     */
+    def recheckStats(stats: List[Tree])(using Context): Context =
+      @tailrec def traverse(stats: List[Tree])(using Context): Context = stats match
         case (imp: Import) :: rest =>
           traverse(rest)(using ctx.importContext(imp, imp.symbol))
         case stat :: rest =>
           recheckStat(stat)
           traverse(rest)
-        case _ =>
+        case _ => ctx
       traverse(stats)
 
     /** A hook to prevent rechecking a ValDef or DefDef.
