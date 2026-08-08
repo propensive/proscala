@@ -32,9 +32,23 @@ object CapturingType:
    *  An outer type capturing type A can be fused with an inner capturing type B if their
    *  boxing status is the same or if A is boxed.
    */
+  /** Does some member of the dealiased union structure of `tp` derive from a
+   *  capability trait? Unlike `derivesFromCapability`, which holds for a union
+   *  only if all members are capabilities, this also holds if just one member
+   *  is. An empty capture set is information-bearing on such a union: without
+   *  it, capability members would re-acquire implied capture sets at each
+   *  occurrence of the union. E.g. under strict mutability, dropping the `{}`
+   *  of `(Unset | Array[Byte])^{}` (as arises from normalizing
+   *  `Unset | Array[Byte]^{}`) would give the union a fresh `{any.rd}` per
+   *  occurrence, so that two mentions of the same alias never match.
+   */
+  private def hasCapabilityPart(tp: Type)(using Context): Boolean = tp.dealias match
+    case tp: OrType => hasCapabilityPart(tp.tp1) || hasCapabilityPart(tp.tp2)
+    case tp => tp.derivesFromCapability
+
   def apply(parent: Type, refs: CaptureSet, boxed: Boolean = false)(using Context): Type =
     assert(!boxed || !parent.derivesFromCapSet)
-    if refs.isAlwaysEmpty && !parent.isAny && !refs.keepAlways && !parent.derivesFromCapability then
+    if refs.isAlwaysEmpty && !parent.isAny && !refs.keepAlways && !hasCapabilityPart(parent) then
       parent
     else parent match
       case parent @ CapturingType(parent1, refs1) if refs == CaptureSet.Fluid =>
