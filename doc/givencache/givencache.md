@@ -98,3 +98,14 @@ is summoned. From 3.9.0-RC5 — whose new dependent-summon casts force the
 relevant capture sets — every module compiling that shape crashed in cc Setup
 with `IllegalCaptureRef`. With the patch the alias keeps its `val` identity
 and the summons capture-check as written.
+
+## A Scala.js interaction
+
+Retaining a given alias as a lazy val has one observable consequence upstream's
+demotion hid: a local given alias in a *super-argument block* initializes a
+field of `this` before the super constructor call. The JVM tolerates this; the
+Scala.js linker rejects it ("Restricted use of `this` before the super
+constructor call"). Where a class computes its superclass argument in a block
+that declares such a given (Soundness's `galilei.IoError` did), hoist the
+computation into a companion method instead. Found by the wasm-e2e attestation
+stage, 2026-08-09.
