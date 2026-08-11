@@ -11,7 +11,7 @@ import NameKinds.BodyRetainerName
 import SymDenotations.SymDenotation
 import config.Printers.inlining
 import ErrorReporting.errorTree
-import dotty.tools.dotc.util.{SourceFile, SourcePosition, SrcPos}
+import dotty.tools.dotc.util.{SmapRegistry, SourceFile, SourcePosition, SrcPos}
 import dotty.tools.dotc.transform.*
 import dotty.tools.dotc.transform.MegaPhase
 import dotty.tools.dotc.transform.MegaPhase.MiniPhase
@@ -297,6 +297,14 @@ object Inlines:
    *  first, so an enclosing call appends its own call-site frame to the chains
    *  recorded by the calls it contains, and a complete chain runs from the position
    *  the code was written at out to a call site in the compilation unit's source.
+   *
+   *  Each frame also names the top-level class whose compilation unit its position
+   *  lies in, which is what lets tooling find the class's TASTy without guessing:
+   *  the `Inlined` node's call trace references exactly that class for its own
+   *  expansion, and for the chain's last frame — the call site, which lies in the
+   *  *enclosing* expansion — the class is filled in by the enclosing call when it
+   *  appends its own frame. A call site in the primary source keeps no class: the
+   *  classfile itself provides that context.
    */
   private def recordInlineOrigins(inlined: Inlined, expansion: Tree)(using Context): Unit =
     val call = inlined.call
@@ -305,11 +313,19 @@ object Inlines:
       val callPos0 = call.sourcePos
       if callPos0.exists && callPos0.source.length > 0 then
         val callPos = callPos0.source.positionInUltimateSource(callPos0)
-        val callFrame = (callPos.source, callPos.line + 1)
+        val calleeClass =
+          if call.symbol.exists then
+            call.symbol.topLevelClass.fullName.stripModuleClassSuffix.mangledString
+          else ""
+        val callFrame = SmapRegistry.Frame(callPos.source, callPos.line + 1, "")
         expansion.foreachSubTree { tree =>
           tree.getAttachment(InlinedOriginChain) match
             case Some(chain) =>
-              tree.putAttachment(InlinedOriginChain, chain :+ callFrame)
+              // The chain's last frame is the inner call's site, which lies in this call's
+              // expansion — so this call's callee is the class its position belongs to.
+              val last = chain.last
+              val filled = if last.cls.isEmpty then last.copy(cls = calleeClass) else last
+              tree.putAttachment(InlinedOriginChain, chain.init :+ filled :+ callFrame)
             case None =>
               if tree.source != callSource && tree.span.exists
                  && tree.source.exists && tree.source.length > 0
@@ -317,7 +333,8 @@ object Inlines:
                 val pos0 = tree.sourcePos
                 if pos0.exists then
                   val pos = pos0.source.positionInUltimateSource(pos0)
-                  tree.putAttachment(InlinedOriginChain, (pos.source, pos.line + 1) :: callFrame :: Nil)
+                  val defFrame = SmapRegistry.Frame(pos.source, pos.line + 1, calleeClass)
+                  tree.putAttachment(InlinedOriginChain, defFrame :: callFrame :: Nil)
         }
 
   /** Resolve the `InlinedOriginChain` attachments below `tree` into synthetic
