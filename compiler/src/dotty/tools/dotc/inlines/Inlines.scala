@@ -37,6 +37,7 @@ import dotty.tools.dotc.core.Phases.Phase
 /** Support for querying inlineable methods and for inlining calls to such methods */
 object Inlines:
   import tpd.*
+  import ast.Trees.{InlinedOriginChain, InlinedSourceLine}
 
   /** Method name of the transparent inline call.
    *
@@ -501,8 +502,58 @@ object Inlines:
     val tree1 =
       if inlined.bindings.isEmpty then inlined.expansion
       else cpy.Block(inlined)(inlined.bindings, inlined.expansion)
+    if ctx.settings.Xjsr45.value then recordInlineOrigins(inlined, tree1)
     // Reposition in the outer most inlined call
-    if (enclosingInlineds.nonEmpty) tree1 else reposition(tree1, inlined.span)
+    if enclosingInlineds.nonEmpty then tree1
+    else
+      if ctx.settings.Xjsr45.value then resolveInlineOrigins(tree1)
+      reposition(tree1, inlined.span)
+
+  /** Record, on every tree of `expansion` that was inlined from a source other than
+   *  the call site's, its chain of inline frames in an `InlinedOriginChain`
+   *  attachment. `dropInlined` calls this once per `Inlined` node, innermost node
+   *  first, so an enclosing call appends its own call-site frame to the chains
+   *  recorded by the calls it contains, and a complete chain runs from the position
+   *  the code was written at out to a call site in the compilation unit's source.
+   */
+  private def recordInlineOrigins(inlined: Inlined, expansion: Tree)(using Context): Unit =
+    val call = inlined.call
+    if !call.isEmpty && call.span.exists then
+      val callSource = call.source
+      val callPos = call.sourcePos
+      if callPos.exists && callPos.source.length > 0 then
+        val callFrame = (callPos.source, callPos.line + 1)
+        expansion.foreachSubTree { tree =>
+          tree.getAttachment(InlinedOriginChain) match
+            case Some(chain) =>
+              tree.putAttachment(InlinedOriginChain, chain :+ callFrame)
+            case None =>
+              if tree.source != callSource && tree.span.exists
+                 && tree.source.exists && tree.source.length > 0
+              then
+                val pos = tree.sourcePos
+                if pos.exists then
+                  tree.putAttachment(InlinedOriginChain, (pos.source, pos.line + 1) :: callFrame :: Nil)
+        }
+
+  /** Resolve the `InlinedOriginChain` attachments below `tree` into synthetic
+   *  output lines (`InlinedSourceLine`, read by the backend), allocated from the
+   *  compilation unit's `SmapRegistry`. Called by `dropInlined` for the outermost
+   *  inlined call, when the chains are complete.
+   */
+  private def resolveInlineOrigins(tree: Tree)(using Context): Unit =
+    val unit = ctx.compilationUnit
+    if unit.source.exists && unit.source.length > 0 then
+      tree.foreachSubTree { t =>
+        for chain <- t.removeAttachment(InlinedOriginChain) do
+          val registry = unit.smapRegistry match
+            case null =>
+              val fresh = util.SmapRegistry(unit.source)
+              unit.smapRegistry = fresh
+              fresh
+            case registry => registry
+          t.putAttachment(InlinedSourceLine, registry.outputLineFor(chain))
+      }
 
   def reposition(tree: Tree, callSpan: Span)(using Context): Tree =
     // Reference test tests/run/i4947b
