@@ -49,6 +49,7 @@ reproductions so the diagnostic is recognisable when it next appears.
 | [samstateful](samstateful/samstateful.md) | Read-only views of constant method-result capture sets | 3.9 | bug fix | yes |
 | [semdiag](semdiag/semdiag.md) | `-Xsemantic-diagnostics`: XML error output with TASTy-encoded types | 3.9, 3.10 | feature | n/a |
 | [skolemcap](skolemcap/skolemcap.md) | Widen skolems in retains sets to the top capability | 3.9, 3.10 | bug fix | yes (needs Soundness classpath) |
+| [smap](smap/smap.md) | `-Xjsr45`: JSR-45 SMAP attributes mapping inlined code to its source files | 3.9, 3.10 | feature | n/a |
 | [splicealias](splicealias/splicealias.md) | Give spliced type binders their spliced type as info | 3.9 | bug fix | yes |
 | [spreadable](spreadable/spreadable.md) | Splice any type with a `Spreadable` instance into a vararg position | 3.9, 3.10 | feature | yes (2: `repro`, `repro-cc`) |
 | [staleread](staleread/staleread.md) | Tolerate reading newer denotations from stale run contexts | 3.9 | bug fix (crash) | yes (needs Soundness classpath) |
