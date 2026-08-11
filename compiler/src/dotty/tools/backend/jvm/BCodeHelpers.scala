@@ -54,6 +54,18 @@ trait BCodeHelpers(val bTypeLoader: BTypeLoader, val bTypes: WellKnownBTypes) ex
       cachedClassfileVersion = target.toInt + (Opcodes.V17 - 17)
     cachedClassfileVersion.nn
 
+  /** The JSR-45 SourceDebugExtension (SMAP) for classes generated from the current
+   *  compilation unit, or null if none is needed. Non-null only under `-Xjsr45`,
+   *  when the unit contains code inlined from other source files.
+   */
+  protected def sourceDebugExtension(using Context): String | Null =
+    ctx.compilationUnit.smapRegistry match {
+      case null => null
+      case registry =>
+        if (registry.isEmpty) null
+        else registry.serialize(ctx.compilationUnit.source.name)
+    }
+
   /*
    * can-multi-thread
    */
@@ -577,7 +589,7 @@ trait BCodeHelpers(val bTypeLoader: BTypeLoader, val bTypes: WellKnownBTypes) ex
       )
 
       if (BackendUtils.emitSource) {
-        mirrorClass.visitSource("" + ctx.compilationUnit.source.file.name, null /* SourceDebugExtension */)
+        mirrorClass.visitSource("" + ctx.compilationUnit.source.file.name, sourceDebugExtension)
       }
 
       val ssa = None // getAnnotPickle(mirrorName, if (moduleClass.is(Module)) moduleClass.companionClass else moduleClass.companionModule)
