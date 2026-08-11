@@ -62,7 +62,8 @@ pickling invariant changes — and adds provenance alongside them:
   registry is serialized into ASM's `visitSource(name, debug)` second
   parameter — the `SourceDebugExtension` slot, previously always `null`.
 
-Two strata are emitted, mirroring Kotlin's `Kotlin`/`KotlinDebug` pair:
+Three strata are emitted; the first two mirror Kotlin's `Kotlin`/`KotlinDebug`
+pair:
 
 - **`Scala`** (default): synthetic line → the position the code was written
   at. This is what debuggers use for breakpoints and stepping.
@@ -71,6 +72,13 @@ Two strata are emitted, mirroring Kotlin's `Kotlin`/`KotlinDebug` pair:
   consumer can follow `ScalaDebug` through nested inlining, one call per hop,
   until it reaches a real line — recovering the full stack of inline "calls"
   hidden inside one JVM stack frame.
+- **`ScalaClass`**: synthetic line → the binary name of the top-level class
+  whose compilation unit the inlined code was written in, carried as the
+  stratum's "file" names (its input lines are always 1). A source position
+  alone names no class, and there is no contract from file names to class
+  names, so this is what lets tooling find the class's TASTy — and with it
+  the inline method's definition — without guessing. The class is taken from
+  the `Inlined` node's call trace, which references exactly that class.
 
 For the example above (`Main.scala` having 3 lines):
 
@@ -95,12 +103,18 @@ Main.scala
 Util.scala
 *L
 3#1:4
+*S ScalaClass
+*F
+1 Util
+*L
+1#1:4
 *E
 ```
 
 Output line 4 is synthetic: the `Scala` stratum maps it to `Util.scala:3`
-(where `x + x` lives), and `ScalaDebug` maps it to line 3 of `Main.scala`
-(the call). The JVM itself never consults SMAP for stack traces, so a raw
+(where `x + x` lives), `ScalaDebug` maps it to line 3 of `Main.scala`
+(the call), and `ScalaClass` names `Util` as the top-level class whose TASTy
+holds the inline method's definition. The JVM itself never consults SMAP for stack traces, so a raw
 trace through inlined code shows the synthetic numbers; remapping is a
 consumer-side job — an IDE, or a renderer such as Soundness's Digression
 module, which can read the attribute and expand each frame into its inline
