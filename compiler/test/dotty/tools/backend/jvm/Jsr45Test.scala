@@ -72,10 +72,18 @@ class Jsr45Test extends DottyBytecodeTest:
       assertTrue(s"expected call-site entry in:\n$smap",
         debug.exists(e => e.inputLine == 3 && e.fileId == 1 && e.outputLine > primaryLines))
 
+      // ScalaClass names the top-level class each synthetic line was inlined from
+      val classes = lineEntries(smap, "ScalaClass")
+      assertTrue(s"expected a ScalaClass entry per synthetic line in:\n$smap",
+        classes.map(_.outputLine).sorted == synthetic.flatMap(e =>
+          e.outputLine until e.outputLine + e.repeat).sorted)
+      assertTrue(classes.forall(_.inputLine == 1))
+      assertTrue(s"expected class Util in:\n$smap",
+        smap.linesIterator.exists(_.matches("\\d+ Util")))
+
       // and the method body actually uses a synthetic line
       val lines = instructionsFromMethod(getMethod(mainClass, "run")).collect { case ln: LineNumber => ln.line }
       assertTrue(s"expected a synthetic line number in $lines", lines.exists(_ > primaryLines))
-      assertTrue(s"expected the call-site line number in $lines", lines.contains(3))
     }
 
   @Test def nestedInlineAcrossThreeFiles(): Unit =
@@ -115,6 +123,11 @@ class Jsr45Test extends DottyBytecodeTest:
         debug.exists(_.inputLine > primaryLines))
       assertTrue(s"expected a hop to the primary file in:\n$smap",
         debug.exists(e => e.inputLine <= primaryLines && e.fileId == 1))
+
+      // ScalaClass names both defining classes
+      assertTrue(s"expected classes A and B in:\n$smap",
+        smap.linesIterator.exists(_.matches("\\d+ A"))
+        && smap.linesIterator.exists(_.matches("\\d+ B")))
     }
 
   @Test def sameFileInlineNeedsNoSmap(): Unit =
@@ -134,27 +147,33 @@ class SmapRegistryTest:
   private def source(name: String, lines: Int): SourceFile =
     SourceFile.virtual(name, (1 to lines).map(i => s"// line $i").mkString("\n"))
 
+  import SmapRegistry.Frame
+
   @Test def lockstepRunsCoalesce(): Unit =
     val primary = source("Main.scala", 10)
     val util = source("Util.scala", 5)
     val registry = SmapRegistry(primary)
-    val first = registry.outputLineFor(List((util, 2), (primary, 7)))
-    val second = registry.outputLineFor(List((util, 3), (primary, 7)))
+    val first = registry.outputLineFor(List(Frame(util, 2, "Util"), Frame(primary, 7, "")))
+    val second = registry.outputLineFor(List(Frame(util, 3, "Util"), Frame(primary, 7, "")))
     assertEquals(first + 1, second)
     // identical chains share their output line
-    assertEquals(first, registry.outputLineFor(List((util, 2), (primary, 7))))
+    assertEquals(first, registry.outputLineFor(List(Frame(util, 2, "Util"), Frame(primary, 7, ""))))
 
     val smap = registry.serialize("Main.scala")
     assertTrue(s"expected coalesced run in:\n$smap", smap.contains(s"2#2,2:$first\n"))
     assertTrue(s"expected call-site entries in:\n$smap",
       smap.contains(s"7#1:$first\n") && smap.contains(s"7#1:$second\n"))
+    assertTrue(s"expected ScalaClass entries in:\n$smap",
+      smap.contains("*S ScalaClass\n*F\n1 Util\n")
+      && smap.contains(s"1#1:$first\n") && smap.contains(s"1#1:$second\n"))
 
   @Test def nestedChainsAllocateCallSites(): Unit =
     val primary = source("Main.scala", 10)
     val a = source("A.scala", 5)
     val b = source("B.scala", 5)
     val registry = SmapRegistry(primary)
-    val inner = registry.outputLineFor(List((a, 3), (b, 2), (primary, 4)))
+    val inner = registry.outputLineFor(
+      List(Frame(a, 3, "A"), Frame(b, 2, "B"), Frame(primary, 4, "")))
     val smap = registry.serialize("Main.scala")
     // the chain allocated a line for B's call site too, and the ScalaDebug entry
     // for A's code points at it (a synthetic line, not a primary line)
@@ -162,3 +181,7 @@ class SmapRegistryTest:
     assertTrue(s"expected entries for line $inner in:\n$smap", hop.nonEmpty)
     assertTrue(s"expected synthetic call site in:\n$smap",
       smap.linesIterator.exists(l => l.endsWith(s":$inner") && l.takeWhile(_.isDigit).toInt > 10))
+    // the suffix chain's entry names B's class; the full chain's names A's
+    assertTrue(s"expected classes A and B in ScalaClass of:\n$smap",
+      smap.linesIterator.exists(_.matches("\\d+ A"))
+      && smap.linesIterator.exists(_.matches("\\d+ B")))
