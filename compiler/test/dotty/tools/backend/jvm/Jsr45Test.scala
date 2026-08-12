@@ -159,7 +159,7 @@ class SmapRegistryTest:
     // identical chains share their output line
     assertEquals(first, registry.outputLineFor(List(Frame(util, 2, "Util"), Frame(primary, 7, ""))))
 
-    val smap = registry.serialize("Main.scala")
+    val smap = registry.serialize("Main.scala", Set(first, second))
     assertTrue(s"expected coalesced run in:\n$smap", smap.contains(s"2#2,2:$first\n"))
     assertTrue(s"expected call-site entries in:\n$smap",
       smap.contains(s"7#1:$first\n") && smap.contains(s"7#1:$second\n"))
@@ -174,7 +174,7 @@ class SmapRegistryTest:
     val registry = SmapRegistry(primary)
     val inner = registry.outputLineFor(
       List(Frame(a, 3, "A"), Frame(b, 2, "B"), Frame(primary, 4, "")))
-    val smap = registry.serialize("Main.scala")
+    val smap = registry.serialize("Main.scala", Set(inner))
     // the chain allocated a line for B's call site too, and the ScalaDebug entry
     // for A's code points at it (a synthetic line, not a primary line)
     val hop = s"#\\d+:$inner\n".r.findAllIn(smap).toList
@@ -185,3 +185,38 @@ class SmapRegistryTest:
     assertTrue(s"expected classes A and B in ScalaClass of:\n$smap",
       smap.linesIterator.exists(_.matches("\\d+ A"))
       && smap.linesIterator.exists(_.matches("\\d+ B")))
+
+  @Test def onlyUsedLinesAreEmitted(): Unit =
+    val primary = source("Main.scala", 10)
+    val util = source("Util.scala", 5)
+    val other = source("Other.scala", 5)
+    val registry = SmapRegistry(primary)
+    val used = registry.outputLineFor(List(Frame(util, 2, "Util"), Frame(primary, 7, "")))
+    val unused = registry.outputLineFor(List(Frame(other, 3, "Other"), Frame(primary, 8, "")))
+
+    val smap = registry.serialize("Main.scala", Set(used))
+    assertTrue(s"expected the used line in:\n$smap", smap.contains(s":$used\n"))
+    assertTrue(s"unused line $unused should be absent from:\n$smap", !smap.contains(s":$unused\n"))
+    assertTrue(s"unused file should be absent from:\n$smap", !smap.contains("Other.scala"))
+    assertTrue(s"unused class should be absent from:\n$smap",
+      !smap.linesIterator.exists(_.matches("\\d+ Other")))
+
+    // a class which emitted no synthetic line at all needs no SMAP
+    assertEquals("", registry.serialize("Main.scala", Set(3)))
+
+  @Test def callSiteChainIsClosedOver(): Unit =
+    val primary = source("Main.scala", 10)
+    val a = source("A.scala", 5)
+    val b = source("B.scala", 5)
+    val registry = SmapRegistry(primary)
+    val inner = registry.outputLineFor(
+      List(Frame(a, 3, "A"), Frame(b, 2, "B"), Frame(primary, 4, "")))
+
+    // only the innermost line was emitted, but its call site is itself synthetic, so the
+    // entry describing that call site must come along or the chain would dead-end
+    val smap = registry.serialize("Main.scala", Set(inner))
+    val debugSection = smap.substring(smap.indexOf("*S ScalaDebug"))
+    val hop = "(\\d+)#\\d+:%d".format(inner).r.findFirstMatchIn(debugSection).map(_.group(1).nn.toInt)
+    assertTrue(s"expected a synthetic call site for $inner in:\n$smap", hop.exists(_ > 10))
+    assertTrue(s"expected that call site's own entry in:\n$smap",
+      hop.exists(line => smap.contains(s":$line\n")))
