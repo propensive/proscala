@@ -37,8 +37,6 @@ class SmapRegistry(primarySource: SourceFile):
   private val entries = mutable.ArrayBuffer.empty[Entry]
   private val memo = mutable.HashMap.empty[List[Frame], Int]
 
-  def isEmpty: Boolean = entries.isEmpty
-
   /** The synthetic output line for `chain`, allocated on first use. The chain must
    *  be non-empty; its frames hold 1-based line numbers. An incomplete chain (one
    *  that does not end in the primary source) still gets a definition-site mapping,
@@ -58,61 +56,83 @@ class SmapRegistry(primarySource: SourceFile):
       memo(chain) = line
       line
 
-  /** The SMAP text for a class generated from the primary source. */
-  def serialize(generatedFileName: String): String =
-    val fileIds = mutable.LinkedHashMap[SourceFile, Int](primarySource -> 1)
-    def idOf(source: SourceFile): Int = fileIds.getOrElseUpdate(source, fileIds.size + 1)
-    for e <- entries do
-      idOf(e.defFrame.source)
-      for call <- e.call do idOf(call.source)
+  /** The SMAP text describing exactly `usedLines` — the synthetic lines that one
+   *  generated class emitted — or the empty string if none of them is a synthetic line
+   *  of this unit. A unit's registry covers every inlined line in the unit, which for a
+   *  unit that inlines heavily is far more than any one of its classes uses.
+   *
+   *  A line's call site may itself be a synthetic line the class never emitted (the
+   *  inner call of a nested expansion), so the entries are closed over the `ScalaDebug`
+   *  chain: without that, following the chain would dead-end part-way out.
+   */
+  def serialize(generatedFileName: String, usedLines: collection.Set[Int]): String =
+    val byOutputLine = entries.iterator.map(e => e.outputLine -> e).toMap
 
-    val classIds = mutable.LinkedHashMap[String, Int]()
-    for e <- entries if e.defFrame.cls.nonEmpty do
-      classIds.getOrElseUpdate(e.defFrame.cls, classIds.size + 1)
+    val included = mutable.TreeSet.empty[Int]
+    def include(line: Int): Unit =
+      if !included.contains(line) then
+        byOutputLine.get(line).foreach: e =>
+          included += line
+          for call <- e.call if call.line > primaryLastLine do include(call.line)
 
-    val sb = StringBuilder()
-    def fileSection(): Unit =
-      sb ++= "*F\n"
-      for (source, id) <- fileIds do
-        sb ++= s"+ $id ${source.name}\n${source.path}\n"
+    usedLines.foreach(include)
 
-    sb ++= s"SMAP\n$generatedFileName\nScala\n"
-    sb ++= "*S Scala\n"
-    fileSection()
-    sb ++= "*L\n"
-    sb ++= s"1#1,$primaryLastLine:1\n"
-    var i = 0
-    while i < entries.length do
-      val e = entries(i)
-      val Frame(defSource, defLine, defCls) = e.defFrame
-      // coalesce runs where input and output lines increase in lockstep
-      var n = 1
-      while i + n < entries.length
-            && entries(i + n).defFrame == Frame(defSource, defLine + n, defCls)
-            && entries(i + n).outputLine == e.outputLine + n
-      do n += 1
-      val repeat = if n == 1 then "" else s",$n"
-      sb ++= s"$defLine#${idOf(defSource)}$repeat:${e.outputLine}\n"
-      i += n
+    if included.isEmpty then "" else
+      val chosen = included.toArray.map(byOutputLine)
 
-    sb ++= "*S ScalaDebug\n"
-    fileSection()
-    sb ++= "*L\n"
-    for e <- entries do
-      for call <- e.call do
-        sb ++= s"${call.line}#${idOf(call.source)}:${e.outputLine}\n"
+      val fileIds = mutable.LinkedHashMap[SourceFile, Int](primarySource -> 1)
+      def idOf(source: SourceFile): Int = fileIds.getOrElseUpdate(source, fileIds.size + 1)
+      for e <- chosen do
+        idOf(e.defFrame.source)
+        for call <- e.call do idOf(call.source)
 
-    if classIds.nonEmpty then
-      sb ++= "*S ScalaClass\n"
-      sb ++= "*F\n"
-      for (cls, id) <- classIds do sb ++= s"$id $cls\n"
+      val classIds = mutable.LinkedHashMap[String, Int]()
+      for e <- chosen if e.defFrame.cls.nonEmpty do
+        classIds.getOrElseUpdate(e.defFrame.cls, classIds.size + 1)
+
+      val sb = StringBuilder()
+      def fileSection(): Unit =
+        sb ++= "*F\n"
+        for (source, id) <- fileIds do
+          sb ++= s"+ $id ${source.name}\n${source.path}\n"
+
+      sb ++= s"SMAP\n$generatedFileName\nScala\n"
+      sb ++= "*S Scala\n"
+      fileSection()
       sb ++= "*L\n"
-      for e <- entries do
-        if e.defFrame.cls.nonEmpty then
-          sb ++= s"1#${classIds(e.defFrame.cls)}:${e.outputLine}\n"
+      sb ++= s"1#1,$primaryLastLine:1\n"
+      var i = 0
+      while i < chosen.length do
+        val e = chosen(i)
+        val Frame(defSource, defLine, defCls) = e.defFrame
+        // coalesce runs where input and output lines increase in lockstep
+        var n = 1
+        while i + n < chosen.length
+              && chosen(i + n).defFrame == Frame(defSource, defLine + n, defCls)
+              && chosen(i + n).outputLine == e.outputLine + n
+        do n += 1
+        val repeat = if n == 1 then "" else s",$n"
+        sb ++= s"$defLine#${idOf(defSource)}$repeat:${e.outputLine}\n"
+        i += n
 
-    sb ++= "*E\n"
-    sb.toString
+      sb ++= "*S ScalaDebug\n"
+      fileSection()
+      sb ++= "*L\n"
+      for e <- chosen do
+        for call <- e.call do
+          sb ++= s"${call.line}#${idOf(call.source)}:${e.outputLine}\n"
+
+      if classIds.nonEmpty then
+        sb ++= "*S ScalaClass\n"
+        sb ++= "*F\n"
+        for (cls, id) <- classIds do sb ++= s"$id $cls\n"
+        sb ++= "*L\n"
+        for e <- chosen do
+          if e.defFrame.cls.nonEmpty then
+            sb ++= s"1#${classIds(e.defFrame.cls)}:${e.outputLine}\n"
+
+      sb ++= "*E\n"
+      sb.toString
 end SmapRegistry
 
 object SmapRegistry:
