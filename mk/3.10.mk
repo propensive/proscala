@@ -27,3 +27,12 @@ REPL_EXTRA_JARS    :=
 # The same jars as Maven coordinates, for the published scala3-repl_3 POM (see
 # mk/publish.mk). Keep in step with REPL_EXTRA_JARS above.
 REPL_EXTRA_COORDS  :=
+
+# Upstream main's JVM backend imports org.objectweb.asm directly (unshaded)
+# since the 9.10 switch, so this tree compiles and ships the org.ow2.asm jars;
+# the shaded scala-asm remains only on the reference-compiler classpath.
+TREE_ASM_VERSION := 9.10.1
+TREE_ASM_NAMES := asm asm-tree asm-analysis asm-util asm-commons
+TREE_ASM_MAVEN_PATHS := $(foreach n,$(TREE_ASM_NAMES),org/ow2/asm/$(n)/$(TREE_ASM_VERSION)/$(n)-$(TREE_ASM_VERSION).jar)
+TREE_ASM_JARS := $(foreach n,$(TREE_ASM_NAMES),$(JARS)/$(n)-$(TREE_ASM_VERSION).jar)
+TREE_ASM_COORDS := org.ow2.asm:asm-util:$(TREE_ASM_VERSION) org.ow2.asm:asm-commons:$(TREE_ASM_VERSION)

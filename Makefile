@@ -53,6 +53,15 @@ ifeq ($(wildcard $(STREAM_MK)),)
 endif
 include $(STREAM_MK)
 
+# ---- ASM for the tree's own JVM backend --------------------------------------
+# Streams up to 3.9 compile against the shaded org.scala-lang.modules:scala-asm;
+# from 3.10 upstream imports org.objectweb.asm directly, so mk/3.10.mk overrides
+# these with the org.ow2.asm jars. The shaded scala-asm stays on the
+# reference-compiler classpath regardless (the reference compiler needs it).
+TREE_ASM_MAVEN_PATHS ?=
+TREE_ASM_JARS ?= $(ASM_JAR)
+TREE_ASM_COORDS ?= org.scala-lang.modules:scala-asm:$(ASM_VERSION)
+
 MC := https://repo1.maven.org/maven2
 
 # Build-time constants
@@ -103,7 +112,7 @@ WIT_TOOLCHAIN_PATHS := $(if $(WIT_SRC), \
 # ==============================================================================
 # Dependencies (downloaded from Maven Central, cached under .build/jars)
 # ==============================================================================
-MAVEN_PATHS := $(EXTRA_MAVEN_PATHS) $(WIT_TOOLCHAIN_PATHS) \
+MAVEN_PATHS := $(EXTRA_MAVEN_PATHS) $(WIT_TOOLCHAIN_PATHS) $(TREE_ASM_MAVEN_PATHS) \
   org/scala-lang/scala3-compiler_3/$(REF_VERSION)/scala3-compiler_3-$(REF_VERSION).jar \
   org/scala-lang/scala3-library_3/$(REF_VERSION)/scala3-library_3-$(REF_VERSION).jar \
   org/scala-lang/scala-library/$(REF_VERSION)/scala-library-$(REF_VERSION).jar \
@@ -320,7 +329,7 @@ endif
 # ---- 6. scala3-compiler (compiler/src + vendored scalajs-ir + javac) ---------
 COMPILER_SRC := $(shell find compiler/src compiler/src-scalajs-ir \( -name '*.scala' -o -name '*.java' \) -type f)
 COMPILER_CP  := $(call cpjoin,$(SCALA_LIB_JAR) $(INTERFACES_JAR) $(TASTY_JAR) \
-  $(JARS)/scala-asm-$(ASM_VERSION).jar $(JARS)/compiler-interface-$(COMPILER_IFACE_VER).jar \
+  $(TREE_ASM_JARS) $(JARS)/compiler-interface-$(COMPILER_IFACE_VER).jar \
   $(JARS)/util-interface-$(UTIL_IFACE_VER).jar)
 
 $(COMPILER_JAR): $(COMMON_ARGS) $(SCALA_LIB_JAR) $(INTERFACES_JAR) $(TASTY_JAR) $(COMPILER_SRC)
@@ -352,7 +361,7 @@ $(COMPILER_JAR): $(COMMON_ARGS) $(SCALA_LIB_JAR) $(INTERFACES_JAR) $(TASTY_JAR) 
 # Downstream modules, compiled with the freshly-built compiler (STAGEC)
 # ==============================================================================
 STAGE_JARS := $(SCALA_LIB_JAR) $(COMPILER_JAR) $(TASTY_JAR) $(INTERFACES_JAR) \
-              $(ASM_JAR) $(COMPILER_IFACE_JAR) $(UTIL_IFACE_JAR)
+              $(TREE_ASM_JARS) $(COMPILER_IFACE_JAR) $(UTIL_IFACE_JAR)
 STAGE_CP   := $(call cpjoin,$(STAGE_JARS))
 STAGEC     := java -cp "$(STAGE_CP)" dotty.tools.dotc.Main
 
@@ -526,7 +535,7 @@ stage2: $(STAGE2_JARS)
 extra: $(EXTRA_JARS)
 
 # Third-party runtime jars shipped alongside the built modules on the classpath.
-THIRDPARTY_JARS := $(ASM_JAR) $(COMPILER_IFACE_JAR) $(UTIL_IFACE_JAR) \
+THIRDPARTY_JARS := $(TREE_ASM_JARS) $(COMPILER_IFACE_JAR) $(UTIL_IFACE_JAR) \
   $(JLINE_JARS) $(COURSIER_IFACE_JAR) $(LZ4_JAR) $(GUAVA_JARS) $(MTAGS_IFACE_JAR) \
   $(LSP4J_JARS) $(SJS_LIBRARY_JAR) $(SJS_JAVALIB_JAR) $(REPL_EXTRA_JARS)
 

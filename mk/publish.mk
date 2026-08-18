@@ -50,7 +50,7 @@ SHA1CMD := $(shell command -v sha1sum >/dev/null 2>&1 && echo sha1sum || echo 's
 # group:artifact:version, built from the same variables that name the downloaded
 # jars in MAVEN_PATHS. $(LZ4_GROUP) and $(SCALAJS_GROUP) are path-shaped there
 # (at/yawk/lz4), so they are dotted here.
-D_ASM      := org.scala-lang.modules:scala-asm:$(ASM_VERSION)
+D_ASM      := $(TREE_ASM_COORDS)
 D_CIFACE   := org.scala-sbt:compiler-interface:$(COMPILER_IFACE_VER)
 D_UIFACE   := org.scala-sbt:util-interface:$(UTIL_IFACE_VER)
 D_JLINE    := org.jline:jline-reader:$(JLINE_VERSION) \
