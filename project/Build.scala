@@ -51,7 +51,7 @@ object Build {
   // Used to run binaries similar to ./bin/scala script
   val scala = inputKey[Unit]("run compiled binary using the correct classpath, or the user supplied classpath")
 
-  val buildQuick = taskKey[Unit]("compile the compiler and REPL, write classpath to bin/.cp for use by bin/scalacQ and bin/replQ")
+  val buildQuick = taskKey[Unit]("compile the compiler and REPL, write classpath to bin/.cp for use by bin/scalacQ, bin/scalaQ and bin/replQ")
 
   // Settings used to configure the test language server
   val ideTestsCompilerVersion = taskKey[String]("Compiler version to use in IDE tests")
@@ -488,9 +488,11 @@ object Build {
     val dottyStaging = (`scala3-staging` / Compile / packageBin).value.getAbsolutePath
     val dottyTastyInspector = (`scala3-tasty-inspector` / Compile / packageBin).value.getAbsolutePath
     val tastyCore = (`tasty-core-bootstrapped` / Compile / packageBin).value.getAbsolutePath
-    val asm = findArtifactPath(externalDeps, "scala-asm")
+    val asm =
+      Seq("asm", "asm-util", "asm-commons", "asm-analysis", "asm-tree")
+        .map(name => findArtifactPath(externalDeps, name))
     val compilerInterface = findArtifactPath(externalDeps, "compiler-interface")
-    Seq(dottyCompiler, dottyInterfaces, asm, dottyStaging, dottyTastyInspector, tastyCore, compilerInterface)
+    asm ++ Seq(dottyCompiler, dottyInterfaces, dottyStaging, dottyTastyInspector, tastyCore, compilerInterface)
   }
 
   /** Build the `scala` input task for an aggregate project.
@@ -607,6 +609,7 @@ object Build {
     `scala3-staging`,
     `scala3-tasty-inspector`,
     `scala3-repl`,
+    `scala3-repl-nonbootstrapped`,
     `scala2-library`,
     scaladoc,
     `scaladoc-testcases`,
@@ -634,7 +637,8 @@ object Build {
 
   lazy val `scala3-nonbootstrapped` = project.in(file("."))
     .aggregate(`scala3-interfaces`, `scala3-library-nonbootstrapped` , `scala-library-nonbootstrapped`,
-      `tasty-core-nonbootstrapped`, `scala3-directives-parser-nonbootstrapped`, `scala3-compiler-nonbootstrapped`, `scala3-sbt-bridge-nonbootstrapped`)
+      `tasty-core-nonbootstrapped`, `scala3-directives-parser-nonbootstrapped`, `scala3-compiler-nonbootstrapped`,
+      `scala3-sbt-bridge-nonbootstrapped`, `scala3-repl-nonbootstrapped`)
     .settings(
       name          := "scala3-nonbootstrapped",
       moduleName    := "scala3-nonbootstrapped",
@@ -664,13 +668,11 @@ object Build {
         libraryProject = `scala-library-nonbootstrapped`,
         withCompilerDeps = withCompilerClasspath(`scala3-compiler-nonbootstrapped`)
       ).evaluated,
-      // TODO: scala3-repl depends on the bootstrapped compiler, making this slower
-      // than it needs to be. A non-bootstrapped REPL project would speed this up.
       buildQuick := {
-        val _ = (`scala3-repl` / Compile / compile).value
-        val cp = (`scala3-repl` / Compile / fullClasspath).value.map(_.data.getAbsolutePath).mkString(File.pathSeparator)
+        val _ = (`scala3-repl-nonbootstrapped` / Compile / compile).value
+        val cp = (`scala3-repl-nonbootstrapped` / Compile / fullClasspath).value.map(_.data.getAbsolutePath).mkString(File.pathSeparator)
         IO.write(baseDirectory.value / "bin" / ".cp", cp)
-        streams.value.log.info(s"Wrote classpath to bin/.cp — use bin/scalacQ and bin/replQ")
+        streams.value.log.info(s"Wrote classpath to bin/.cp — use bin/scalacQ, bin/scalaQ and bin/replQ")
       },
       testCompilation := testCompilationTask(
         compilerProject = `scala3-compiler-nonbootstrapped`,
@@ -850,7 +852,6 @@ object Build {
       bspEnabled := false,
     )
 
-  /* Configuration of the org.scala-lang:scala3-tasty-inspector:*.**.**-bootstrapped project */
   lazy val `scala3-tasty-inspector` = project.in(file("tasty-inspector"))
     // We want the compiler to be present in the compiler classpath when compiling this project but not
     // when compiling a project that depends on scala3-tasty-inspector (see sbt-test/sbt-dotty/tasty-inspector-example-project),
@@ -881,50 +882,72 @@ object Build {
       bspEnabled := false,
     )
 
+  /* Settings shared between the `scala3-repl` and `scala3-repl-nonbootstrapped` projects */
+  lazy val replSettings = Def.settings(
+    moduleName    := "scala3-repl",
+    versionScheme := Some("semver-spec"),
+    crossPaths    := true,
+    // sbt shouldn't add the stdlib automatically, we depend on it transitively via the compiler project
+    autoScalaLibrary := false,
+    // Add the source directories of the REPL
+    Compile / unmanagedSourceDirectories   := Seq(baseDirectory.value / "src"),
+    Compile / unmanagedResourceDirectories := Seq(baseDirectory.value / "resources"),
+    Test    / unmanagedSourceDirectories   := Seq(baseDirectory.value / "test"),
+    Test    / unmanagedResourceDirectories := Seq(baseDirectory.value / "test-resources"),
+    // All the dependencies needed by the REPL
+    libraryDependencies ++= Seq(
+      Dependencies.jlineReader,
+      Dependencies.jlineTerminal,
+      Dependencies.jlineTerminalJni,
+      Dependencies.sbtJunitInterface % Test,
+      Dependencies.coursierInterface, // used by the REPL for dependency resolution
+    ),
+    run / fork := true,
+    Compile / run := {
+      //val classpath = s"-classpath ${(`scala-library-bootstrapped` / Compile / packageBin).value}"
+      // TODO: We should use the val above instead of `-usejavacp` below. SBT crashes we we have a val and we call toTask
+      // with it as a parameter. THIS IS NOT A LEGIT USE CASE OF THE `-usejavacp` FLAG.
+      (Compile / run).partialInput(" -usejavacp").evaluated
+    },
+  )
+
   lazy val `scala3-repl` = project.in(file("repl"))
     .dependsOn(`scala3-compiler-bootstrapped` % "compile->compile;test->test", `scala3-directives-parser-bootstrapped`)
     .settings(publishSettings)
+    .settings(replSettings)
     .settings(
       name          := "scala3-repl",
-      moduleName    := "scala3-repl",
       version       := dottyVersion,
-      versionScheme := Some("semver-spec"),
       scalaVersion  := dottyNonBootstrappedVersion,
-      crossPaths    := true,
-      autoScalaLibrary := false,
-      // Add the source directories for the sbt-bridge (bootstrapped)
-      Compile / unmanagedSourceDirectories   := Seq(baseDirectory.value / "src"),
-      Compile / unmanagedResourceDirectories := Seq(baseDirectory.value / "resources"),
-      Test    / unmanagedSourceDirectories   := Seq(baseDirectory.value / "test"),
-      Test    / unmanagedResourceDirectories := Seq(baseDirectory.value / "test-resources"),
-      // Packaging configuration of `scala3-staging`
+      // Packaging configuration of `scala3-repl`
       Compile / packageBin / publishArtifact := true,
       Compile / packageDoc / publishArtifact := true,
       Compile / packageSrc / publishArtifact := true,
       // Only publish compilation artifacts, no test artifacts
       Test    / publishArtifact := false,
       publish / skip := false,
-      libraryDependencies ++= Seq(
-        Dependencies.jlineReader,
-        Dependencies.jlineTerminal,
-        Dependencies.jlineTerminalJni,
-        Dependencies.sbtJunitInterface % Test,
-        Dependencies.coursierInterface, // used by the REPL for dependency resolution
-      ),
       // Configure to use the non-bootstrapped compiler
       bootstrappedScalaInstanceSettings,
       // Needed for the JSR223 tests which are "run" tests
       Test / javaOptions += s"-Ddotty.tests.classes.scalaLibrary=${(`scala-library-bootstrapped` / Compile / packageBin).value}",
-      run / fork := true,
       excludeDependencies += "org.scala-lang" %% "scala3-library",
       excludeDependencies += "org.scala-lang" % "scala-library",
-      Compile / run := {
-        //val classpath = s"-classpath ${(`scala-library-bootstrapped` / Compile / packageBin).value}"
-        // TODO: We should use the val above instead of `-usejavacp` below. SBT crashes we we have a val and we call toTask
-        // with it as a parameter. THIS IS NOT A LEGIT USE CASE OF THE `-usejavacp` FLAG.
-        (Compile / run).partialInput(" -usejavacp").evaluated
-      },
       bspEnabled := enableBspAllProjects,
+    )
+
+  lazy val `scala3-repl-nonbootstrapped` = project.in(file("repl"))
+    .dependsOn(`scala3-compiler-nonbootstrapped` % "compile->compile;test->test", `scala3-directives-parser-nonbootstrapped`)
+    .settings(replSettings)
+    .settings(
+      name          := "scala3-repl-nonbootstrapped",
+      version       := dottyNonBootstrappedVersion,
+      scalaVersion  := referenceVersion,
+      Compile / mainClass := Some("dotty.tools.repl.Main"),
+      publish / skip := true,
+      target := target.value / "scala3-repl-nonbootstrapped",
+      fetchedScalaInstanceSettings,
+      Test / javaOptions += s"-Ddotty.tests.classes.scalaLibrary=${(`scala-library-nonbootstrapped` / Compile / packageBin).value}",
+      bspEnabled := true,
     )
 
   // ==============================================================================================
@@ -981,6 +1004,7 @@ object Build {
       Compile / unmanagedSourceDirectories   += baseDirectory.value / "src-non-bootstrapped",
       Compile / unmanagedResourceDirectories := Seq(baseDirectory.value / "resources"),
       Compile / compile / scalacOptions ++= Seq(
+        "-opt", "-opt-inline:**,!java.**",
         // Needed so that the library sources are visible when `dotty.tools.dotc.core.Definitions#init` is called
         "-sourcepath", (Compile / sourceDirectories).value.map(_.getCanonicalPath).distinct.mkString(File.pathSeparator),
       ),
@@ -1435,7 +1459,8 @@ object Build {
       // All the dependencies needed by the compiler
       libraryDependencies ++= Seq(
         Dependencies.sbtJunitInterface % Test,
-        Dependencies.asm,
+        Dependencies.asmUtil,
+        Dependencies.asmCommons,
         Dependencies.sbtCompilerInterface,
         (Dependencies.coursier % Test).cross(CrossVersion.for3Use2_13),
       ),
@@ -1544,7 +1569,7 @@ object Build {
           s"-Ddotty.tests.classes.tastyCore=${(`tasty-core-nonbootstrapped` / Compile / packageBin).value}",
           s"-Ddotty.tests.classes.compilerInterface=${findArtifactPath(externalDeps, "compiler-interface")}",
           s"-Ddotty.tests.classes.scalaLibrary=${(`scala-library-nonbootstrapped` / Compile / packageBin).value}",
-          s"-Ddotty.tests.classes.scalaAsm=${findArtifactPath(externalDeps, "scala-asm")}",
+          s"-Ddotty.tests.classes.asm=${findArtifactPath(externalDeps, "asm")}",
           s"-Ddotty.tools.dotc.semanticdb.test=${(ThisBuild / baseDirectory).value/"tests"/"semanticdb"}",
         )
       },
@@ -1561,9 +1586,9 @@ object Build {
       versionScheme := Some("semver-spec"),
       scalaVersion  := dottyNonBootstrappedVersion,
       crossPaths    := true, // org.scala-lang:scala3-compiler has a crosspath
-      // sbt shouldn't add stdlib automatically, we depend on `scala3-library-nonbootstrapped`
+      // sbt shouldn't add stdlib automatically, we depend on `scala3-library-bootstrapped`
       autoScalaLibrary := false,
-      // Add the source directories for the compiler (boostrapped)
+      // Add the source directories for the compiler (bootstrapped)
       Compile / unmanagedSourceDirectories   := Seq(baseDirectory.value / "src"),
       Compile / unmanagedSourceDirectories   += baseDirectory.value / "src-bootstrapped",
       Compile / unmanagedResourceDirectories += baseDirectory.value / "resources",
@@ -1572,7 +1597,8 @@ object Build {
       Test / unmanagedResourceDirectories += baseDirectory.value / "test-resources",
       // All the dependencies needed by the compiler
       libraryDependencies ++= Seq(
-        Dependencies.asm,
+        Dependencies.asmUtil,
+        Dependencies.asmCommons,
         Dependencies.sbtCompilerInterface,
         Dependencies.sbtJunitInterface % Test,
         (Dependencies.coursier % Test).cross(CrossVersion.for3Use2_13),
@@ -1595,6 +1621,9 @@ object Build {
       Compile / resourceGenerators += generateCompilerProperties.taskValue,
       // Configure to use the non-bootstrapped compiler
       bootstrappedScalaInstanceSettings,
+      // Optimize the compiler, but only inline its own code,
+      // since it may be used with a different standard library than it was compiled with.
+      Compile / compile / scalacOptions ++= Seq("-opt", "-opt-inline:dotty.**"),
       /* Add the sources of scalajs-ir.
        * To guarantee that dotty can bootstrap without depending on a version
        * of scalajs-ir built with a different Scala compiler, we add its
@@ -1671,7 +1700,7 @@ object Build {
           s"-Ddotty.tests.classes.compilerInterface=${findArtifactPath(externalDeps, "compiler-interface")}",
           s"-Ddotty.tests.classes.scalaLibrary=${(`scala-library-bootstrapped` / Compile / packageBin).value}",
           s"-Ddotty.tests.classes.scalaJSScalalib=${(`scala-library-sjs` / Compile / packageBin).value}",
-          s"-Ddotty.tests.classes.scalaAsm=${findArtifactPath(externalDeps, "scala-asm")}",
+          s"-Ddotty.tests.classes.asm=${findArtifactPath(externalDeps, "asm")}",
           s"-Ddotty.tests.classes.dottyStaging=${(LocalProject("scala3-staging") / Compile / packageBin).value}",
           s"-Ddotty.tests.classes.dottyTastyInspector=${(LocalProject("scala3-tasty-inspector") / Compile / packageBin).value}",
           s"-Ddotty.tools.dotc.semanticdb.test=${(ThisBuild / baseDirectory).value/"tests"/"semanticdb"}",
@@ -1699,6 +1728,7 @@ object Build {
       // sbt shouldn't add stdlib automatically, we depend on `scala3-library-nonbootstrapped`
       autoScalaLibrary := false,
       Compile / unmanagedSourceDirectories := Seq(baseDirectory.value / "src"),
+      Test / unmanagedResourceDirectories += baseDirectory.value / "test-resources",
       Compile / resourceDirectory := baseDirectory.value / "resources",
       // Add all the necessary resource generators
       Compile / resourceGenerators ++= Seq(
@@ -2369,7 +2399,7 @@ object Build {
           s"-Ddotty.tests.classes.tastyCore=${(`tasty-core-bootstrapped` / Compile / packageBin).value}",
           s"-Ddotty.tests.classes.compilerInterface=${findArtifactPath(externalDeps, "compiler-interface")}",
           s"-Ddotty.tests.classes.scalaLibrary=${(`scala-library-bootstrapped` / Compile / packageBin).value}",
-          s"-Ddotty.tests.classes.scalaAsm=${findArtifactPath(externalDeps, "scala-asm")}",
+          s"-Ddotty.tests.classes.asm=${findArtifactPath(externalDeps, "asm")}",
           s"-Ddotty.tools.dotc.semanticdb.test=${(ThisBuild / baseDirectory).value/"tests"/"semanticdb"}",
           "-Ddotty.tests.classes.scalaJSScalalib=" + (`scala-library-sjs` / Compile / packageBin).value,
           "-Ddotty.tests.classes.scalaJSJavalib=" + findArtifactPath(externalJSDeps, "scalajs-javalib"),

@@ -89,10 +89,10 @@ trait CommonScalaSettings:
   val javabootclasspath: Setting[String] = PathSetting(RootSetting, "javabootclasspath", "Override java boot classpath.", Defaults.javaBootClassPath, aliases = List("--java-boot-class-path"))
   val javaextdirs: Setting[String] = PathSetting(RootSetting, "javaextdirs", "Override java extdirs classpath.", Defaults.javaExtDirs, aliases = List("--java-extension-directories"))
   val sourcepath: Setting[String] = PathSetting(RootSetting, "sourcepath", "Specify location(s) of source files.", Defaults.scalaSourcePath, aliases = List("--source-path"))
-  val sourceroot: Setting[String] = PathSetting(RootSetting, "sourceroot", "Specify workspace root directory.", ".")
+  val sourceroot: Setting[AbstractFile] = FileContainerSetting(RootSetting, "sourceroot", allowsJar = false, "Specify workspace root directory.", new PlainDirectory(Directory(".")))
 
   val classpath: Setting[String] = PathSetting(RootSetting, "classpath", "Specify where to find user class files.", ScalaSettingsProperties.defaultClasspath, aliases = List("-cp", "--class-path"))
-  val outputDir: Setting[AbstractFile] = OutputSetting(RootSetting, "d", "directory|jar", "Destination for generated classfiles.", new PlainDirectory(Directory(".")))
+  val outputDir: Setting[AbstractFile] = FileContainerSetting(RootSetting, "d", allowsJar = true, "Destination for generated classfiles.", new PlainDirectory(Directory(".")))
   val color: Setting[String] = ChoiceSetting(RootSetting, "color", "mode", "Colored output", List("always", "never"/*, "auto"*/), "always"/* "auto"*/, aliases = List("--color"))
   val verbose: Setting[Boolean] = BooleanSetting(RootSetting, "verbose", "Output messages about what the compiler is doing.", aliases = List("--verbose"))
   val version: Setting[Boolean] = BooleanSetting(RootSetting, "version", "Print product version and exit.", aliases = List("--version"))
@@ -457,6 +457,8 @@ private sealed trait XSettings:
   val XjarCompressionLevel: Setting[Int] = IntChoiceSetting(AdvancedSetting, "Xjar-compression-level", "compression level to use when writing jar files", Deflater.DEFAULT_COMPRESSION to Deflater.BEST_COMPRESSION, Deflater.DEFAULT_COMPRESSION)
   val XkindProjector: Setting[String] = ChoiceSetting(AdvancedSetting, "Xkind-projector", "[underscores, enable, disable]", "Allow `*` as type lambda placeholder to be compatible with kind projector. When invoked as -Xkind-projector:underscores will repurpose `_` to be a type parameter placeholder, this will disable usage of underscore as a wildcard.", List("disable", "", "underscores"), "disable", legacyArgs = true)
 
+  val XmaxFuel: Setting[Int] = IntSetting(AdvancedSetting, "Xmax-fuel", "Max fuel for recursive operations before abandoning.", 400)
+
   /** Documentation related settings */
   val XdropComments: Setting[Boolean] = BooleanSetting(AdvancedSetting, "Xdrop-docs", "Drop documentation when scanning source files.", aliases = List("-Xdrop-comments"))
   val XcookComments: Setting[Boolean] = BooleanSetting(AdvancedSetting, "Xcook-docs", "Cook the documentation (type check `@usecase`, etc.)", aliases = List("-Xcook-comments"))
@@ -468,7 +470,7 @@ private sealed trait XSettings:
 
   /** Pipeline compilation options */
   val XjavaTasty: Setting[Boolean] = BooleanSetting(AdvancedSetting, "Xjava-tasty", "Pickler phase should compute TASTy for .java defined symbols for use by build tools", aliases = List("-Xpickle-java", "-Yjava-tasty", "-Ypickle-java"), preferPrevious = true)
-  val XearlyTastyOutput: Setting[Option[AbstractFile]] = OptionalOutputSetting(AdvancedSetting, "Xearly-tasty-output", "directory|jar", "Destination to write generated .tasty files to for use in pipelined compilation.", aliases = List("-Xpickle-write", "-Yearly-tasty-output", "-Ypickle-write"), ignoreInvalidArgs = true, preferPrevious = true)
+  val XearlyTastyOutput: Setting[Option[AbstractFile]] = OptionalFileContainerSetting(AdvancedSetting, "Xearly-tasty-output", allowsJar = true, "Destination to write generated .tasty files to for use in pipelined compilation.", aliases = List("-Xpickle-write", "-Yearly-tasty-output", "-Ypickle-write"), ignoreInvalidArgs = true, preferPrevious = true)
   val XallowOutlineFromTasty: Setting[Boolean] = BooleanSetting(AdvancedSetting, "Xallow-outline-from-tasty", "Allow outline TASTy to be loaded with the -from-tasty option.", aliases = List("-Yallow-outline-from-tasty"))
 
   val XmixinForceForwarders = ChoiceSetting(
@@ -581,6 +583,7 @@ private sealed trait YSettings:
   val Yinstrument: Setting[Boolean] = BooleanSetting(ForkSetting, "Yinstrument", "Add instrumentation code that counts allocations and closure creations.")
   val YinstrumentDefs: Setting[Boolean] = BooleanSetting(ForkSetting, "Yinstrument-defs", "Add instrumentation code that counts method calls; needs -Yinstrument to be set, too.")
   val YimplicitToGiven: Setting[Boolean] = BooleanSetting(ForkSetting, "Yimplicit-to-given", "Allows to rewrite the implicit keywords to their scala-3 given counterparts. Does not adjust imports. Use in conjunction with --rewrite.")
+  val YappToMain: Setting[Boolean] = BooleanSetting(ForkSetting, "Yapp-to-main", "Rewrite `object X extends App { ... }` to an object with an explicit `main` method. Use in conjunction with --rewrite.")
 
   // Should be removed but causes a lot of breakage in practice, e.g., with old versions of the sbt-typelevel plugin
   @deprecated(message = "Lifted to -X, Scheduled for removal.", since = "3.5.0")

@@ -142,7 +142,7 @@ object Checking {
   }
 
   /** Check all applied type trees in inferred type `tpt` for well-formedness */
-  def checkAppliedTypesIn(tpt: TypeTree)(using Context): Unit =
+  def checkAppliedTypesIn(tpt: TypeTree)(using Context): Unit = ctx.handleRecursive("checking applied types in", tpt, tpt):
     val checker = new TypeTraverser:
       def traverse(tp: Type) =
         tp.normalized match
@@ -361,7 +361,11 @@ object Checking {
 
           if isInteresting(pre) then
             CyclicReference.trace(i"explore ${tp.symbol} for cyclic references"):
-              val pre1 = atVariance(variance max 0)(this(pre, false, false))
+              val nestedCycleOkInPrefix =
+                // generated symbols like primary constructor may not have JavaDefined,
+                // even when the corresponding file is java - also check the owner
+                if sym.is(JavaDefined) || sym.maybeOwner.is(JavaDefined) then nestedCycleOK else false
+              val pre1 = atVariance(variance max 0)(this(pre, false, nestedCycleOkInPrefix))
               if locked.contains(tp)
                   || tp.symbol.infoOrCompleter.isInstanceOf[NoCompleter]
                   && tp.symbol == sym
@@ -491,7 +495,6 @@ object Checking {
 
   /** Check type members inherited from different `parents` of `joint` type for cycles,
    *  unless a type with the same name already appears in `decls`.
-   *  @return    true iff no cycles were detected
    */
   def checkNonCyclicInherited(joint: Type, parents: List[Type], decls: Scope, pos: SrcPos)(using Context): Unit = {
     // If we don't have more than one parent, then there's nothing to check
@@ -509,12 +512,10 @@ object Checking {
           val mbr = joint.member(name)
           mbr.info match
             case bounds: TypeBounds =>
-              !checkNonCyclic(mbr.symbol, bounds, reportErrors = true).isError
+              checkNonCyclic(mbr.symbol, bounds, reportErrors = true).isError
             case _ =>
-              true
-        catch case _: RecursionOverflow | _: CyclicReference =>
+        catch case _: CyclicReference =>
           report.error(em"cyclic reference involving type $name", pos)
-          false
     }
   }
 
@@ -689,7 +690,9 @@ object Checking {
     if (sym.isConstructor && !sym.isPrimaryConstructor && sym.owner.is(Trait, butNot = JavaDefined))
       val addendum = if ctx.settings.Ydebug.value then s" ${sym.owner.flagsString}" else ""
       fail(em"Traits cannot have secondary constructors$addendum")
-    checkApplicable(Inline, sym.isTerm && !sym.is(Module) && !sym.isMutableVarOrAccessor)
+    if (!Feature.inlineTraitsEnabledSomewhere && sym.isAllOf(Inline | Trait))
+      fail(em"Inline traits are experimental and must be enabled")
+    checkApplicable(Inline, sym.isTerm && !sym.is(Module) && !sym.isMutableVarOrAccessor || sym.is(Trait))
     checkApplicable(Lazy, !sym.isOneOf(Method | Mutable))
     if (sym.isType && !sym.isOneOf(Deferred | JavaDefined))
       for (cls <- sym.allOverriddenSymbols.filter(_.isClass)) {

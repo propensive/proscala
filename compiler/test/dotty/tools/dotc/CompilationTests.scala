@@ -79,6 +79,10 @@ class CompilationTests {
       compileFile("tests/rewrites/i22731.scala", defaultOptions.and("-rewrite", "-source:3.7-migration")),
       compileFile("tests/rewrites/i22731b.scala", defaultOptions.and("-rewrite", "-source:3.7-migration")),
       compileFile("tests/rewrites/implicit-to-given.scala", defaultOptions.and("-rewrite", "-Yimplicit-to-given")),
+      compileFile("tests/rewrites/app-to-main.scala", defaultOptions.and("-rewrite", "-Yapp-to-main")),
+      compileFile("tests/rewrites/app-to-main-braces.scala", unindentOptions.and("-rewrite", "-Yapp-to-main")),
+      compileFile("tests/rewrites/app-to-main-empty.scala", defaultOptions.and("-rewrite", "-Yapp-to-main")),
+      compileFile("tests/rewrites/app-to-main-skip.scala", defaultOptions.and("-rewrite", "-Yapp-to-main")),
       compileFile("tests/rewrites/i22792.scala", defaultOptions.and("-rewrite")),
       compileFile("tests/rewrites/i23449.scala", defaultOptions.and("-rewrite", "-source:3.4-migration")),
       compileFile("tests/rewrites/i24103.scala", defaultOptions.and("-rewrite", "-source:3.4-migration")),
@@ -144,8 +148,7 @@ class CompilationTests {
 
   @Test def negAll: Unit = {
     implicit val testGroup: TestGroup = TestGroup("compileNeg")
-
-    aggregateTests(
+    withCoverage(aggregateTests(
       compileFilesInDir("tests/neg", defaultOptions, FileFilter.exclude(TestSources.negScala2LibraryTastyExcludelisted)),
       compileFilesInDir("tests/neg-deep-subtype", allowDeepSubtypes),
       compileFilesInDir("tests/neg-custom-args/captures", defaultOptions.and("-language:experimental.captureChecking", "-language:experimental.separationChecking", "-source", "3.8")),
@@ -161,7 +164,8 @@ class CompilationTests {
           defaultOptions.withClasspath("tests/neg-custom-args/missing-java-outer-dependency/cp")),
       compileFile("tests/neg-custom-args/missing-java-outer-dependency/TestImportSuggestion.scala",
           defaultOptions.withClasspath("tests/neg-custom-args/missing-java-outer-dependency/cp")),
-    ).checkExpectedErrors()
+      compileFile("tests/neg-custom-args/empty-compiled-with-dir.scala", defaultOptions.and("tests"))
+    )).checkExpectedErrors()
   }
 
   @Test def fuzzyAll: Unit = {
