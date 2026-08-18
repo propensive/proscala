@@ -254,13 +254,25 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
 
     protected def innerApply(tp: Type): Type
 
+    // Types that map to themselves (`eq`) contain nothing for Setup to transform under any
+    // traversal state, so they never need re-walking. Without this, deeply-nested alias
+    // unions (e.g. HTML content-category types: hundreds of shared singleton labels behind
+    // several alias layers) are re-expanded once per path through `mapFollowingAliases`,
+    // which is exponential in the alias nesting depth.
+    private val inertTypes = new java.util.IdentityHashMap[Type, Type]()
+
     final def apply(tp: Type) =
-      val saved = isTopLevel
-      if variance < 0 then isTopLevel = false
-      try tp match
-        case defn.RefinedFunctionOf(rinfo: MethodType) => mapRefinedFunction(tp, rinfo)
-        case _ => innerApply(tp)
-      finally isTopLevel = saved
+      if inertTypes.containsKey(tp) then tp
+      else
+        val saved = isTopLevel
+        if variance < 0 then isTopLevel = false
+        try
+          val tp1 = tp match
+            case defn.RefinedFunctionOf(rinfo: MethodType) => mapRefinedFunction(tp, rinfo)
+            case _ => innerApply(tp)
+          if tp1 eq tp then inertTypes.put(tp, tp)
+          tp1
+        finally isTopLevel = saved
 
     def mapRefinedFunction(tp: Type, rinfo: MethodType): Type =
       val rinfo1 = apply(rinfo)
