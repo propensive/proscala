@@ -12,7 +12,7 @@ import NameKinds.BodyRetainerName
 import SymDenotations.SymDenotation
 import config.Printers.inlining
 import ErrorReporting.errorTree
-import dotty.tools.dotc.util.{SourceFile, SourcePosition, SrcPos}
+import dotty.tools.dotc.util.{SmapRegistry, SourceFile, SourcePosition, SrcPos}
 import dotty.tools.dotc.transform.*
 import dotty.tools.dotc.transform.MegaPhase
 import dotty.tools.dotc.transform.MegaPhase.MiniPhase
@@ -37,6 +37,7 @@ import dotty.tools.dotc.core.Phases.Phase
 /** Support for querying inlineable methods and for inlining calls to such methods */
 object Inlines:
   import tpd.*
+  import ast.Trees.{InlinedOriginChain, InlinedSourceLine}
 
   /** Method name of the transparent inline call.
    *
@@ -500,8 +501,75 @@ object Inlines:
     val tree1 =
       if inlined.bindings.isEmpty then inlined.expansion
       else cpy.Block(inlined)(inlined.bindings, inlined.expansion)
+    if ctx.settings.Xjsr45.value then recordInlineOrigins(inlined, tree1)
     // Reposition in the outer most inlined call
-    if (enclosingInlineds.nonEmpty) tree1 else reposition(tree1, inlined.span)
+    if enclosingInlineds.nonEmpty then tree1
+    else
+      if ctx.settings.Xjsr45.value then resolveInlineOrigins(tree1)
+      reposition(tree1, inlined.span)
+
+  /** Record, on every tree of `expansion` that was inlined from a source other than
+   *  the call site's, its chain of inline frames in an `InlinedOriginChain`
+   *  attachment. `dropInlined` calls this once per `Inlined` node, innermost node
+   *  first, so an enclosing call appends its own call-site frame to the chains
+   *  recorded by the calls it contains, and a complete chain runs from the position
+   *  the code was written at out to a call site in the compilation unit's source.
+   *
+   *  Each frame also names the top-level class whose compilation unit its position
+   *  lies in, which is what lets tooling find the class's TASTy without guessing:
+   *  the `Inlined` node's call trace references exactly that class for its own
+   *  expansion, and for the chain's last frame — the call site, which lies in the
+   *  *enclosing* expansion — the class is filled in by the enclosing call when it
+   *  appends its own frame. A call site in the primary source keeps no class: the
+   *  classfile itself provides that context.
+   */
+  private def recordInlineOrigins(inlined: Inlined, expansion: Tree)(using Context): Unit =
+    val call = inlined.call
+    if !call.isEmpty && call.span.exists then
+      val callSource = call.source
+      val callPos = call.sourcePos
+      if callPos.exists && callPos.source.length > 0 then
+        val calleeClass =
+          if call.symbol.exists then
+            call.symbol.topLevelClass.fullName.stripModuleClassSuffix.mangledString
+          else ""
+        val callFrame = SmapRegistry.Frame(callPos.source, callPos.line + 1, "")
+        expansion.foreachSubTree { tree =>
+          tree.getAttachment(InlinedOriginChain) match
+            case Some(chain) =>
+              // The chain's last frame is the inner call's site, which lies in this call's
+              // expansion — so this call's callee is the class its position belongs to.
+              val last = chain.last
+              val filled = if last.cls.isEmpty then last.copy(cls = calleeClass) else last
+              tree.putAttachment(InlinedOriginChain, chain.init :+ filled :+ callFrame)
+            case None =>
+              if tree.source != callSource && tree.span.exists
+                 && tree.source.exists && tree.source.length > 0
+              then
+                val pos = tree.sourcePos
+                if pos.exists then
+                  val defFrame = SmapRegistry.Frame(pos.source, pos.line + 1, calleeClass)
+                  tree.putAttachment(InlinedOriginChain, defFrame :: callFrame :: Nil)
+        }
+
+  /** Resolve the `InlinedOriginChain` attachments below `tree` into synthetic
+   *  output lines (`InlinedSourceLine`, read by the backend), allocated from the
+   *  compilation unit's `SmapRegistry`. Called by `dropInlined` for the outermost
+   *  inlined call, when the chains are complete.
+   */
+  private def resolveInlineOrigins(tree: Tree)(using Context): Unit =
+    val unit = ctx.compilationUnit
+    if unit.source.exists && unit.source.length > 0 then
+      tree.foreachSubTree { t =>
+        for chain <- t.removeAttachment(InlinedOriginChain) do
+          val registry = unit.smapRegistry match
+            case null =>
+              val fresh = util.SmapRegistry(unit.source)
+              unit.smapRegistry = fresh
+              fresh
+            case registry => registry
+          t.putAttachment(InlinedSourceLine, registry.outputLineFor(chain))
+      }
 
   def reposition(tree: Tree, callSpan: Span)(using Context): Tree =
     // Reference test tests/run/i4947b
