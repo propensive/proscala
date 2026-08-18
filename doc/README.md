@@ -30,6 +30,7 @@ reproductions so the diagnostic is recognisable when it next appears.
 | [castbox](castbox/castbox.md) | Box opaque-external type arguments in cast type applications | 3.9 | bug fix | yes |
 | [ctxresult](ctxresult/ctxresult.md) | Context-result closures level-checked at the method's level | 3.9, 3.10 | bug fix | yes |
 | [dependarg](dependarg/dependarg.md) | Conserve stable argument paths in dependent-application rechecking | 3.9, 3.10 | bug fix | yes |
+| [depset](depset/depset.md) | Add a mutable IdentitySet to optimize variable dependencies in CC | 3.9 | backport (perf) | no |
 | [dictcaps](dictcaps/dictcaps.md) | Infer the capture set of recursive-implicit dictionary instances | 3.9, 3.10 | bug fix | yes |
 | [givencache](givencache/givencache.md) | Keep given aliases cached when capture checking is enabled | 3.9, 3.10 | bug fix (crash) | yes |
 | [givenprefix](givenprefix/givenprefix.md) | Seal package-object prefixes on implicit candidate references | 3.9, 3.10 | bug fix | yes |
