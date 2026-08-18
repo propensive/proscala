@@ -32,6 +32,7 @@ reproductions so the diagnostic is recognisable when it next appears.
 | [dependarg](dependarg/dependarg.md) | Conserve stable argument paths in dependent-application rechecking | 3.9, 3.10 | bug fix | yes |
 | [dictcaps](dictcaps/dictcaps.md) | Infer the capture set of recursive-implicit dictionary instances | 3.9, 3.10 | bug fix | yes |
 | [givencache](givencache/givencache.md) | Keep given aliases cached when capture checking is enabled | 3.9, 3.10 | bug fix (crash) | yes |
+| [givenprefix](givenprefix/givenprefix.md) | Seal package-object prefixes on implicit candidate references | 3.9, 3.10 | bug fix | yes |
 | [iarraypure](iarraypure/iarraypure.md) | Treat `IArray` as pure under capture checking | 3.9, 3.10 | bug fix | yes |
 | [iarraypure-mutalias](iarraypure-mutalias/iarraypure-mutalias.md) | Classify opaque aliases over mutable types under capture checking | 3.9, 3.10 | bug fix | yes |
 | [inertcache](inertcache/inertcache.md) | Cache inert types in capture-checking Setup | 3.9, 3.10 | bug fix (hang) | yes |
