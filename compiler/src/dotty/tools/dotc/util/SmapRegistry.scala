@@ -69,11 +69,23 @@ class SmapRegistry(primarySource: SourceFile):
     val byOutputLine = entries.iterator.map(e => e.outputLine -> e).toMap
 
     val included = mutable.TreeSet.empty[Int]
-    def include(line: Int): Unit =
-      if !included.contains(line) then
-        byOutputLine.get(line).foreach: e =>
-          included += line
-          for call <- e.call if call.line > primaryLastLine do include(call.line)
+
+    // Walked with an explicit worklist rather than by recursion: a unit that inlines
+    // deeply produces a correspondingly long `call` chain, and recursing it costs
+    // several stack frames per link, which overflows the stack on the heaviest units.
+    def include(start: Int): Unit =
+      var pending = start :: Nil
+      while pending.nonEmpty do
+        val line = pending.head
+        pending = pending.tail
+        if !included.contains(line) then
+          byOutputLine.get(line) match
+            case None => ()
+            case Some(e) =>
+              included += line
+              e.call match
+                case Some(call) if call.line > primaryLastLine => pending = call.line :: pending
+                case _ => ()
 
     usedLines.foreach(include)
 
