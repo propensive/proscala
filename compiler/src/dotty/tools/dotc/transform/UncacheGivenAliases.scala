@@ -8,6 +8,7 @@ import core.Contexts.*
 import core.Types.*
 import core.Flags.*
 import ast.tpd
+import config.Feature
 
 object UncacheGivenAliases:
   val name: String = "uncacheGivenAliases"
@@ -53,7 +54,13 @@ class UncacheGivenAliases extends MiniPhase with IdentityDenotTransformer:
    */
   override def transformValDef(tree: ValDef)(using Context): Tree =
     val sym = tree.symbol
-    if sym.isAllOf(LazyGiven) && !needsCache(sym, tree.rhs) then
+    // Under capture checking, a stable given alias val is a trackable reference that
+    // may already be named in capture sets ({x} in a retains annotation). Demoting it
+    // to a def gives it an ExprType underlying, which is no longer a legal capability
+    // and crashes cc Setup (IllegalCaptureRef) when a later cast or summon forces the
+    // set. Skip the optimization when cc is on anywhere; semantics are unchanged.
+    if sym.isAllOf(LazyGiven) && !needsCache(sym, tree.rhs)
+        && !Feature.ccEnabledSomewhere then
       sym.copySymDenotation(
         initFlags = sym.flags &~ Lazy | Method,
         info = ExprType(sym.info))
