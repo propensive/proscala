@@ -863,10 +863,12 @@ object Specialization:
       case TypeDef(anon, Template(_, parentCalls: List[Tree], _, _)) =>
         parentCalls match {
           case _ :+ Apply(Apply(t, ctorArgs), ev) => // extends Object, parents of spec trait, spec trait
-            Specialization
-              .unapply(t.tpe.resultType.resultType, t.span)
-              .map(_.hasSpecializedParams)
-              .nonEmpty
+            // A two-Apply parent call also arises for any ordinary parent whose
+            // constructor takes a second (e.g. using) argument list; its type is
+            // then no AppliedType and the unapply returns None, meaning "not a
+            // specialized trait" — not a crash.
+            val spec = Specialization.unapply(t.tpe.resultType.resultType, t.span)
+            spec.exists(_.hasSpecializedParams)
           case _ => false
         }
       case _ => false
