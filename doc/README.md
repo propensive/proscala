@@ -45,6 +45,7 @@ reproductions so the diagnostic is recognisable when it next appears.
 | [nullreceiver](nullreceiver/nullreceiver.md) | Widen bottom-typed call receivers to Object in the backend | 3.9, 3.10 | bug fix (crash) | yes |
 | [permitlazy](permitlazy/permitlazy.md) | Lazy resolution of permitted subclasses in classfile parsing | 3.9, 3.10 | bug fix | yes |
 | [proxyskolem](proxyskolem/proxyskolem.md) | No skolem-typed inline argument proxies under capture checking | 3.9, 3.10 | bug fix | yes (2: `repro`, `repro2`) |
+| [prunecomplete](prunecomplete/prunecomplete.md) | Do not force completion when filtering prunable inline methods | 3.10 | bug fix (crash) | FIXME |
 | [retainbounds](retainbounds/retainbounds.md) | Sanitize `TypeBounds` in `@retains` arguments to the top capability | 3.9, 3.10 | bug fix | yes |
 | [returnavoid](returnavoid/returnavoid.md) | Avoid only pattern-bound term symbols in rechecked returns | 3.9, 3.10 | bug fix | yes |
 | [sambox](sambox/sambox.md) | Capability-implied captures on SAM anonymous-class type members | 3.9, 3.10 | bug fix | yes |

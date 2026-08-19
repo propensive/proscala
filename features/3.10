@@ -23,6 +23,7 @@ modulepath
 nullreceiver
 permitlazy
 proxyskolem
+prunecomplete
 retainbounds
 returnavoid
 sambox
