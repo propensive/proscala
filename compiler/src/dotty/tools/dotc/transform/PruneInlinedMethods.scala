@@ -34,8 +34,22 @@ class PruneInlinedMethods extends MiniPhase with InfoTransformer { thisTransform
       case stmt => Some(stmt)
     }))
 
-  private def isDeletable(sym: Symbol)(using Context): Boolean = 
-    Specialization.isSpecializedMethod(sym)
+  private def isDeletable(sym: Symbol)(using Context): Boolean =
+    // Pre-filter on the last known denotation, without advancing it: this
+    // transform runs on every class denotation brought forward past it, so an
+    // ordinary `sym.denot` access here replays the intervening info
+    // transforms and runs completers at arbitrary points — including, in the
+    // second run of a compilation-suspension restart, completers that resolve
+    // symbols of the first run, which fails with a StaleSymbolException. A
+    // symbol that is uncompleted, or not an inline method, cannot be a
+    // specialized inline method awaiting pruning (those are created and
+    // completed earlier in the same run), so only genuine candidates reach
+    // the full check.
+    val lastDenot = sym.lastKnownDenotation
+    lastDenot.isCompleted
+    && lastDenot.flagsUNSAFE.isAllOf(InlineMethod)
+    && !lastDenot.flagsUNSAFE.is(JavaDefined)
+    && Specialization.isSpecializedMethod(sym)
 }
 
 object PruneInlinedMethods {
