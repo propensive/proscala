@@ -24,6 +24,7 @@ reproductions so the diagnostic is recognisable when it next appears.
 | Feature | Description | Streams | Kind | Repro |
 | ------- | ----------- | ------- | ---- | ----- |
 | [aliascap](aliascap/aliascap.md) | Keep root capabilities global in type alias infos | 3.9, 3.10 | bug fix | yes |
+| [anonspec](anonspec/anonspec.md) | Treat non-specialized anonymous-class parents as such, not as a crash | 3.10 | bug fix (crash) | yes |
 | [anykindcap](anykindcap/anykindcap.md) | Do not constrain type arguments by an `AnyKind` bound's capture set | 3.10 | bug fix | yes |
 | [blockimport](blockimport/blockimport.md) | Recheck a block's result expression in its statements' context | 3.9, 3.10 | bug fix | yes |
 | [boolunapply](boolunapply/boolunapply.md) | Keep Boolean results of nullary case-class unapplies under capture checking | 3.10 | bug fix | yes |
