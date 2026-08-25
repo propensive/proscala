@@ -57,6 +57,22 @@ trait BCodeHelpers(val bTypeLoader: BTypeLoader) extends BCodeIdiomatic {
       cachedClassfileVersion = target.toInt + (Opcodes.V17 - 17)
     cachedClassfileVersion.nn
 
+  /** The JSR-45 SourceDebugExtension (SMAP) for one class generated from the current
+   *  compilation unit, covering exactly the synthetic lines that class emitted (and the
+   *  call sites they lead back to), or null if it emitted none. Non-null only under
+   *  `-Xjsr45`, when the class contains code inlined from other source files.
+   *
+   *  A unit's registry describes every inlined line in the unit, which for a unit that
+   *  inlines heavily is far more than any one of its classes uses; emitting all of it in
+   *  every class would add megabytes to a classfile.
+   */
+  protected def sourceDebugExtension(usedLines: collection.Set[Int])(using Context): String | Null =
+    if usedLines.isEmpty then null else
+      ctx.compilationUnit.smapRegistry match {
+        case null     => null
+        case registry => registry.serialize(ctx.compilationUnit.source.name, usedLines)
+      }
+
   /*
    * can-multi-thread
    */
@@ -470,7 +486,9 @@ trait BCodeHelpers(val bTypeLoader: BTypeLoader) extends BCodeIdiomatic {
       )
 
       if (emitSource) {
-        mirrorClass.visitSource("" + ctx.compilationUnit.source.name, null /* SourceDebugExtension */)
+        // A mirror class holds only forwarders, which carry no line numbers of their own,
+        // so it never references a synthetic line and needs no SMAP.
+        mirrorClass.visitSource("" + ctx.compilationUnit.source.name, null)
       }
 
       mirrorClass.visitAttribute(createScalaJAttribute())
