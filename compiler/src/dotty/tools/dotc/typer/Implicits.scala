@@ -623,6 +623,11 @@ object Implicits:
     def msg(using Context): Message =
       em"${errors.map(_.msg).mkString("\n")}"
   }
+
+  /** A `MacroErrorsFailure` from a candidate marked `@internal.diagnostic`: preferred
+   *  over other failures, and rendered verbatim as the missing-implicit message. */
+  class DiagnosticFailure(errors: List[Diagnostic.Error], expectedType: Type, argument: Tree)
+    extends MacroErrorsFailure(errors, expectedType, argument)
 end Implicits
 
 import Implicits.*
@@ -1228,6 +1233,13 @@ trait Implicits:
       then
         val res = adapted.tpe match {
           case _: SearchFailureType => SearchFailure(adapted)
+          case _ if ctx.reporter.hasErrors
+                    && cand.ref.symbol.hasAnnotation(defn.DiagnosticAnnot) =>
+            // An `@internal.diagnostic` candidate errored (typically an aborted macro
+            // expansion): keep its reported errors as the authoritative failure message.
+            // This case must precede the `PreviousErrorType` one, which would discard
+            // the buffered errors in favour of a generic "macro expansion was stopped".
+            SearchFailure(adapted.withType(new DiagnosticFailure(ctx.reporter.allErrors.reverse, pt, argument)))
           case error: PreviousErrorType if !adapted.symbol.isAccessibleFrom(cand.ref.prefix) =>
             SearchFailure(adapted.withType(new NestedFailure(error.msg, pt)))
           case tpe =>
@@ -1504,7 +1516,12 @@ trait Implicits:
             }
           case nil =>
             if (rfailures.isEmpty) found
-            else found.recoverWith(_ => rfailures.reverse.maxBy(_.tree.treeSize))
+            else found.recoverWith: _ =>
+              // A DiagnosticFailure carries a candidate's own account of why the search
+              // failed; prefer it (first in try order) over the largest failure tree.
+              val ordered = rfailures.reverse
+              ordered.find(_.reason.isInstanceOf[DiagnosticFailure])
+                .getOrElse(ordered.maxBy(_.tree.treeSize))
         }
 
       def negateIfNot(result: SearchResult) =
@@ -1780,7 +1797,10 @@ trait Implicits:
                         case _ =>
                           reason match
                             case (_: DivergingImplicit) => failure
-                            case _ => List(failure, failure2).maxBy(_.tree.treeSize)
+                            case _ =>
+                              if failure.reason.isInstanceOf[DiagnosticFailure] then failure
+                              else if failure2.reason.isInstanceOf[DiagnosticFailure] then failure2
+                              else List(failure, failure2).maxBy(_.tree.treeSize)
                   else failure
     end searchImplicit
 
