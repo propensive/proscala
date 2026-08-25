@@ -1122,6 +1122,7 @@ class Definitions {
   @tu lazy val ProvisionalSuperClassAnnot: ClassSymbol = requiredClass("scala.annotation.internal.ProvisionalSuperClass")
   @tu lazy val DeprecatedAnnot: ClassSymbol = requiredClass("scala.deprecated")
   @tu lazy val DeprecatedOverridingAnnot: ClassSymbol = requiredClass("scala.deprecatedOverriding")
+  @tu lazy val DiagnosticAnnot: ClassSymbol = requiredClass("scala.annotation.internal.diagnostic")
   @tu lazy val DeprecatedInheritanceAnnot: ClassSymbol = requiredClass("scala.deprecatedInheritance")
   @tu lazy val DeprecatedNameAnnot: ClassSymbol = requiredClass("scala.deprecatedName")
   @tu lazy val ImplicitAmbiguousAnnot: ClassSymbol = requiredClass("scala.annotation.implicitAmbiguous")
@@ -1637,9 +1638,7 @@ class Definitions {
     private var classRefs: Array[TypeRef | Null] = new Array(22)
     def apply(n: Int): TypeRef =
       while n >= classRefs.length do
-        val classRefs1 = new Array[TypeRef | Null](classRefs.length * 2)
-        Array.copy(classRefs, 0, classRefs1, 0, classRefs.length)
-        classRefs = classRefs1
+        classRefs = Array.copyOf(classRefs, classRefs.length * 2)
       if classRefs(n) == null then
         val funName = s"scala.$prefix$n"
         classRefs(n) =

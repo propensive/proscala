@@ -242,12 +242,12 @@ class Inliner(val call: tpd.Tree)(using Context):
    *  When TypeAssigner types `async(...)`, it skolemizes unstable `am` in the
    *  dependent result type, and the call tree is typed as `Wrap[F, ?1.Context]`.
    *  Then the inliner expands the method body and replace `am` by a proxy `am$proxy`.
-   *  Then `new Wrap[F, am.Context]` becomes `new Wrap[F, am$proxy.Context]`.
    *
-   *  In `paramBindingDef`, we type `am$proxy` as $1, so that both expanded tree and
-   *  call tree is typed `Wrap[F, ?1.Context]`. Otherwise, call tree and expanded tree
-   *  has different types `?1.Context` vs `am$proxy.Context` and compile fails.
-   *  See #26153 and #26031.
+   *  Later, when the Inlined node's type avoids that proxy,
+   *  `TypeAssigner.InlineProxySkolem` on the binding recovers `?1` so the result
+   *  matches the call type `Wrap[F, ?1.Context]`
+   *  (instead of `Wrap[F, am$proxy.Context]` avoids to `Wrap[F, ?]`)
+   *  See #26153, #26031, and #26810.
    */
   private val callValueSkolemss: List[List[Option[SkolemType]]] =
     def loop(tree: Tree, skolemss: List[List[Option[SkolemType]]]): List[List[Option[SkolemType]]] = tree match
@@ -311,7 +311,6 @@ class Inliner(val call: tpd.Tree)(using Context):
    *  @param arg0        the argument corresponding to the parameter
    *  @param buf         the buffer to which the definition should be appended
    *  @param skolem      optional skolem from the call's dependent result type.
-   *                     If present, use it as the proxy type.
    */
   private[inlines] def paramBindingDef(name: Name, formal: Type, arg0: Tree,
                               buf: DefBuffer, skolem: Option[SkolemType] = None)(using Context): ValOrDefDef = {
@@ -330,21 +329,10 @@ class Inliner(val call: tpd.Tree)(using Context):
           dropNameArg(arg0)
     val argtpe = arg.tpe.dealiasKeepAnnots.translateFromRepeated(toArray = false)
     val argIsBottom = argtpe.isBottomTypeAfterErasure
-    val baseBindingType =
+    val bindingType =
       if argIsBottom then formal
       else if isByName then ExprType(argtpe.widen)
       else argtpe.widen
-    // If the call result type used a skolem for this argument, use the same skolem
-    // as the proxy type. `?1` has `argtpe.widen` as its underlying type.
-    // Under capture checking, keep the pre-RC5 widened proxy type: cc has its own
-    // healing of inline-proxy captures, and a skolem-typed proxy bakes the local
-    // binding's capture (and skolem identity) into the expansion type, where it can
-    // neither be avoided into a pure declared result nor unified across a macro
-    // resplice retype (upstream #26563 casualties).
-    val proxySkolem = if argIsBottom || config.Feature.ccEnabled then None else skolem
-    val bindingType = proxySkolem match
-      case Some(sk) => if isByName then ExprType(sk) else sk
-      case None => baseBindingType
 
     var bindingFlags: FlagSet = InlineProxy
     if formal.widenExpr.hasAnnotation(defn.InlineParamAnnot) then
@@ -358,13 +346,16 @@ class Inliner(val call: tpd.Tree)(using Context):
       var newArg = arg.changeOwner(ctx.owner, boundSym)
       if bindingFlags.is(Inline) && argIsBottom then
         newArg = Typed(newArg, TypeTree(formal.widenExpr)) // type ascribe RHS to avoid type errors in expansion. See i8612.scala
-      else proxySkolem match
-        case Some(sk) =>
-          newArg = newArg.cast(sk) // adapt the rhs to the skolem-typed proxy
-        case None => ()
       if isByName then DefDef(boundSym, newArg)
       else ValDef(boundSym, newArg, inferred = true)
     }.withSpan(boundSym.span)
+    // Under capture checking, do not record the skolem: avoid-time recovery substitutes it
+    // into the expansion's type, where cc's Fresh roots cannot absorb it — a summoned
+    // capability-typed instance can then never flow back into a pure declared result
+    // (upstream #26563's capture-mode casualties). Plain widening avoidance, as before
+    // #26563, is what every cc unit had; non-cc units keep the #26153/#26031/#26810 fix.
+    if !argIsBottom && !config.Feature.ccEnabled then // Record typer skolem on the proxy ValDef, so the `avoidingType` can avoid proxy to skolem.
+      skolem.foreach(binding.putAttachment(TypeAssigner.InlineProxySkolem, _))
     inlining.println(i"parameter binding: $binding, $argIsBottom")
     buf += binding
     binding
@@ -1058,7 +1049,24 @@ class Inliner(val call: tpd.Tree)(using Context):
           val rhs = inlinedConstToLiteral(typed(vdef.rhs))
           sym.info = rhs.tpe
           untpd.cpy.ValDef(vdef)(vdef.name, untpd.TypeTree(rhs.tpe), untpd.TypedSplice(rhs))
-        else vdef
+        else
+          // If the declared type is a still-undisambiguated singleton reference over
+          // an overloaded member, typing the RHS below would use it as the
+          // expected type, and `typedSelect`'s raw member lookup can install an
+          // ambiguous denotation onto it as a side effect, later failing the conformance
+          // check. Settle it to the sole non-method alternative up front instead, inverting
+          // the TreePickler pickling optimisation for NotAMethod TermRefs (where, like here,
+          // they aren't assigned a Signature, and aren't tied to a Symbol, using Name
+          // designator instead).
+          vdef.tpt.typeOpt match
+            case tp: TermRef if tp.designator.isInstanceOf[Name] =>
+              tp.prefix.member(tp.name).altsWith(_.info.isParameterless) match
+                case alt :: Nil =>
+                  val fixed = TermRef(tp.prefix, tp.name, alt)
+                  sym.info = fixed
+                  untpd.cpy.ValDef(vdef)(vdef.name, untpd.TypeTree(fixed), vdef.rhs)
+                case _ => vdef
+            case _ => vdef
       super.typedValDef(vdef1, sym)
 
     override def typedApply(tree: untpd.Apply, pt: Type)(using Context): Tree =
@@ -1249,7 +1257,7 @@ class Inliner(val call: tpd.Tree)(using Context):
     // inlining.println(i"drop unused $bindings%, % in $tree")
     val (termBindings, typeBindings) = bindings.partition(_.symbol.isTerm)
     if (typeBindings.nonEmpty) {
-      val typeBindingsSet = typeBindings.foldLeft[SimpleIdentitySet[Symbol]](SimpleIdentitySet.empty)(_ + _.symbol)
+      val typeBindingsSet = SimpleIdentitySet(typeBindings.iterator.map(_.symbol))
       val inlineTypeBindings = new TreeTypeMap(
         typeMap = new TypeMap() {
           override def apply(tp: Type): Type = tp match {

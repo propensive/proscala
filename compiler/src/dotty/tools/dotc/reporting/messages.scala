@@ -3205,6 +3205,11 @@ class MissingImplicitArgument(
      *  def foo(implicit foo: Foo): Any = ???
      */
     arg.tpe match
+      case fail: DiagnosticFailure =>
+        // The errors reported by an `@internal.diagnostic` candidate are the
+        // authoritative account of the failure; render them verbatim, bypassing
+        // any `@implicitNotFound` message on the expected type.
+        fail.explanation
       case ambi: AmbiguousImplicits if !ambi.nested =>
         (ambi.alt1, ambi.alt2) match
           case (alt @ AmbiguousImplicitMsg(msg), _) =>
@@ -3224,6 +3229,8 @@ class MissingImplicitArgument(
 
   override def msgPostscript(using Context) =
     arg.tpe match
+      case _: DiagnosticFailure =>
+        ""  // the diagnostic candidate's message is complete; no addenda
       case _: AmbiguousImplicits =>
         ""  // show no disambiguation
       case _: TooUnspecific =>
@@ -3253,8 +3260,9 @@ class MissingImplicitArgument(
             .orElse(noChainConversionsNote(ignoredConvertibleImplicits))
             .getOrElse(importSuggestionAddendum)
 
-  def explain(using Context) = userDefinedImplicitNotFoundMessage(explain = true)
-    .getOrElse("")
+  def explain(using Context) =
+    if arg.tpe.isInstanceOf[DiagnosticFailure] then ""
+    else userDefinedImplicitNotFoundMessage(explain = true).getOrElse("")
 end MissingImplicitArgument
 
 class CannotBeAccessed(tpe: NamedType, superAccess: Boolean)(using Context)

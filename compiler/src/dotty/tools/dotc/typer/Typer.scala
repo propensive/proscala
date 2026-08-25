@@ -2486,7 +2486,7 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
         typedExpr(tree.body, pt1)(using ctx.addNotNullInfo(guard1.notNullInfoIf(true))),
         pt1, ctx.scope.toList)
       if ctx.gadt.isNarrowing then
-        // Store GADT constraint to later retrieve it (in PostTyper, for now).
+        // Store GADT constraint for retrieval in PostTyper and PatternMatcher.
         // GADT constraints are necessary to correctly check bounds of type app,
         // see tests/pos/i12226 and issue #12226. It might be possible that this
         // will end up taking too much memory. If it does, we should just limit
@@ -3630,8 +3630,10 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
         cdef1.tpe.derivesFrom(defn.DynamicClass) &&
         !Feature.dynamicsEnabled
       if (reportDynamicInheritance) {
-        val isRequired = parents1.exists(_.tpe.isRef(defn.DynamicClass))
-        report.featureWarning(nme.dynamics.toString, "extension of type scala.Dynamic", cls, isRequired, cdef.srcPos)
+        val severity =
+          if parents1.exists(_.tpe.isRef(defn.DynamicClass)) then report.Severity.Error
+          else report.Severity.FeatureWarning
+        report.featureWarning(nme.dynamics.toString, "extension of type scala.Dynamic", cls, severity, cdef.srcPos)
       }
 
       checkNonCyclicInherited(cls.thisType, cls.info.parents, cls.info.decls, cdef.srcPos)
