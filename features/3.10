@@ -10,6 +10,7 @@ blockimport
 boolunapply
 ctxresult
 dependarg
+diagnostic-given
 dictcaps
 givencache
 givenprefix
