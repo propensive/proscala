@@ -89,8 +89,8 @@ lines and `#` comments ignored and order irrelevant. The lists differ between
 streams: a patch only exists where it is needed, and some are upstreamed or become
 obsolete in a later stream.
 
-    features/3.9    32 patches   carries castbox, depset, proxyskolem, splicealias, samstateful, staleread, virtualdir
-    features/3.10   34 patches   adds anonspec, anykindcap, boolunapply, integratemap, macroalias, modulepath, picklesource, prunecomplete, unioncaps; drops those seven
+    features/3.9    32 patches   carries castbox, depset, splicealias, samstateful, staleread, virtualdir
+    features/3.10   35 patches   adds anonspec, anykindcap, boolunapply, integratemap, macroalias, modulepath, picklesource, prunecomplete, unioncaps; drops those six
 
 Twenty-five patches are common to both streams.
 

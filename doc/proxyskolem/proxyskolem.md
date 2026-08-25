@@ -101,17 +101,26 @@ The #26153/#26031 fix stays active everywhere else — upstream's own
 regression tests for it still pass — and causation was established by
 reverse-applying the upstream commit alone against the failing builds.
 
-## Superseded on 3.10 by upstream #26872
+## The 3.10 form: gating upstream #26872's avoid-time recovery
 
 Upstream #26872 (`f896113fd2`, on `main` as of 2026-08-24, not backported to
-`release-3.9.0`) removes the skolem-typed proxy mechanism entirely: the proxy
-`val` is again typed with the argument type widened — for every unit, not just
-cc ones — and the call's skolem is instead recovered during type avoidance via
-an attachment on the proxy binding (`TypeAssigner.InlineProxySkolem`), so the
-same skolem never appears at two tree sites. That fixes both failure modes at
-source (#26810 is the resplice mode), so the 3.10 stream dropped this patch on
-2026-08-25. The 3.9 stream still carries it, since `release-3.9.0` retains the
-#26563 proxy typing.
+`release-3.9.0`) removes the skolem-typed proxy: the proxy `val` is again typed
+with the argument type widened — for every unit — and the call's skolem is
+instead recovered during type avoidance, via an attachment on the proxy binding
+(`TypeAssigner.InlineProxySkolem`), so the same skolem never appears at two
+tree sites. That fixes the **identity** mode at source (#26810 is upstream's
+own report of it), and the resplice reproduction above no longer needs this
+patch.
+
+The **capture** mode survives: the avoid-time rewrite still substitutes the
+skolem into the expansion's type, where cc's `Fresh` roots cannot absorb it —
+the same "capability `typeclass` cannot flow into capture set {}" failures
+(caduceus, embarcadero, obligatory, jacinta call sites) reappear on an
+unpatched compiler, established 2026-08-25 by building Soundness on a trunk
+with the patch dropped. So on 3.10 the patch is now a gate on the *recording*
+of the skolem rather than on the proxy's type: in cc-enabled units the
+`InlineProxySkolem` attachment is not planted, avoidance falls back to plain
+widening, and the pre-RC5 behaviour is preserved exactly as on 3.9.
 
 ## Relevance to Soundness
 
