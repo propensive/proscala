@@ -1185,7 +1185,15 @@ trait Implicits:
     if ctx.run.nn.isCancelled then NoMatchingImplicitsFailure
     else
       record("typedImplicit")
-      val ref = cand.ref
+      // Give the ref an explicit package-object prefix so that asSeenFrom
+      // rewrites the package object's ThisType in its member types. Otherwise
+      // an extension method or conversion defined in a package object and
+      // returning an opaque type of that package object would have a result
+      // type in which the opaque alias stays transparent. `findRef` does the
+      // same for identifiers.
+      val ref = cand.ref.makePackageObjPrefixExplicit match
+        case ref: TermRef => ref
+        case _ => cand.ref
       val generated: Tree = tpd.ref(ref).withSpan(span.startPos)
       val locked = ctx.typerState.ownedVars
       val adapted =
