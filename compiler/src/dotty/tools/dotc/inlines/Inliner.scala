@@ -349,7 +349,12 @@ class Inliner(val call: tpd.Tree)(using Context):
       if isByName then DefDef(boundSym, newArg)
       else ValDef(boundSym, newArg, inferred = true)
     }.withSpan(boundSym.span)
-    if !argIsBottom then // Record typer skolem on the proxy ValDef, so the `avoidingType` can avoid proxy to skolem.
+    // Under capture checking, do not record the skolem: avoid-time recovery substitutes it
+    // into the expansion's type, where cc's Fresh roots cannot absorb it — a summoned
+    // capability-typed instance can then never flow back into a pure declared result
+    // (upstream #26563's capture-mode casualties). Plain widening avoidance, as before
+    // #26563, is what every cc unit had; non-cc units keep the #26153/#26031/#26810 fix.
+    if !argIsBottom && !config.Feature.ccEnabled then // Record typer skolem on the proxy ValDef, so the `avoidingType` can avoid proxy to skolem.
       skolem.foreach(binding.putAttachment(TypeAssigner.InlineProxySkolem, _))
     inlining.println(i"parameter binding: $binding, $argIsBottom")
     buf += binding
