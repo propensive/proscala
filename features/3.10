@@ -25,7 +25,6 @@ modulepath
 nullreceiver
 permitlazy
 picklesource
-proxyskolem
 prunecomplete
 retainbounds
 returnavoid

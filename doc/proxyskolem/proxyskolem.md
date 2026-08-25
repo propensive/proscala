@@ -101,6 +101,18 @@ The #26153/#26031 fix stays active everywhere else — upstream's own
 regression tests for it still pass — and causation was established by
 reverse-applying the upstream commit alone against the failing builds.
 
+## Superseded on 3.10 by upstream #26872
+
+Upstream #26872 (`f896113fd2`, on `main` as of 2026-08-24, not backported to
+`release-3.9.0`) removes the skolem-typed proxy mechanism entirely: the proxy
+`val` is again typed with the argument type widened — for every unit, not just
+cc ones — and the call's skolem is instead recovered during type avoidance via
+an attachment on the proxy binding (`TypeAssigner.InlineProxySkolem`), so the
+same skolem never appears at two tree sites. That fixes both failure modes at
+source (#26810 is the resplice mode), so the 3.10 stream dropped this patch on
+2026-08-25. The 3.9 stream still carries it, since `release-3.9.0` retains the
+#26563 proxy typing.
+
 ## Relevance to Soundness
 
 This regression was the widest of the RC5 breakages: `exoskeleton.Argument`
