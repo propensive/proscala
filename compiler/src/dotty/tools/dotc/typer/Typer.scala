@@ -1310,14 +1310,21 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
         Constants.DoubleTag, Constants.FloatTag, Constants.CharTag)
 
   private def literateConvert(lit: Literal, pt: Type)(using Context): Tree =
-    // Does the expected type already accept the literal as it is? Selections
-    // are accepted if the literal's own type has the member; concrete expected
-    // types are accepted by a (frozen) conformance test; other prototypes are
-    // left alone. An underdetermined expected type — a wildcard, or a not yet
-    // instantiated type variable — accepts nothing yet, and is exactly where
-    // the rewrite is wanted.
+    // Does the expected type already accept the literal as it is? Concrete
+    // expected types are accepted by a (frozen) conformance test — a `String`
+    // parameter or a singleton bound keeps its literal. An underdetermined
+    // expected type — a wildcard, or a not yet instantiated type variable —
+    // accepts nothing yet, and is exactly where the rewrite is wanted. A
+    // selection never accepts: with an instance in scope, the instance's
+    // API *is* the literal's API, so a member the target type does not have
+    // (`"foo".charAt`) is an error rather than a silent partial `String`
+    // method; `("foo": String).charAt(0)` remains the explicit way through.
+    // A WildcardSelectionProto names no member — it is how singleton types
+    // (`type Topic = 42`, `val x: "foo"`) type their path — and must keep
+    // the literal.
     def accepted: Boolean = pt match
-      case pt: SelectionProto => pt.isMatchedBy(lit.tpe, keepConstraint = false)
+      case pt: WildcardSelectionProto => true
+      case pt: SelectionProto => false
       case _: WildcardType => false
       case pt: ProtoType => true
       case pt => isFullyDefined(pt, ForceDegree.none) && (lit.tpe frozen_<:< pt)
