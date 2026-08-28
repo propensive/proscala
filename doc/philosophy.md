@@ -11,7 +11,9 @@ Proscala.
 
 Every patch falls into one of four categories, and the categories are the
 policy: they describe not only what the fork contains today but what it is
-allowed to contain tomorrow.
+allowed to contain tomorrow. The compatibility consequences of each — for
+source, bytecode, and TASTy — are assessed in
+[compatibility.md](compatibility.md).
 
 ## Bug fixes
 

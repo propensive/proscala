@@ -1,7 +1,9 @@
 # Feature documentation
 
 The categories these features fall into, and the policy governing what
-Proscala accepts, are described in [philosophy.md](philosophy.md).
+Proscala accepts, are described in [philosophy.md](philosophy.md); the
+consequences of each for source and artifact compatibility are assessed in
+[compatibility.md](compatibility.md).
 
 One subdirectory per feature. Each `doc/<feature>/` contains the feature's
 documentation (`<feature>.md`) and, for bug fixes, a `repro/` directory with a
