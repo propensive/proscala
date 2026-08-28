@@ -501,8 +501,13 @@ object ProtoTypes {
         inContext(protoCtx.withUncommittedTyperState) {
           val protoTyperState = ctx.typerState
           val oldConstraint = protoTyperState.constraint
+          // Literals are not rewritten through `Literate` instances here: this
+          // typing is against a wildcard, only to rank overload alternatives.
+          // The cached argument is adapted to the selected alternative's real
+          // formal afterwards, which is where the expected type can speak.
+          val literateCtx = ctx.fresh.setProperty(Typer.LiterateConversion, ())
           val args1 = args.mapWithIndexConserve((arg, idx) =>
-            cacheTypedArg(arg, arg => typer.typed(norm(arg, idx)), force = false, NoType))
+            cacheTypedArg(arg, arg => typer.typed(norm(arg, idx))(using literateCtx), force = false, NoType))
           val newConstraint = protoTyperState.constraint
 
           if !args1.exists(arg => isUndefined(arg.tpe)) then state.typedArgs = args1
