@@ -62,7 +62,7 @@ given to the splice must therefore be `transparent inline`.
 ## Reproduction
 
 `repro/` holds the feature's test files (also checked in as
-`tests/neg-macros/diagnostic-given/` and `tests/pos-macros/diagnostic-given/`
+`tests/neg-macros/searchdiag/` and `tests/pos-macros/searchdiag/`
 on the code branches). With a patched compiler:
 
 ```sh

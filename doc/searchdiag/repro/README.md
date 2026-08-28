@@ -1,4 +1,4 @@
-# Reproduction: diagnostic-given
+# Reproduction: searchdiag
 
 A macro-implemented given marked `@scala.annotation.internal.diagnostic` that
 aborts with `report.errorAndAbort` while being tried as an implicit candidate:

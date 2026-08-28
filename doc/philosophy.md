@@ -30,7 +30,7 @@ to 3.9): backports are convergence with upstream, not deviation from it.
 ## Diagnostics
 
 Better error reporting and richer debugging metadata never change what
-compiles. [diagnostic-given](diagnostic-given/diagnostic-given.md) lets a
+compiles. [searchdiag](searchdiag/searchdiag.md) lets a
 library author speak in the compiler's error messages;
 [semdiag](semdiag/semdiag.md) makes diagnostics machine-readable with their
 types intact; [smap](smap/smap.md) maps inlined code back to the source that

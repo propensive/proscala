@@ -10,7 +10,6 @@ blockimport
 boolunapply
 ctxresult
 dependarg
-diagnostic-given
 dictcaps
 givencache
 givenprefix
@@ -30,6 +29,7 @@ prunecomplete
 retainbounds
 returnavoid
 sambox
+searchdiag
 semdiag
 skolemcap
 smap
