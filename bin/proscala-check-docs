@@ -83,7 +83,7 @@ for d in doc/*/; do
   # Docs that legitimately have no row: the build (not a patch), patches
   # retired with a dropped stream kept as a record, and documented upstream
   # behaviours the fork deliberately does not patch.
-  case "$f" in make|boundscap|localroots) continue ;; esac
+  case "$f" in make|boundscap|localroots|picklesource) continue ;; esac
   problem "doc/$f/ has no row in doc/README.md (and is not the build, a retired patch or an unpatched upstream record)"
 done
 

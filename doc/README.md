@@ -18,6 +18,9 @@ has no `feature/<stream>/make` branch and no row below — but it is documented
 alongside the features, in [make/make.md](make/make.md). [boundscap](boundscap/boundscap.md)
 likewise has no row: it applied only to the 3.8 stream, retired in August 2026, and
 its analysis and reproduction are kept as a record.
+[picklesource](picklesource/picklesource.md) is retired too: it applied only to
+the 3.10 stream, and upstream #26900 (in the base since August 2026) fixes the
+same assertion at its source.
 [localroots](localroots/localroots.md) also has no row: it documents an upstream
 3.10 capture-checking behaviour (memoized local roots failing the second inline
 expansion in a unit) that the fork deliberately does **not** patch — every
@@ -48,7 +51,6 @@ reproductions so the diagnostic is recognisable when it next appears.
 | [modulepath](modulepath/modulepath.md) | Give an inline accessor for a module the module's `TermRef` | 3.10 | bug fix | yes |
 | [nullreceiver](nullreceiver/nullreceiver.md) | Widen bottom-typed call receivers to Object in the backend | 3.9, 3.10 | bug fix (crash) | yes |
 | [permitlazy](permitlazy/permitlazy.md) | Lazy resolution of permitted subclasses in classfile parsing | 3.9, 3.10 | bug fix | yes |
-| [picklesource](picklesource/picklesource.md) | Pickle sourceless positions as their empty path, not an assertion | 3.10 | bug fix (crash) | FIXME |
 | [proxyskolem](proxyskolem/proxyskolem.md) | No skolem-typed inline argument proxies under capture checking | 3.9, 3.10 | bug fix | yes (2: `repro`, `repro2`) |
 | [prunecomplete](prunecomplete/prunecomplete.md) | Do not force completion when filtering prunable inline methods | 3.10 | bug fix (crash) | FIXME |
 | [retainbounds](retainbounds/retainbounds.md) | Sanitize `TypeBounds` in `@retains` arguments to the top capability | 3.9, 3.10 | bug fix | yes |

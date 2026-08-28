@@ -23,7 +23,6 @@ macroalias
 modulepath
 nullreceiver
 permitlazy
-picklesource
 proxyskolem
 prunecomplete
 retainbounds

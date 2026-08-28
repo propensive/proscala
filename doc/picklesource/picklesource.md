@@ -3,6 +3,15 @@
 Restores TASTy position pickling for trees whose source has no underlying
 file, which upstream's source-path encapsulation turned into a crash.
 
+**Retired August 2026**: upstream #26900 ("Tolerate lack of source file for
+relative paths", `042d360b14`, in the 3.10 base as of 3.10.0-dev-p15's
+successor) fixes the same assertion at its source, making
+`SourceFile.pathRelativeToSourceRoot` return the empty path for a missing
+file — exactly what this patch arranged at the one affected call site in
+`PositionPickler`. The patch applied only to the 3.10 stream (the 3.9 base
+predates the regression), so it is dropped entirely; this analysis is kept
+as a record.
+
 ## Context
 
 When TASTy pickling walks a tree, `PositionPickler.pickleSource` records the
