@@ -1293,6 +1293,10 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
     if !defn.LiterateClass.exists
        || !ctx.mode.is(Mode.ImplicitsEnabled)
        || ctx.mode.is(Mode.Pattern) || ctx.mode.is(Mode.Type) || ctx.mode.is(Mode.InAnnotation)
+       // A literal in a quote pattern is matched structurally against the
+       // literal a macro's caller wrote; re-typing it would make the pattern
+       // expect the instance's target type and silently stop matching.
+       || ctx.mode.isQuotedPattern
        || ctx.owner.isInlineVal
        // Synthesized members (a case class's `toString`, an enum case's tag)
        // implement platform contracts with inferred result types; their
@@ -1307,7 +1311,12 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
       // Speculative, like a spreadable splice: nothing the search or the
       // conversion typing does may leak unless the rewrite is committed.
       val nestedCtx = ctx.fresh.setNewTyperState().setProperty(LiterateConversion, ())
-      inContext(nestedCtx):
+      // Searching for an instance forces whatever the search touches — including
+      // the root import that supplies it. Where that is already being completed
+      // (a literal in an annotation on a symbol of the importing unit), the
+      // search cycles; declining the rewrite is always sound, so a completion
+      // error leaves the literal as it is.
+      try inContext(nestedCtx):
         val instance = inferImplicitArg(defn.LiterateClass.typeRef.appliedTo(lit.tpe), lit.span)
         if instance.tpe.isError || instance.tpe.isInstanceOf[SearchFailureType] then lit
         else
@@ -1326,6 +1335,7 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
           else
             nestedCtx.typerState.commit()
             converted
+      catch case _: TypeError => lit
 
   def typedNew(tree: untpd.New, pt: Type)(using Context): Tree =
     tree.tpt match {
