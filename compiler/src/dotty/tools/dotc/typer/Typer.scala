@@ -1294,6 +1294,11 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
        || !ctx.mode.is(Mode.ImplicitsEnabled)
        || ctx.mode.is(Mode.Pattern) || ctx.mode.is(Mode.Type) || ctx.mode.is(Mode.InAnnotation)
        || ctx.owner.isInlineVal
+       // Synthesized members (a case class's `toString`, an enum case's tag)
+       // implement platform contracts with inferred result types; their
+       // literals keep their ordinary meaning. Anonymous functions are also
+       // Synthetic, but their bodies are user code.
+       || ctx.owner.is(Synthetic) && !ctx.owner.isAnonymousFunction
        || tpd.enclosingInlineds.nonEmpty
        || ctx.property(LiterateConversion).isDefined
        || accepted
