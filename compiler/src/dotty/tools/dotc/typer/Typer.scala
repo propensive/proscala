@@ -105,6 +105,14 @@ object Typer {
    */
   private val DroppedEmptyArgs = new Property.Key[Unit]
 
+  /** A context property suppressing rewrites of literals through `Literate`
+   *  instances. Set while such a rewrite is in progress (literals in the
+   *  instance's inline body, or in the implicit search, are not themselves
+   *  rewritten), and during overload-resolution argument pre-typing, where
+   *  arguments are typed against a wildcard only to rank alternatives.
+   */
+  private[typer] val LiterateConversion = new Property.Key[Unit]
+
   /** An attachment that indicates a failed conversion or extension method
    *  search was tried on a tree. This will in some cases be reported in error messages
    */
@@ -1222,10 +1230,13 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
             return typed(app, pt)
           case _ =>
         }
-      // Otherwise convert to Int or Double according to digits format
+      // Otherwise convert to Int or Double according to digits format. Either
+      // default may in turn be re-typed through a `Literate` instance; the
+      // expected-type-driven `FromDigits` cases above have already returned,
+      // so this engages only where they do not.
       tree.kind match {
-        case Whole(radix) => lit(intFromDigits(digits, radix))
-        case _ => lit(doubleFromDigits(digits))
+        case Whole(radix) => literated(lit(intFromDigits(digits, radix)), pt)
+        case _ => literated(lit(doubleFromDigits(digits)), pt)
       }
     }
     catch {
@@ -1243,6 +1254,59 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
     if (ctx.mode.is(Mode.Type)) tpd.SingletonTypeTree(tree1) // this ensures that tree is classified as a type tree
     else tree1
   }
+
+  /** If `tree` is a literal, its author may have granted permission for it to
+   *  be re-typed through a `scala.Literate` instance in scope, keyed on the
+   *  literal's own type. The rewrite happens only where the literal's ordinary
+   *  type is not already required: an expected type the literal satisfies —
+   *  `String` parameters, singleton bounds, annotation arguments, patterns —
+   *  leaves the literal untouched, so code not using the instance is
+   *  unaffected. Overridden to the identity in ReTyper.
+   */
+  def literated(tree: Tree, pt: Type)(using Context): Tree = tree match
+    case lit: Literal if literateTags.contains(lit.const.tag) => literateConvert(lit, pt)
+    case _ => tree
+
+  private val literateTags =
+    Set(Constants.StringTag, Constants.IntTag, Constants.LongTag,
+        Constants.DoubleTag, Constants.FloatTag, Constants.CharTag)
+
+  private def literateConvert(lit: Literal, pt: Type)(using Context): Tree =
+    // Does the expected type already accept the literal as it is? Selections
+    // are accepted if the literal's own type has the member; concrete expected
+    // types are accepted by a (frozen) conformance test; other prototypes are
+    // left alone. An underdetermined expected type — a wildcard, or a not yet
+    // instantiated type variable — accepts nothing yet, and is exactly where
+    // the rewrite is wanted.
+    def accepted: Boolean = pt match
+      case pt: SelectionProto => pt.isMatchedBy(lit.tpe, keepConstraint = false)
+      case _: WildcardType => false
+      case pt: ProtoType => true
+      case pt => isFullyDefined(pt, ForceDegree.none) && (lit.tpe frozen_<:< pt)
+    if !defn.LiterateClass.exists
+       || !ctx.mode.is(Mode.ImplicitsEnabled)
+       || ctx.mode.is(Mode.Pattern) || ctx.mode.is(Mode.Type) || ctx.mode.is(Mode.InAnnotation)
+       || ctx.owner.isInlineVal
+       || tpd.enclosingInlineds.nonEmpty
+       || ctx.property(LiterateConversion).isDefined
+       || accepted
+    then lit
+    else
+      // Speculative, like a spreadable splice: nothing the search or the
+      // conversion typing does may leak unless the rewrite is committed.
+      val nestedCtx = ctx.fresh.setNewTyperState().setProperty(LiterateConversion, ())
+      inContext(nestedCtx):
+        val instance = inferImplicitArg(defn.LiterateClass.typeRef.appliedTo(lit.tpe), lit.span)
+        if instance.tpe.isError || instance.tpe.isInstanceOf[SearchFailureType] then lit
+        else
+          val app = untpd.Apply(
+            untpd.Select(untpd.TypedSplice(instance), nme.convert).withSpan(lit.span),
+            untpd.TypedSplice(lit) :: Nil).withSpan(lit.span)
+          val converted = typed(app, pt)
+          if nestedCtx.reporter.hasErrors then lit
+          else
+            nestedCtx.typerState.commit()
+            converted
 
   def typedNew(tree: untpd.New, pt: Type)(using Context): Tree =
     tree.tpt match {
@@ -3869,7 +3933,7 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
             if (ctx.mode is Mode.Pattern) typedUnApply(tree, pt) else typedApply(tree, pt)
           case tree: untpd.This => typedThis(tree)
           case tree: untpd.Number => typedNumber(tree, pt)
-          case tree: untpd.Literal => typedLiteral(tree)
+          case tree: untpd.Literal => literated(typedLiteral(tree), pt)
           case tree: untpd.New => typedNew(tree, pt)
           case tree: untpd.Typed => typedTyped(tree, pt)
           case tree: untpd.NamedArg => typedNamedArg(tree, pt)
