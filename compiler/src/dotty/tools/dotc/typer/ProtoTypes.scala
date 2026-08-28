@@ -548,9 +548,19 @@ object ProtoTypes {
      */
     def typedArg(arg: untpd.Tree, formal: Type)(using Context): Tree = {
       val wideFormal = formal.widenExpr
-      val argCtx =
+      val argCtx0 =
         if wideFormal eq formal then ctx.retractMode(Mode.InAnnotation)
         else ctx.retractMode(Mode.InAnnotation).withNotNullInfos(ctx.notNullInfos.retractMutables)
+      // An annotation's arguments are typed with `InAnnotation` retracted, so
+      // that mode cannot gate anything here. Literals in them must still keep
+      // their ordinary types: they are read back as constants (`@targetName`,
+      // `@implicitNotFound`), and searching for a `Literate` instance while
+      // the annotated symbol is completing can even cycle through a root
+      // import.
+      val argCtx =
+        if ctx.mode.is(Mode.InAnnotation)
+        then argCtx0.fresh.setProperty(Typer.LiterateConversion, ())
+        else argCtx0
       val locked = ctx.typerState.ownedVars
       val targ = cacheTypedArg(arg,
         typer.typedUnadapted(_, wideFormal, locked)(using argCtx),
