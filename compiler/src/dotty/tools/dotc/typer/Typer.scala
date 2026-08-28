@@ -1310,7 +1310,14 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
             untpd.Select(untpd.TypedSplice(instance), nme.convert).withSpan(lit.span),
             untpd.TypedSplice(lit) :: Nil).withSpan(lit.span)
           val converted = typed(app, pt)
-          if nestedCtx.reporter.hasErrors then lit
+          // A polymorphic instance leaves fresh type variables in the tree
+          // (`literate[str'].convert(lit)`); force them to their solutions —
+          // the argument constrains them to the literal's singleton — and
+          // refuse the rewrite rather than commit an escaping variable.
+          if nestedCtx.reporter.hasErrors
+             || !isFullyDefined(instance.tpe, ForceDegree.all)
+             || !isFullyDefined(converted.tpe, ForceDegree.all)
+          then lit
           else
             nestedCtx.typerState.commit()
             converted
