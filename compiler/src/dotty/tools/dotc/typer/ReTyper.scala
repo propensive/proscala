@@ -45,6 +45,10 @@ class ReTyper(nestingLevel: Int = 0) extends Typer(nestingLevel) with ReChecking
   override def typedLiteral(tree: untpd.Literal)(implicit ctc: Context): Tree =
     promote(tree)
 
+  // Literals in already-typed trees have their meaning; rechecking never
+  // re-routes them through a Literate instance.
+  override def literated(tree: Tree, pt: Type)(using Context): Tree = tree
+
   override def typedThis(tree: untpd.This)(using Context): Tree =
     promote(tree)
 

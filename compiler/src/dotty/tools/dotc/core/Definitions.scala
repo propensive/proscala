@@ -961,6 +961,12 @@ class Definitions {
       val methodName = if CanEqualClass.name == tpnme.Eql then nme.eqlAny else nme.canEqualAny
       CanEqualClass.companionModule.requiredMethod(methodName)
 
+  // Looked up leniently, like Spreadable: a literal consults it only when an
+  // instance can possibly be in scope, so a library without `scala.Literate`
+  // never searches. `convert` is deliberately not a member of the trait (a
+  // deferred inline method cannot be invoked through it); it is resolved by
+  // name on the instance's own type.
+  @tu lazy val LiterateClass: Symbol = getClassIfDefined("scala.Literate")
   @tu lazy val CanThrowClass: ClassSymbol = requiredClass("scala.CanThrow")
   @tu lazy val throwsAlias: Symbol = ScalaRuntimePackageVal.requiredType(tpnme.THROWS)
 
