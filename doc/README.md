@@ -1,5 +1,8 @@
 # Feature documentation
 
+The categories these features fall into, and the policy governing what
+Proscala accepts, are described in [philosophy.md](philosophy.md).
+
 One subdirectory per feature. Each `doc/<feature>/` contains the feature's
 documentation (`<feature>.md`) and, for bug fixes, a `repro/` directory with a
 minimal reproduction — either standalone source files with a `README.md`
