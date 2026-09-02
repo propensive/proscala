@@ -56,11 +56,14 @@ include $(STREAM_MK)
 # ---- ASM for the tree's own JVM backend --------------------------------------
 # Streams up to 3.9 compile against the shaded org.scala-lang.modules:scala-asm;
 # from 3.10 upstream imports org.objectweb.asm directly, so mk/3.10.mk overrides
-# these with the org.ow2.asm jars. The shaded scala-asm stays on the
-# reference-compiler classpath regardless (the reference compiler needs it).
+# these with the org.ow2.asm jars. The reference compiler has the same split:
+# up to 3.9.x it needs the shaded scala-asm on its classpath, from 3.10.0-RC1 the
+# org.ow2.asm jars (REF_ASM_JARS, bare jar names under $(JARS); mk/3.10.mk
+# overrides it too).
 TREE_ASM_MAVEN_PATHS ?=
 TREE_ASM_JARS ?= $(ASM_JAR)
 TREE_ASM_COORDS ?= org.scala-lang.modules:scala-asm:$(ASM_VERSION)
+REF_ASM_JARS ?= scala-asm-$(ASM_VERSION).jar
 
 MC := https://repo1.maven.org/maven2
 
@@ -169,7 +172,7 @@ REF_JARS := \
   scala-library-$(REF_VERSION).jar \
   tasty-core_3-$(REF_VERSION).jar \
   scala3-interfaces-$(REF_VERSION).jar \
-  scala-asm-$(ASM_VERSION).jar \
+  $(REF_ASM_JARS) \
   compiler-interface-$(COMPILER_IFACE_VER).jar \
   util-interface-$(UTIL_IFACE_VER).jar
 
