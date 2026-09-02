@@ -415,7 +415,7 @@ Current streams and their release versions:
 | Stream | Tracks | Version |
 | ------ | --------------------------- | ------------------- |
 | `3.9`  | `scala/scala3 release-3.9.0` | `3.9.0-RC6-p<n>`    |
-| `3.10` | `scala/scala3 main`          | `3.10.0-dev-p<n>`   |
+| `3.10` | `scala/scala3 main`          | `3.10.1-dev-p<n>`   |
 
 The GitHub token needs `contents: write` (declared in the workflow). Because the
 code branches are now pure upstream, they carry the inherited scala/scala3 CI
