@@ -94,10 +94,20 @@ P_COMPILER   := $(PUB_GROUP):scala3-compiler_3:$(VERSION)
 P_DIRECTIVES := $(PUB_GROUP):scala3-directives-parser_3:$(VERSION)
 P_REPL       := $(PUB_GROUP):scala3-repl_3:$(VERSION)
 P_SJSSCALA   := $(PUB_GROUP):scalajs-scalalib_2.13:$(VERSION)
+P_SJS3LIB    := $(PUB_GROUP):scala3-library_sjs1_3:$(VERSION)
 
 # Only when the tree carries the module — mirrors $(HAS_DIRECTIVES) in the
 # Makefile, which is what decides whether the jar is built at all.
 DIRECTIVES_DEP := $(if $(HAS_DIRECTIVES),$(P_DIRECTIVES))
+
+# The supplementary library — the fork's standard-library additions, JVM and
+# Scala.js — only on trees that carry library-proscala/src (see the Makefile's
+# $(HAS_PROSCALA_LIB)). Consumers add it beside a scala3-library; it is not a
+# dependency of any other module here, since the compiler finds its classes by
+# name.
+PUB_PROSCALA_LIB = $(if $(HAS_PROSCALA_LIB),\
+  proscala-library_3|proscala-library.jar|library-proscala/src|$(P_SCALA3LIB) \
+  proscala-library_sjs1_3|proscala-library_sjs1.jar|library-proscala/src|$(call join_deps,$(P_SCALA3LIB) $(P_SJS3LIB)))
 
 # ---- The published set -------------------------------------------------------
 # One record per artifact, four `|`-separated fields:
@@ -164,7 +174,8 @@ PUB_TABLE := \
   scala3-presentation-compiler_3|scala3-presentation-compiler.jar|presentation-compiler/src|$(call join_deps,$(P_COMPILER) $(DIRECTIVES_DEP) $(D_LZ4) $(D_COURSIER) $(D_MTAGS) $(D_GUAVA) $(D_LSP4J)) \
   scalajs-scalalib_2.13|scalajs-scalalib_2.13.jar|library-js/src,library/src|$(D_SJSJAVA) \
   $(PUB_SJSLIB) \
-  scala3-library_sjs1_3|scala3-library_sjs1.jar|-|$(call join_deps,$(P_SCALALIB) $(SJS_LIB_DEP) $(P_SJSSCALA))
+  scala3-library_sjs1_3|scala3-library_sjs1.jar|-|$(call join_deps,$(P_SCALALIB) $(SJS_LIB_DEP) $(P_SJSSCALA)) \
+  $(PUB_PROSCALA_LIB)
 
 # ==============================================================================
 # Targets

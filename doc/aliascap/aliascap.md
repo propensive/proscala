@@ -2,7 +2,7 @@
 
 Stops capture checking from localizing `caps.any` inside a type alias's own definition, fixing spurious "cannot flow into" errors when a non-capture-checked module's signature mentions a capability-carrying alias.
 
-Enabled by `-Z:alias-captures` ([zflags](../zflags/zflags.md)); without it, upstream's code runs at every site this patch touches.
+Enabled by `-Zalias-captures` ([zflags](../zflags/zflags.md)); without it, upstream's code runs at every site this patch touches.
 
 ## Context
 

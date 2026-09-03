@@ -351,16 +351,23 @@ only carry the workflow step that invokes it.
     make VERSION=<v> publish-bundle   # build, stage, sign, zip — no upload
     make VERSION=<v> publish          # ... and upload to the Central Portal
 
-Thirteen artifacts are published, under the group `dev.propensive` and with **the
-same artifact names as the mainline Scala releases**, at `<upstream-base>-p<n>`:
-`scala-library`, `scala3-library_3`, `scala3-interfaces`, `tasty-core_3`,
-`scala3-compiler_3`, `scala3-directives-parser_3`, `scala3-staging_3`,
-`scala3-tasty-inspector_3`, `scala3-repl_3`, `scala3-sbt-bridge`,
-`scala3-presentation-compiler_3`, `scalajs-scalalib_2.13` and
-`scala3-library_sjs1_3`. Matching the mainline names is what lets sbt's
-`scalaOrganization := "dev.propensive"` swap the fork in wholesale. A WASM tree
-publishes a fourteenth, `scalajs-library_2.13` — see below. Both release streams
-carry the `wasm` patch, so a real release publishes fourteen.
+Fifteen artifacts are published, under the group `dev.propensive`, at
+`<upstream-base>-p<n>`. Thirteen carry **the same artifact names as the mainline
+Scala releases**: `scala-library`, `scala3-library_3`, `scala3-interfaces`,
+`tasty-core_3`, `scala3-compiler_3`, `scala3-directives-parser_3`,
+`scala3-staging_3`, `scala3-tasty-inspector_3`, `scala3-repl_3`,
+`scala3-sbt-bridge`, `scala3-presentation-compiler_3`, `scalajs-scalalib_2.13` and
+`scala3-library_sjs1_3`; matching the mainline names is what lets sbt's
+`scalaOrganization := "dev.propensive"` swap the fork in wholesale. Two are the
+fork's own: `proscala-library_3` and `proscala-library_sjs1_3`, the
+**supplementary library** holding the standard-library additions
+(`scala.Literate`, `scala.Spreadable`, `scala.annotation.internal.diagnostic`)
+from `library-proscala/src` on the code branches, built into their own jar so
+`scala-library` stays byte-identical to upstream's from the same sources.
+Consumers add it beside a `scala3-library`, and the compiler finds its classes
+by name, so nothing else depends on it. A WASM tree publishes a sixteenth,
+`scalajs-library_2.13` — see below. Both release streams carry the `wasm` patch,
+so a real release publishes sixteen.
 
 Each gets a POM, a sources jar and an (empty) javadoc jar, all GPG-signed with
 md5/sha1 checksums, bundled into one zip and uploaded to the Central Portal with

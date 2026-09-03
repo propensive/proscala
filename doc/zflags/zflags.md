@@ -1,9 +1,9 @@
 # `-Z`: enable Proscala's optional behaviours by name
 
-Adds one compiler setting, `-Z:<name>,...`, through which a build enables each
+Adds one compiler setting, `-Z<name>`, through which a build enables each
 of the fork's opt-in behaviours by name; where a name is not given, the
 compiler runs upstream's code at every site the corresponding patch touches.
-`-Z:help` lists the names, and an unknown name is an error.
+`-Z` lists the names, and an unknown name is an error.
 
 ## Context
 
@@ -50,21 +50,21 @@ then parent
 
 The names, one per gated patch:
 
-| `-Z:` name | Patch | Enables |
+| Setting | Patch | Enables |
 | --- | --- | --- |
-| `alias-captures` | [aliascap](../aliascap/aliascap.md) | root capabilities stay global in type alias infos |
-| `diagnostic-givens` | [searchdiag](../searchdiag/searchdiag.md) | an `@internal.diagnostic` given's errors become the search-failure message |
-| `given-prefixes` | [givenprefix](../givenprefix/givenprefix.md) | package-object prefixes sealed on implicit candidates |
-| `inline-source-maps` | [smap](../smap/smap.md) | JSR-45 SMAP attributes for inlined code |
-| `literate-literals` | [literate](../literate/literate.md) | literals re-typed through `Literate` instances |
-| `opaque-mutability` | [iarraypure-mutalias](../iarraypure-mutalias/iarraypure-mutalias.md) | opaque aliases over mutable types classified as mutable |
-| `pure-iarrays` | [iarraypure](../iarraypure/iarraypure.md) | `IArray` treated as pure |
-| `retains-bounds` | [retainbounds](../retainbounds/retainbounds.md) | `TypeBounds` in `@retains` approximated by the top capability |
-| `retains-skolems` | [skolemcap](../skolemcap/skolemcap.md) | skolems in `@retains` widened to the top capability |
-| `semantic-diagnostics` | [semdiag](../semdiag/semdiag.md) | XML diagnostics with TASTy-encoded types |
-| `spreadable-varargs` | [spreadable](../spreadable/spreadable.md) | `Spreadable` values spliced into vararg positions |
-| `unboxed-pure-types` | [unboxedpure](../unboxedpure/unboxedpure.md) | no boxing of pure types with vacuous capture sets |
-| `union-captures` | [unioncaps](../unioncaps/unioncaps.md) | capture information classified and preserved on unions |
+| `-Zalias-captures` | [aliascap](../aliascap/aliascap.md) | root capabilities stay global in type alias infos |
+| `-Zdiagnostic-givens` | [searchdiag](../searchdiag/searchdiag.md) | an `@internal.diagnostic` given's errors become the search-failure message |
+| `-Zgiven-prefixes` | [givenprefix](../givenprefix/givenprefix.md) | package-object prefixes sealed on implicit candidates |
+| `-Zinline-source-maps` | [smap](../smap/smap.md) | JSR-45 SMAP attributes for inlined code |
+| `-Zliterate-literals` | [literate](../literate/literate.md) | literals re-typed through `Literate` instances |
+| `-Zopaque-mutability` | [iarraypure-mutalias](../iarraypure-mutalias/iarraypure-mutalias.md) | opaque aliases over mutable types classified as mutable |
+| `-Zpure-iarrays` | [iarraypure](../iarraypure/iarraypure.md) | `IArray` treated as pure |
+| `-Zretains-bounds` | [retainbounds](../retainbounds/retainbounds.md) | `TypeBounds` in `@retains` approximated by the top capability |
+| `-Zretains-skolems` | [skolemcap](../skolemcap/skolemcap.md) | skolems in `@retains` widened to the top capability |
+| `-Zsemantic-diagnostics` | [semdiag](../semdiag/semdiag.md) | XML diagnostics with TASTy-encoded types |
+| `-Zspreadable-varargs` | [spreadable](../spreadable/spreadable.md) | `Spreadable` values spliced into vararg positions |
+| `-Zunboxed-pure-types` | [unboxedpure](../unboxedpure/unboxedpure.md) | no boxing of pure types with vacuous capture sets |
+| `-Zunion-captures` | [unioncaps](../unioncaps/unioncaps.md) | capture information classified and preserved on unions |
 
 ## The base branch
 

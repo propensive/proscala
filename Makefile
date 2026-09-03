@@ -329,6 +329,23 @@ $(DIRECTIVES_JAR): $(COMMON_ARGS) $(SCALA_LIB_JAR) $(shell find directives-parse
 	$(call jar_module,directives,$@,org.scala.lang.scala3.directives.parser)
 endif
 
+# ---- 5b. proscala-library (the fork's standard-library additions) ------------
+# A tree whose patches add to the standard library (`scala.Literate`,
+# `scala.Spreadable`, `scala.annotation.internal.diagnostic`) keeps those sources
+# under library-proscala/src, built into a jar of their own — so scala-library.jar
+# (and the Scala.js scalalib) is what upstream would build from the same sources,
+# and a stock standard library plus this jar is an equivalent classpath. The
+# compiler looks these classes up by name and runs without the jar.
+HAS_PROSCALA_LIB := $(wildcard library-proscala/src)
+ifneq ($(HAS_PROSCALA_LIB),)
+PROSCALA_LIB_JAR := $(LIB)/proscala-library.jar
+PROSCALA_LIB_SRC := $(shell find library-proscala/src -name '*.scala' -type f)
+$(PROSCALA_LIB_JAR): $(COMMON_ARGS) $(SCALA_LIB_JAR) $(PROSCALA_LIB_SRC)
+	@echo ">> proscala-library ($(words $(PROSCALA_LIB_SRC)) sources)"
+	$(call scalac_with,$(REFC),proscala-library,$(SCALA_LIB_JAR),library-proscala/src)
+	$(call jar_module,proscala-library,$@,dev.propensive.proscala.library)
+endif
+
 # ---- 6. scala3-compiler (compiler/src + vendored scalajs-ir + javac) ---------
 COMPILER_SRC := $(shell find compiler/src compiler/src-scalajs-ir \( -name '*.scala' -o -name '*.java' \) -type f)
 COMPILER_CP  := $(call cpjoin,$(SCALA_LIB_JAR) $(INTERFACES_JAR) $(TASTY_JAR) \
@@ -461,6 +478,23 @@ $(SJS3_LIB_JAR): $(DEPS_STAMP)
 	@rm -rf $(CLASSES)/sjs3-library && mkdir -p $(CLASSES)/sjs3-library $(LIB)
 	$(call jar_module,sjs3-library,$@,org.scala.lang.scala3.library.sjs1)
 
+# ---- 12a. proscala-library-sjs (the additions, for Scala.js) -----------------
+# The same sources as proscala-library, compiled for Scala.js against the
+# scalalib classes the recipe above leaves under $(CLASSES)/sjs-scalalib; the
+# jar keeps its .class, .tasty and .sjsir like any Scala.js Scala 3 artifact.
+ifneq ($(HAS_PROSCALA_LIB),)
+PROSCALA_SJS_LIB_JAR := $(LIB)/proscala-library_sjs1.jar
+$(PROSCALA_SJS_LIB_JAR): $(COMMON_ARGS) $(STAGE_JARS) $(SJS_SCALALIB_JAR) $(PROSCALA_LIB_SRC)
+	@echo ">> proscala-library-sjs"
+	@rm -rf $(CLASSES)/proscala-library-sjs && mkdir -p $(CLASSES)/proscala-library-sjs
+	@cp $(COMMON_ARGS) $(CLASSES)/proscala-library-sjs.args
+	@printf '%s\n' -scalajs -classpath '$(call cpjoin,$(CLASSES)/sjs-scalalib $(SJS_CP))' \
+	  -d $(CLASSES)/proscala-library-sjs >> $(CLASSES)/proscala-library-sjs.args
+	@printf '%s\n' $(sort $(PROSCALA_LIB_SRC)) >> $(CLASSES)/proscala-library-sjs.args
+	$(STAGEC) @$(CLASSES)/proscala-library-sjs.args
+	$(call jar_module,proscala-library-sjs,$@,dev.propensive.proscala.library.sjs1)
+endif
+
 # ---- 12b. scalajs-library + scala.scalajs.wit (WASM trees only) ---------------
 # Upstream vendors Scala.js 1.20.2; the scala-wasm fork bumps it to
 # $(SCALAJS_VERSION) (1.22.0-wasm.*) and adds the WASM runtime. Proscala's WIT
@@ -526,7 +560,7 @@ $(PC_JAR): $(COMMON_ARGS) $(STAGE_JARS) $(DEPS_STAMP) $(shell find presentation-
 STAGE1_JARS := $(INTERFACES_JAR) $(SCALA_LIB_JAR) $(SCALA3_LIB_JAR) $(TASTY_JAR) \
                $(DIRECTIVES_JAR) $(COMPILER_JAR)
 STAGE2_JARS := $(STAGING_JAR) $(TASTY_INSPECTOR_JAR) $(REPL_JAR) $(SBT_BRIDGE_JAR)
-EXTRA_JARS  := $(SJS_SCALALIB_JAR) $(SJS3_LIB_JAR) $(PC_JAR)
+EXTRA_JARS  := $(SJS_SCALALIB_JAR) $(SJS3_LIB_JAR) $(PC_JAR) $(PROSCALA_LIB_JAR) $(PROSCALA_SJS_LIB_JAR)
 
 .PHONY: stage1
 stage1: $(STAGE1_JARS)

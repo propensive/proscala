@@ -209,15 +209,15 @@ for s in "${STREAMS[@]}"; do
     fi
   done < <(patches "$s")
   pass "$s branches"
-  # every `-Z:` flag in the doc/README.md Flag column is in the stream base's registry
+  # every `-Z` flag in the doc/README.md Flag column is in the stream base's registry
   if git rev-parse --verify --quiet "origin/feature/$s/zflags" >/dev/null 2>&1; then
     registry="$(git show "origin/feature/$s/zflags:compiler/src/dotty/tools/dotc/config/Proscala.scala" 2>/dev/null)"
     while IFS=$'\t' read -r feat streams flag; do
       printf '%s' "$streams" | tr -d ' ' | tr ',' '\n' | grep -qx "$s" || continue
-      name="${flag#\`-Z:}"; name="${name%\`}"
+      name="${flag#\`-Z}"; name="${name%\`}"
       printf '%s' "$registry" | grep -qF "Feature(\"$name\", \"$feat\"" \
         || problem "doc/README.md gives '$feat' flag '$flag', which origin/feature/$s/zflags's Proscala.scala does not register for it"
-    done < <(awk -F'|' '/^\| *\[/ { f=$2; sub(/^ *\[/,"",f); sub(/\].*/,"",f); s=$4; z=$7; gsub(/^ +| +$/,"",s); gsub(/^ +| +$/,"",z); if (z ~ /^`-Z:/) printf "%s\t%s\t%s\n", f, s, z }' doc/README.md)
+    done < <(awk -F'|' '/^\| *\[/ { f=$2; sub(/^ *\[/,"",f); sub(/\].*/,"",f); s=$4; z=$7; gsub(/^ +| +$/,"",s); gsub(/^ +| +$/,"",z); if (z ~ /^`-Z/) printf "%s\t%s\t%s\n", f, s, z }' doc/README.md)
     pass "$s flags"
   fi
 done

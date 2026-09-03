@@ -96,8 +96,9 @@ to `release/<branch>/`:
 
 - `release/<branch>/lib/` — the published jars: everything Proscala builds
   (compiler, standard library, `tasty-core`, REPL, staging, tasty-inspector,
-  sbt-bridge, presentation compiler and the Scala.js libraries) plus the
-  Scala.js / scala-wasm runtime
+  sbt-bridge, presentation compiler, the Scala.js libraries, and
+  `proscala-library`, the supplementary jar of the fork's standard-library
+  additions for the JVM and Scala.js) plus the Scala.js / scala-wasm runtime
 - `release/<branch>/deps/` — the remaining third-party runtime jars
 - `release/<branch>/bin/` — `scalac` and `scala` launchers, ready to run
 

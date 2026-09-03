@@ -36,7 +36,7 @@ in "The `-Z` flags" below.
 
 ## Diagnostics only
 
-[semdiag](semdiag/semdiag.md) (`-Z:semantic-diagnostics`) changes what the
+[semdiag](semdiag/semdiag.md) (`-Zsemantic-diagnostics`) changes what the
 compiler *prints*, never what it produces: without the flag, output is
 byte-for-byte unchanged; with it, only the console stream differs.
 [searchdiag](searchdiag/searchdiag.md) changes which *message* an already-
@@ -54,7 +54,7 @@ message where a Proscala consumer gets the custom one.
 
 ## Debug metadata
 
-[smap](smap/smap.md) (`-Z:inline-source-maps`) is the only feature that
+[smap](smap/smap.md) (`-Zinline-source-maps`) is the only feature that
 changes emitted JVM classfiles for code both compilers accept — and only
 their metadata: it populates the standard `SourceDebugExtension` attribute
 (JSR-45) and gives inlined code synthetic `LineNumberTable` entries past
@@ -97,7 +97,7 @@ content for the better, not their nature.
 
 ## The `-Z` flags
 
-Thirteen features are enabled by name with `-Z:<name>,...`
+Thirteen features are enabled by name with `-Z<name>` (`-Zunion-captures`, say; a bare `-Z` lists them)
 ([zflags](zflags/zflags.md) has the mechanism and the full table); with a
 name absent, the compiler runs upstream's code at every site the feature
 touches. What matters for compatibility is the *scope* of each flag's effect,
@@ -145,8 +145,20 @@ bytecode running on an ordinary JVM. The dependency is the library:
 defining or using a `Spreadable` instance puts `scala.Spreadable` in your
 TASTy (and, for the instance, your classfiles), so compiling against such
 an artifact — including expanding an inline method containing a backed
-splice — and running it require Proscala's `scala3-library` on the
-classpath. Source using the feature does not compile under vanilla Scala.
+splice — and running it require that class on the classpath. Source using
+the feature does not compile under vanilla Scala.
+
+That class does not live in Proscala's `scala3-library`. The fork's three
+standard-library additions — `scala.Literate`, `scala.Spreadable` and
+`scala.annotation.internal.diagnostic` — are built from `library-proscala/src`
+into a **supplementary jar**, `proscala-library_3` (and `proscala-library_sjs1_3`
+for Scala.js), so the `scala-library` and `scalajs-scalalib` jars Proscala
+ships are byte-identical to what upstream builds from the same sources. A
+consumer therefore needs only the small additive jar beside whichever
+`scala3-library` it already has — vanilla's included, since split packages are
+harmless on the classpath — and a vanilla compiler reading such TASTy resolves
+the classes from it like any other library. Proscala's compiler looks the three
+classes up by name and runs without the jar; the features simply never engage.
 
 ## New platforms
 
@@ -166,7 +178,7 @@ conformance to the Component Model is.
 The honest list: every known case where Proscala's behaviour differs for
 code a vanilla compiler accepts.
 
-- **[givenprefix](givenprefix/givenprefix.md)** (`-Z:given-prefixes`) rejects code
+- **[givenprefix](givenprefix/givenprefix.md)** (`-Zgiven-prefixes`) rejects code
   that reads an opaque type's representation through an extension method
   from a top-level given — a leak of the package object's privileged view
   that upstream already fixed for direct selections (the #18097 family)
@@ -174,7 +186,7 @@ code a vanilla compiler accepts.
   the fix is a candidate for upstreaming. This is the main case where
   question 1's "yes" needs the qualifier.
 - **[iarraypure-mutalias](iarraypure-mutalias/iarraypure-mutalias.md)**
-  (`-Z:opaque-mutability`, capture checking with `-Ycc-new`) rejects mutation through an
+  (`-Zopaque-mutability`, capture checking with `-Ycc-new`) rejects mutation through an
   opaque alias over a mutable type — closing a soundness hole. Code that
   treats such an alias as immutable-by-convention must accept read-only
   tracking or change representation.
@@ -203,8 +215,8 @@ Proscala-only library type and you don't compile with capture checking,
 your output is indistinguishable from vanilla output: consumers on vanilla
 Scala notice nothing, and you can switch compilers in either direction at
 any release. Using `Spreadable` (or the searchdiag annotation on a public
-given) makes Proscala's library a compile-time dependency of your
-consumers; `Spreadable` instances make it a runtime one.
+given) makes the supplementary `proscala-library` jar a compile-time
+dependency of your consumers; `Spreadable` instances make it a runtime one.
 
 **Mixing compilers in one build.** Safe wherever the boundary artifacts
 satisfy the rule above. The compilers agree on TASTy version, so neither
@@ -216,8 +228,9 @@ across every capture-checked module that shares TASTy (see "The `-Z`
 flags").
 
 **Runtime.** Nothing in the fork requires a special JVM. The only runtime
-requirement any feature introduces is `scala.Spreadable` on the classpath
-where instances are loaded, and the scala-wasm runtime for the WASM target.
+requirement any feature introduces is `proscala-library` on the classpath
+where `Spreadable` instances are loaded, and the scala-wasm runtime for the
+WASM target.
 
-**Debugging.** With `-Z:inline-source-maps`, prefer a JSR-45-aware debugger; expect raw
+**Debugging.** With `-Zinline-source-maps`, prefer a JSR-45-aware debugger; expect raw
 stack traces through inlined code to show synthetic line numbers.

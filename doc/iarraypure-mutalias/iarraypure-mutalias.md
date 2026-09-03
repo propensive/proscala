@@ -2,7 +2,7 @@
 
 Makes the capture checker's mutable-type classification pierce opaque type aliases, so an alias over `Array` (or a `Stateful` class) is tracked exactly like the type it hides, instead of silently escaping the read-only discipline.
 
-Enabled by `-Z:opaque-mutability` ([zflags](../zflags/zflags.md)); without it, upstream's code runs at every site this patch touches.
+Enabled by `-Zopaque-mutability` ([zflags](../zflags/zflags.md)); without it, upstream's code runs at every site this patch touches.
 
 ## Context
 

@@ -2,7 +2,7 @@
 
 Stops the capture checker from classifying `IArray` as a mutable capability through its opaque alias to `Array`, so `IArray` construction and manipulation no longer produce spurious `^{fresh}` capture annotations.
 
-Enabled by `-Z:pure-iarrays` ([zflags](../zflags/zflags.md)); without it, upstream's code runs at every site this patch touches.
+Enabled by `-Zpure-iarrays` ([zflags](../zflags/zflags.md)); without it, upstream's code runs at every site this patch touches.
 
 ## Context
 

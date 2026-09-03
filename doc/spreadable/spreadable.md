@@ -2,7 +2,7 @@
 
 Lets a value whose type is not a `Seq` or `Array` be spliced into a vararg position (`f(xs*)`) when its author granted permission with a `scala.Spreadable` instance — without an implicit conversion and, for an abstraction over a collection, without any runtime cost.
 
-Enabled by `-Z:spreadable-varargs` ([zflags](../zflags/zflags.md)); without it, upstream's code runs at every site this patch touches.
+Enabled by `-Zspreadable-varargs` ([zflags](../zflags/zflags.md)); without it, upstream's code runs at every site this patch touches.
 
 ## Context
 

@@ -2,7 +2,7 @@
 
 A capture-checking fix that stops the compiler from attaching meaningless capture sets to values of provably pure types, which previously caused spurious errors and override failures in inline typeclass code.
 
-Enabled by `-Z:unboxed-pure-types` ([zflags](../zflags/zflags.md)); without it, upstream's code runs at every site this patch touches.
+Enabled by `-Zunboxed-pure-types` ([zflags](../zflags/zflags.md)); without it, upstream's code runs at every site this patch touches.
 
 ## Context
 

@@ -7,7 +7,7 @@ result — `Text { type Topic = "foo" }` in place of `"foo"`, with the
 singleton preserved as a type member. Nothing is added to the language
 surface, and with no instance in scope nothing changes at all.
 
-Enabled by `-Z:literate-literals` ([zflags](../zflags/zflags.md)); without it, upstream's code runs at every site this patch touches.
+Enabled by `-Zliterate-literals` ([zflags](../zflags/zflags.md)); without it, upstream's code runs at every site this patch touches.
 
 ## Context
 
