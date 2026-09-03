@@ -1,0 +1,137 @@
+name: Release
+
+# Publish a versioned trunk build whenever a change lands on a release stream
+# (i.e. a pull request is merged into release/<stream>). The release branch holds
+# only Scala source; the build (Makefile, per-stream config, vendored IR, …)
+# lives on the `main` branch and is overlaid at build time by bin/proscala-overlay.
+# The build compiles every module, versions it <upstream-version>-p<n> (n one
+# greater than the previous release for the stream), tags the commit, attaches
+# a single proscala-<version>.tar.gz (a top-level lib/ of the published jars),
+# and publishes the same jars to Maven Central under `dev.propensive`.
+on:
+  push:
+    branches:
+      - 'release/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the release branch (full history so tags are visible)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Checked before anything irreversible happens. A release that builds,
+      # tags and publishes to GitHub but then cannot reach Maven Central leaves
+      # a half-published version behind, and Central is append-only — so the
+      # credentials are verified up front rather than an hour into the job.
+      - name: Check publishing credentials
+        env:
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          missing=""
+          for name in SONATYPE_USERNAME SONATYPE_PASSWORD GPG_PRIVATE_KEY GPG_PASSPHRASE; do
+            eval "value=\${$name:-}"
+            [ -n "$value" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "release: missing repository secret(s):$missing" >&2
+            echo "         set them under Settings -> Secrets and variables -> Actions." >&2
+            exit 1
+          fi
+          echo "All four publishing secrets are present."
+
+      # Imported before the build for the same reason: an unusable signing key
+      # should stop the job in seconds, not after a full compile.
+      - name: Import the signing key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --quiet --import
+          # Prove the key can actually sign non-interactively before relying on
+          # it later; `make publish` uses exactly these gpg options.
+          printf 'release' | gpg --batch --yes --pinentry-mode loopback \
+            --passphrase "$GPG_PASSPHRASE" --armor --detach-sign --output /dev/null
+          echo "Signing key imported and verified."
+
+      - name: Overlay the build from main
+        run: |
+          set -euo pipefail
+          stream="${GITHUB_REF_NAME#release/}"
+          git fetch --no-tags --quiet origin main
+          git archive origin/main bin/proscala-overlay | tar -x
+          PROSCALA_MAIN=origin/main bin/proscala-overlay "$stream"
+
+      - name: Determine the next version
+        id: ver
+        run: |
+          set -euo pipefail
+          stream="${GITHUB_REF_NAME#release/}"
+          # VERSION lives in the stream's config (overlaid from main); the upstream
+          # base is that with the -propensive (or an existing -p<n>) suffix stripped.
+          base=$(grep -m1 '^VERSION' "mk/${stream}.mk" | sed -E 's/.*:=[[:space:]]*//; s/-propensive$//; s/-p[0-9]+$//')
+          git fetch --tags --force --quiet
+          # The patch counter is per *stream*, not per upstream base, so it
+          # keeps counting across upstream version bumps (e.g. RC1 -> RC4).
+          prev=$(git tag -l "${stream}.*-p*" | sed -nE 's/^.*-p([0-9]+)$/\1/p' | sort -n | tail -1)
+          next=$(( ${prev:-0} + 1 ))
+          version="${base}-p${next}"
+          echo "stream=$stream"   >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building $version (stream=$stream, previous patch=${prev:-none})"
+
+      - name: Clean build + tarball
+        run: |
+          set -euo pipefail
+          s="${{ steps.ver.outputs.stream }}"
+          v="${{ steps.ver.outputs.version }}"
+          make STREAM="$s" BRANCH=dist VERSION="$v" clean
+          make STREAM="$s" BRANCH=dist VERSION="$v" tarball
+
+      - name: Tag and publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          v="${{ steps.ver.outputs.version }}"
+          git tag "$v"
+          git push origin "refs/tags/$v"
+          gh release create "$v" \
+            --title "$v" \
+            --target "$GITHUB_SHA" \
+            --notes "Automated Proscala trunk build for the ${{ steps.ver.outputs.stream }} stream, built from ${GITHUB_SHA}." \
+            "release/dist/proscala-${v}.tar.gz"
+
+      # Last, because Maven Central is append-only: a published version can never
+      # be replaced, only superseded by the next -p<n>. Everything reversible has
+      # already succeeded by this point, so a failure here can be retried by hand
+      # for the *same* version with
+      #   make STREAM=<s> BRANCH=dist VERSION=<v> publish
+      # whereas re-running the whole workflow would allocate the next -p<n>.
+      - name: Publish to Maven Central
+        env:
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+          PROSCALA_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          s="${{ steps.ver.outputs.stream }}"
+          v="${{ steps.ver.outputs.version }}"
+          make STREAM="$s" BRANCH=dist VERSION="$v" publish
