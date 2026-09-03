@@ -79,7 +79,7 @@ extension (tp: Type)
       ref
     case ref: TermRef if ref.isLocalMutable =>
       ref.mapLocalMutable
-    case _: SkolemType =>
+    case _: SkolemType if config.Proscala.enabled(config.Proscala.RetainsSkolems) =>
       // A skolem stands for the unnameable value of an unstable argument, substituted
       // into a dependent result's capture set (e.g. inline expansion of a given whose
       // result retains a parameter). It cannot be written in source, so it is not a
@@ -404,7 +404,8 @@ extension (tp: Type)
    *  result is spuriously `^{fresh}` through the opaque alias.
    */
   def derivesFromCapTrait(cls: ClassSymbol)(using Context): Boolean =
-    tp.typeSymbol != defn.IArrayAlias && derivesFromCapTraitDealiased(cls)
+    (tp.typeSymbol != defn.IArrayAlias || !config.Proscala.enabled(config.Proscala.PureIArrays))
+    && derivesFromCapTraitDealiased(cls)
 
   private def derivesFromCapTraitDealiased(cls: ClassSymbol)(using Context): Boolean =
     tp.dealiasKeepAnnots match
@@ -413,6 +414,7 @@ extension (tp: Type)
       if sym.isClass
       then (if sym.isArrayUnderStrictMut then defn.Caps_Mutable else sym).derivesFrom(cls)
       else if sym.isOpaqueAlias && !(sym eq defn.IArrayAlias)
+          && config.Proscala.enabled(config.Proscala.OpaqueMutability)
       then tp.translucentSuperType.derivesFromCapTrait(cls)
       else tp.superType.derivesFromCapTrait(cls)
     case tp: (TypeProxy & ValueType) =>

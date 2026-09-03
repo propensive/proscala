@@ -495,7 +495,9 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
        *  2. Map GlobalFresh to ResultCap in capturing types
        */
       def finalizeCapturing(tp: Type): Type = tp match
-        case CapturingType(parent, refs) if parent.isAlwaysPure && refs.elems.isEmpty =>
+        case CapturingType(parent, refs)
+        if parent.isAlwaysPure && refs.elems.isEmpty
+           && config.Proscala.enabled(config.Proscala.UnboxedPureTypes) =>
           // A vacuously-empty capture set on an always-pure parent carries no information.
           // Such a `T^{}` can be synthesised when an inline definition that yields a
           // pure-typed value (e.g. an inline typeclass method returning an opaque pure type)
@@ -624,7 +626,7 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
             |following a function arrow such as `=>` or `->`.""")
 
     if initialVariance < 0 then tp2
-    else if sym.isAliasType then
+    else if sym.isAliasType && config.Proscala.enabled(config.Proscala.AliasCaptures) then
       // Keep `caps.any` global in a type alias's own info. Capture-checked units expand
       // aliases during Setup of each USING symbol, localizing root capabilities per use
       // site, so the alias's own info is not consulted there. It is consulted when the
@@ -1011,7 +1013,7 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
         val sym = tp.typeSymbol
         if sym.isClass then
           tp.tupleElementTypes match
-            case Some(elems) =>
+            case Some(elems) if config.Proscala.enabled(config.Proscala.UnboxedPureTypes) =>
               // A tuple type captures exactly what its elements do: a tuple of pure
               // elements is itself pure and needs no capture-set variable. Without this,
               // an all-pure tuple in an invariant (type-member) position acquires a fresh
@@ -1019,7 +1021,7 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
               // equal (e.g. a derived typeclass method's parameter no longer overrides the
               // trait's pure member).
               elems.exists(needsVariable)
-            case None =>
+            case _ =>
               !sym.isPureClass && sym != defn.AnyClass
         else
           val tp1 = tp.dealiasKeepAnnotsAndOpaques

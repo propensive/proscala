@@ -143,7 +143,7 @@ trait BCodeSkelBuilder extends BCodeHelpers {
     private var isCZStaticModule    = false
 
     /** The synthetic line numbers this class's methods actually emitted, so that its
-     *  SourceDebugExtension carries only the part of the unit's SMAP it needs (-Xjsr45).
+     *  SourceDebugExtension carries only the part of the unit's SMAP it needs (-Zinline-source-maps).
      */
     private val usedSyntheticLines = mutable.Set.empty[Int]
 
@@ -631,7 +631,7 @@ trait BCodeSkelBuilder extends BCodeHelpers {
 
       if (BackendUtils.emitLines && tree.span.exists && !tree.hasAttachment(SyntheticUnit)) {
         val nr = tree.getAttachment(InlinedSourceLine) match
-          case Some(syntheticLine) => // inlined from another source file (-Xjsr45)
+          case Some(syntheticLine) => // inlined from another source file (-Zinline-source-maps)
             usedSyntheticLines += syntheticLine
             syntheticLine
           case None =>
