@@ -16,12 +16,13 @@ abstract class CompilerCommand extends CliCommand:
         else if (settings.Whelp.value) wusageMessage
         else if (settings.Xhelp.value) xusageMessage
         else if (settings.Yhelp.value) yusageMessage
+        else if (settings.Zhelp.value) zusageMessage
         else if (settings.showPlugins.value) ctx.base.pluginDescriptions
         else if (settings.XshowPhases.value) phasesMessage
         else ""
 
   final def isHelpFlag(using settings: ConcreteSettings)(using SettingsState): Boolean =
     import settings.*
-    val flags = Set(help, Vhelp,  Whelp, Xhelp, Yhelp, showPlugins, XshowPhases)
+    val flags = Set(help, Vhelp,  Whelp, Xhelp, Yhelp, Zhelp, showPlugins, XshowPhases)
     // Check `isHelping` first so that `:help` is detected before we call `_.value` where it would fail if the setting is not a Boolean
     allSettings.exists(isHelping) || flags.exists(_.value)

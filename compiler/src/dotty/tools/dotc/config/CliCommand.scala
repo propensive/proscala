@@ -88,7 +88,7 @@ trait CliCommand:
     prefix + "\n" + availableOptionsMsg(cond)
 
   protected def isStandard(s: Setting[?])(using settings: ConcreteSettings)(using SettingsState): Boolean =
-    !isVerbose(s) && !isWarning(s) && !isAdvanced(s) && !isPrivate(s) || s.name == "-Werror" || s.name == "-Wconf"
+    !isVerbose(s) && !isWarning(s) && !isAdvanced(s) && !isPrivate(s) && !isProscala(s) || s.name == "-Werror" || s.name == "-Wconf"
   protected def isVerbose(s: Setting[?])(using settings: ConcreteSettings)(using SettingsState): Boolean =
     s.name.startsWith("-V") && s.name != "-V"
   protected def isWarning(s: Setting[?])(using settings: ConcreteSettings)(using SettingsState): Boolean =
@@ -97,6 +97,8 @@ trait CliCommand:
     s.name.startsWith("-X") && s.name != "-X"
   protected def isPrivate(s: Setting[?])(using settings: ConcreteSettings)(using SettingsState): Boolean =
     s.name.startsWith("-Y") && s.name != "-Y"
+  protected def isProscala(s: Setting[?])(using settings: ConcreteSettings)(using SettingsState): Boolean =
+    s.name.startsWith("-Z") && s.name != "-Z"
   protected def isHelping(s: Setting[?])(using settings: ConcreteSettings)(using SettingsState): Boolean =
     cond(s.value) {
       case ss: List[?] if s.isMultivalue => ss.contains("help")
@@ -114,6 +116,8 @@ trait CliCommand:
     createUsageMsg("Possible advanced", shouldExplain = true, isAdvanced)
   protected def yusageMessage(using settings: ConcreteSettings)(using SettingsState) =
     createUsageMsg("Possible private", shouldExplain = true, isPrivate)
+  protected def zusageMessage(using settings: ConcreteSettings)(using SettingsState) =
+    createUsageMsg("Possible Proscala", shouldExplain = true, isProscala)
 
   /** Used for the formatted output of -Xshow-phases */
   protected def phasesMessage(using Context): String =
