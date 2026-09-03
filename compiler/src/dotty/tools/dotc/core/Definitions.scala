@@ -630,6 +630,7 @@ class Definitions {
 
   @tu lazy val ArrayModule: Symbol = requiredModule("scala.Array")
   def ArrayModuleClass: Symbol = ArrayModule.moduleClass
+    @tu lazy val Array_UnapplySeqWrapper : Symbol = ArrayModuleClass.requiredType("UnapplySeqWrapper")
 
   @tu lazy val IArrayModule: Symbol = requiredModule("scala.IArray")
   def IArrayModuleClass: Symbol = IArrayModule.moduleClass
@@ -1006,6 +1007,12 @@ class Definitions {
   @tu lazy val SpreadableClass: Symbol = getClassIfDefined("scala.Spreadable")
     def Spreadable_spread(using Context): Symbol = SpreadableClass.requiredMethod(nme.spread)
 
+  // Looked up leniently, like Spreadable: a literal consults it only when an
+  // instance can possibly be in scope, so a library without `scala.Literate`
+  // never searches. `convert` is deliberately not a member of the trait (a
+  // deferred inline method cannot be invoked through it); it is resolved by
+  // name on the instance's own type.
+  @tu lazy val LiterateClass: Symbol = getClassIfDefined("scala.Literate")
   @tu lazy val CanThrowClass: ClassSymbol = requiredClass("scala.CanThrow")
   @tu lazy val throwsAlias: Symbol = ScalaRuntimePackageVal.requiredType(tpnme.THROWS)
 
@@ -1122,7 +1129,10 @@ class Definitions {
   @tu lazy val ProvisionalSuperClassAnnot: ClassSymbol = requiredClass("scala.annotation.internal.ProvisionalSuperClass")
   @tu lazy val DeprecatedAnnot: ClassSymbol = requiredClass("scala.deprecated")
   @tu lazy val DeprecatedOverridingAnnot: ClassSymbol = requiredClass("scala.deprecatedOverriding")
-  @tu lazy val DiagnosticAnnot: ClassSymbol = requiredClass("scala.annotation.internal.diagnostic")
+  // Looked up leniently: the annotation ships in Proscala's supplementary library
+  // (proscala-library), which need not be on the classpath; without it no given
+  // can carry the annotation, so the search-failure logic never engages.
+  @tu lazy val DiagnosticAnnot: Symbol = getClassIfDefined("scala.annotation.internal.diagnostic")
   @tu lazy val DeprecatedInheritanceAnnot: ClassSymbol = requiredClass("scala.deprecatedInheritance")
   @tu lazy val DeprecatedNameAnnot: ClassSymbol = requiredClass("scala.deprecatedName")
   @tu lazy val ImplicitAmbiguousAnnot: ClassSymbol = requiredClass("scala.annotation.implicitAmbiguous")
@@ -1136,6 +1146,7 @@ class Definitions {
   @tu lazy val UnusedAnnot: ClassSymbol = requiredClass("scala.annotation.unused")
   @tu lazy val UnrollAnnot: ClassSymbol = requiredClass("scala.annotation.unroll")
   @tu lazy val NativeAnnot: ClassSymbol = requiredClass("scala.native")
+  @tu lazy val JavaRecordFieldsAnnot: ClassSymbol = requiredClass("scala.annotation.internal.JavaRecordFields")
   @tu lazy val RepeatedAnnot: ClassSymbol = requiredClass("scala.annotation.internal.Repeated")
   @tu lazy val RuntimeCheckedAnnot: ClassSymbol = requiredClass("scala.annotation.internal.RuntimeChecked")
   @tu lazy val SourceFileAnnot: ClassSymbol = requiredClass("scala.annotation.internal.SourceFile")

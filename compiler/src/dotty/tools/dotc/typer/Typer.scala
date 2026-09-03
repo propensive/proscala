@@ -106,6 +106,14 @@ object Typer {
    */
   private val DroppedEmptyArgs = new Property.Key[Unit]
 
+  /** A context property suppressing rewrites of literals through `Literate`
+   *  instances. Set while such a rewrite is in progress (literals in the
+   *  instance's inline body, or in the implicit search, are not themselves
+   *  rewritten), and during overload-resolution argument pre-typing, where
+   *  arguments are typed against a wildcard only to rank alternatives.
+   */
+  private[typer] val LiterateConversion = new Property.Key[Unit]
+
   /** An attachment that indicates a failed conversion or extension method
    *  search was tried on a tree. This will in some cases be reported in error messages
    */
@@ -982,7 +990,7 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
           case Some((_, fieldType)) =>
             val dynSelected = dynamicSelect(fieldType)
             dynSelected match
-              case Apply(sel: Select, _) if !sel.denot.symbol.exists =>
+              case Apply(sel: Select, _) if !sel.symbol.exists =>
                 // Reject corner case where selectDynamic needs annother selectDynamic to be called. E.g. as in neg/unselectable-fields.scala.
                 report.error(i"Cannot use selectDynamic here since it needs another selectDynamic to be invoked", tree.srcPos)
               case _ =>
@@ -1260,10 +1268,13 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
             return typed(app, pt)
           case _ =>
         }
-      // Otherwise convert to Int or Double according to digits format
+      // Otherwise convert to Int or Double according to digits format. Either
+      // default may in turn be re-typed through a `Literate` instance; the
+      // expected-type-driven `FromDigits` cases above have already returned,
+      // so this engages only where they do not.
       tree.kind match {
-        case Whole(radix) => lit(intFromDigits(digits, radix))
-        case _ => lit(doubleFromDigits(digits))
+        case Whole(radix) => literated(lit(intFromDigits(digits, radix)), pt)
+        case _ => literated(lit(doubleFromDigits(digits)), pt)
       }
     }
     catch {
@@ -1281,6 +1292,89 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
     if (ctx.mode.is(Mode.Type)) tpd.SingletonTypeTree(tree1) // this ensures that tree is classified as a type tree
     else tree1
   }
+
+  /** If `tree` is a literal, its author may have granted permission for it to
+   *  be re-typed through a `scala.Literate` instance in scope, keyed on the
+   *  literal's own type. The rewrite happens only where the literal's ordinary
+   *  type is not already required: an expected type the literal satisfies —
+   *  `String` parameters, singleton bounds, annotation arguments, patterns —
+   *  leaves the literal untouched, so code not using the instance is
+   *  unaffected. Overridden to the identity in ReTyper.
+   */
+  def literated(tree: Tree, pt: Type)(using Context): Tree = tree match
+    case lit: Literal if literateTags.contains(lit.const.tag) => literateConvert(lit, pt)
+    case _ => tree
+
+  private val literateTags =
+    Set(Constants.StringTag, Constants.IntTag, Constants.LongTag,
+        Constants.DoubleTag, Constants.FloatTag, Constants.CharTag)
+
+  private def literateConvert(lit: Literal, pt: Type)(using Context): Tree =
+    // Does the expected type already accept the literal as it is? Concrete
+    // expected types are accepted by a (frozen) conformance test — a `String`
+    // parameter or a singleton bound keeps its literal. An underdetermined
+    // expected type — a wildcard, or a not yet instantiated type variable —
+    // accepts nothing yet, and is exactly where the rewrite is wanted. A
+    // selection never accepts: with an instance in scope, the instance's
+    // API *is* the literal's API, so a member the target type does not have
+    // (`"foo".charAt`) is an error rather than a silent partial `String`
+    // method; `("foo": String).charAt(0)` remains the explicit way through.
+    // A WildcardSelectionProto names no member — it is how singleton types
+    // (`type Topic = 42`, `val x: "foo"`) type their path — and must keep
+    // the literal.
+    def accepted: Boolean = pt match
+      case pt: WildcardSelectionProto => true
+      case pt: SelectionProto => false
+      case _: WildcardType => false
+      case pt: ProtoType => true
+      case pt => isFullyDefined(pt, ForceDegree.none) && (lit.tpe frozen_<:< pt)
+    if !config.Proscala.enabled(config.Proscala.LiterateLiterals)
+       || !defn.LiterateClass.exists
+       || !ctx.mode.is(Mode.ImplicitsEnabled)
+       || ctx.mode.is(Mode.Pattern) || ctx.mode.is(Mode.Type) || ctx.mode.is(Mode.InAnnotation)
+       // A literal in a quote pattern is matched structurally against the
+       // literal a macro's caller wrote; re-typing it would make the pattern
+       // expect the instance's target type and silently stop matching.
+       || ctx.mode.isQuotedPattern
+       || ctx.owner.isInlineVal
+       // Synthesized members (a case class's `toString`, an enum case's tag)
+       // implement platform contracts with inferred result types; their
+       // literals keep their ordinary meaning. Anonymous functions are also
+       // Synthetic, but their bodies are user code.
+       || ctx.owner.is(Synthetic) && !ctx.owner.isAnonymousFunction
+       || tpd.enclosingInlineds.nonEmpty
+       || ctx.property(LiterateConversion).isDefined
+       || accepted
+    then lit
+    else
+      // Speculative, like a spreadable splice: nothing the search or the
+      // conversion typing does may leak unless the rewrite is committed.
+      val nestedCtx = ctx.fresh.setNewTyperState().setProperty(LiterateConversion, ())
+      // Searching for an instance forces whatever the search touches — including
+      // the root import that supplies it. Where that is already being completed
+      // (a literal in an annotation on a symbol of the importing unit), the
+      // search cycles; declining the rewrite is always sound, so a completion
+      // error leaves the literal as it is.
+      try inContext(nestedCtx):
+        val instance = inferImplicitArg(defn.LiterateClass.typeRef.appliedTo(lit.tpe), lit.span)
+        if instance.tpe.isError || instance.tpe.isInstanceOf[SearchFailureType] then lit
+        else
+          val app = untpd.Apply(
+            untpd.Select(untpd.TypedSplice(instance), nme.convert).withSpan(lit.span),
+            untpd.TypedSplice(lit) :: Nil).withSpan(lit.span)
+          val converted = typed(app, pt)
+          // A polymorphic instance leaves fresh type variables in the tree
+          // (`literate[str'].convert(lit)`); force them to their solutions —
+          // the argument constrains them to the literal's singleton — and
+          // refuse the rewrite rather than commit an escaping variable.
+          if nestedCtx.reporter.hasErrors
+             || !isFullyDefined(instance.tpe, ForceDegree.all)
+             || !isFullyDefined(converted.tpe, ForceDegree.all)
+          then lit
+          else
+            nestedCtx.typerState.commit()
+            converted
+      catch case _: TypeError => lit
 
   def typedNew(tree: untpd.New, pt: Type)(using Context): Tree =
     tree.tpt match {
@@ -1421,7 +1515,8 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
                 if !spliceable(outUnder) then expr        // `Out` left abstract
                 else if outUnder ne outWide then converted.cast(dropArrayWildcard(outUnder))
                 else converted
-        val expr0 = tryEither(typedRegular) { (fallVal, fallState) =>
+        val expr0 = if !config.Proscala.enabled(config.Proscala.SpreadableVarargs) then typedRegular
+        else tryEither(typedRegular) { (fallVal, fallState) =>
           // The retype must be speculative too: unless the expression really is
           // spreadable, the original failure is restored and nothing the retype or
           // the implicit search did — fresh type variables, quote-hole
@@ -3199,7 +3294,7 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
     val canBeInvalidated: Boolean =
       sym.is(Synthetic)
       && (desugar.isRetractableCaseClassMethodName(sym.name) ||
-         (sym.owner.is(JavaDefined) && sym.owner.derivesFrom(defn.JavaRecordClass) && sym.is(Method)))
+         (sym.owner.isJavaRecord && sym.is(Method)))
     assert(canBeInvalidated)
     sym.owner.info.decls.openForMutations.unlink(sym)
     EmptyTree
@@ -4009,7 +4104,7 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
             if (ctx.mode is Mode.Pattern) typedUnApply(tree, pt) else typedApply(tree, pt)
           case tree: untpd.This => typedThis(tree)
           case tree: untpd.Number => typedNumber(tree, pt)
-          case tree: untpd.Literal => typedLiteral(tree)
+          case tree: untpd.Literal => literated(typedLiteral(tree), pt)
           case tree: untpd.New => typedNew(tree, pt)
           case tree: untpd.Typed => typedTyped(tree, pt)
           case tree: untpd.NamedArg => typedNamedArg(tree, pt)

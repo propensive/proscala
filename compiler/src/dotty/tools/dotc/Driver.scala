@@ -37,6 +37,7 @@ class Driver {
       catch
         case ro: RecursionOverflow =>
           report.error(ro.toMessage, ro.pos)(using ro.ctx)
+          ro.ctx.reporter.flush()
         case so: StackOverflowError =>
           // This should be the ONLY point in the compiler where we catch stack overflows.
           // The JVM cannot be assumed to function 100% properly after a stack overflow is caught.
@@ -104,7 +105,7 @@ class Driver {
                 report.error(em"Not a reporter: ${ctx.settings.Yreporter.value}")
           catch case e: ReflectiveOperationException =>
             report.error(em"Could not create reporter ${ctx.settings.Yreporter.value}: $e")
-        else if ctx.settings.XsemanticDiagnostics.value then
+        else if config.Proscala.enabled(config.Proscala.SemanticDiagnostics) then
           ictx.setReporter(new XmlReporter)
         val files = fileNames.flatMap(ctx.getFile)
         (files, fromTastySetup(files))

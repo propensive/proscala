@@ -275,6 +275,7 @@ object StdNames {
     final val MethodParametersATTR: N             = "MethodParameters"
     final val LineNumberTableATTR: N              = "LineNumberTable"
     final val LocalVariableTableATTR: N           = "LocalVariableTable"
+    final val RecordATTR: N                       = "Record"
     final val RuntimeVisibleAnnotationATTR: N     = "RuntimeVisibleAnnotations"   // RetentionPolicy.RUNTIME
     final val RuntimeInvisibleAnnotationATTR: N   = "RuntimeInvisibleAnnotations" // RetentionPolicy.CLASS
     final val RuntimeParamAnnotationATTR: N       = "RuntimeVisibleParameterAnnotations" // RetentionPolicy.RUNTIME (annotations on parameters)
@@ -461,6 +462,7 @@ object StdNames {
     val conforms_ : N           = "$conforms"
     val consume: N              = "consume"
     val contents: N             = "contents"
+    val convert: N              = "convert"
     val copy: N                 = "copy"
     val create: N               = "create"
     val currentMirror: N        = "currentMirror"

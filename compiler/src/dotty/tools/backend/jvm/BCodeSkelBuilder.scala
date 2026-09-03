@@ -141,7 +141,7 @@ trait BCodeSkelBuilder extends BCodeHelpers {
     private var isCZStaticModule    = false
 
     /** The synthetic line numbers this class's methods actually emitted, so that its
-     *  SourceDebugExtension carries only the part of the unit's SMAP it needs (-Xjsr45).
+     *  SourceDebugExtension carries only the part of the unit's SMAP it needs (-Zinline-source-maps).
      */
     private val usedSyntheticLines = mutable.Set.empty[Int]
 
@@ -633,7 +633,7 @@ trait BCodeSkelBuilder extends BCodeHelpers {
 
       if (emitLines && tree.span.exists && !tree.hasAttachment(SyntheticUnit)) {
         val nr = tree.getAttachment(InlinedSourceLine) match
-          case Some(syntheticLine) => // inlined from another source file (-Xjsr45)
+          case Some(syntheticLine) => // inlined from another source file (-Zinline-source-maps)
             usedSyntheticLines += syntheticLine
             syntheticLine
           case None =>
@@ -657,8 +657,7 @@ trait BCodeSkelBuilder extends BCodeHelpers {
     }
 
     // on entering a method
-    def resetMethodBookkeeping(dd: DefDef)(using Context) = {
-      val rhs = dd.rhs
+    def resetMethodBookkeeping()(using Context) = {
       locals.reset(isStaticMethod = methSymbol.isStaticMember)
       jumpDest = immutable.Map.empty
 
@@ -824,14 +823,15 @@ trait BCodeSkelBuilder extends BCodeHelpers {
     private def genDefDef(dd: DefDef)(using Context): Unit = {
       val rhs = dd.rhs
       val vparamss = dd.termParamss
-      // the only method whose implementation is not emitted: getClass()
-      if (dd.symbol eq defn.Any_getClass) { return }
       assert(mnode == null, "GenBCode detected nested method.")
 
       methSymbol  = dd.symbol
+      // the only method whose implementation is not emitted: getClass()
+      if (methSymbol eq defn.Any_getClass) { return }
+
       returnType  = bTypeLoader.methodBTypeFromSymbol(methSymbol).returnType
 
-      resetMethodBookkeeping(dd)
+      resetMethodBookkeeping()
 
       // add method-local vars for params
 
@@ -914,7 +914,7 @@ trait BCodeSkelBuilder extends BCodeHelpers {
             )
           else
             // The JVM doesn't support `synchronized` methods on interfaces so we must implement that ourselves
-            if dd.symbol.is(Synchronized) && dd.symbol.owner.is(Trait) then
+            if methSymbol.is(Synchronized) && methSymbol.owner.is(Trait) then
               bc.aloadThis()
               val generatedType = genSynchronized(trimmedRhs, trimmedRhs :: Nil, returnType)
               genAdaptAndSendToDest(generatedType, returnType, LoadDestination.Return)

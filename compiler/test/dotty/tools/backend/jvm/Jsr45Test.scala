@@ -6,13 +6,13 @@ import dotty.tools.dotc.util.{SmapRegistry, SourceFile}
 import org.junit.Assert.*
 import org.junit.Test
 
-/** Tests for the JSR-45 SourceDebugExtension emitted under -Xjsr45. */
+/** Tests for the JSR-45 SourceDebugExtension emitted under -Zinline-source-maps. */
 class Jsr45Test extends DottyBytecodeTest:
   import dotty.AsmConverters.*
 
   override def initCtx =
     val ctx0 = super.initCtx
-    ctx0.setSetting(ctx0.settings.Xjsr45, true)
+    ctx0.setSetting(ctx0.settings.Zfeature(dotty.tools.dotc.config.Proscala.InlineSourceMaps), true)
 
   /** An `*L` entry: input line, file id, repeat count, output start line. */
   private case class LineEntry(inputLine: Int, fileId: Int, repeat: Int, outputLine: Int)

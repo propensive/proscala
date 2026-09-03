@@ -77,14 +77,7 @@ object PositionPickler:
 
     def pickleSource(source: SourceFile): Unit = {
       buf.writeInt(SOURCE)
-      // A pickled tree can carry a source with no underlying file — an inlined
-      // or synthesized tree whose original source is NoSource. Relativizing
-      // asserts on those; pickle the (empty) path instead, as the
-      // SourceFile.relativePath this call replaced used to.
-      val path =
-        if source.file eq null then source.path
-        else source.pathRelativeToSourceRoot
-      buf.writeInt(pickler.nameBuffer.nameIndex(path.toTermName).index)
+      buf.writeInt(pickler.nameBuffer.nameIndex(source.pathRelativeToSourceRoot.toTermName).index)
     }
 
     /** True if x's position shouldn't be reconstructed automatically from its initial span

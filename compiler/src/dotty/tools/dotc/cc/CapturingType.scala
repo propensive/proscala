@@ -48,7 +48,10 @@ object CapturingType:
 
   def apply(parent: Type, refs: CaptureSet, boxed: Boolean = false)(using Context): Type =
     assert(!boxed || !parent.derivesFromCapSet)
-    if refs.isAlwaysEmpty && !parent.isAny && !refs.keepAlways && !hasCapabilityPart(parent) then
+    if refs.isAlwaysEmpty && !parent.isAny && !refs.keepAlways
+       && !(if config.Proscala.enabled(config.Proscala.UnionCaptures) then hasCapabilityPart(parent)
+            else parent.derivesFromCapability)
+    then
       parent
     else parent match
       case parent @ CapturingType(parent1, refs1) if refs == CaptureSet.Fluid =>

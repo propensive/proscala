@@ -1,8 +1,6 @@
 package dotty.tools
 package repl
 
-import scala.language.unsafeNulls
-
 import vulpix.TestConfiguration
 import vulpix.FileDiff
 import dotty.tools.ToolName
@@ -46,6 +44,10 @@ extends ReplDriver(options, new PrintStream(out, true, StandardCharsets.UTF_8.na
   /** Returns the `(<instance completions>, <companion completions>)`*/
   def tabComplete(src: String)(implicit state: State): List[String] =
     completions(src.length, src, state).map(_.label).sorted.distinct
+
+  /** The signatures offered under `label`, i.e. all of its overloads */
+  def tabCompleteSignatures(src: String, label: String)(implicit state: State): List[String] =
+    completions(src.length, src, state).filter(_.label == label).map(_.description).sorted
 
   extension [A](state: State)
     infix def andThen(op: State ?=> A): A = op(using state)

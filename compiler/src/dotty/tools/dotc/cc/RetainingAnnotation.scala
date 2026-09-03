@@ -26,7 +26,7 @@ class RetainingAnnotation(tpe: Type) extends CompactAnnotation(tpe) {
   override protected def sanitize(tp: Type)(using Context): Type = tp match
     case SkolemType(_) =>
       SkolemType(defn.AnyType)
-    case _: TypeBounds =>
+    case _: TypeBounds if config.Proscala.enabled(config.Proscala.RetainsBounds) =>
       // An ApproximatingTypeMap turned a retained element into a range: e.g.
       // `deskolemized` (applied to inferred result types in Namer#inferredResultType)
       // maps a skolem element of a dependent method's capture set to a range, which

@@ -1172,9 +1172,11 @@ trait Implicits:
       // returning an opaque type of that package object would have a result
       // type in which the opaque alias stays transparent. `findRef` does the
       // same for identifiers.
-      val ref = cand.ref.makePackageObjPrefixExplicit match
-        case ref: TermRef => ref
-        case _ => cand.ref
+      val ref =
+        if !config.Proscala.enabled(config.Proscala.GivenPrefixes) then cand.ref
+        else cand.ref.makePackageObjPrefixExplicit match
+          case ref: TermRef => ref
+          case _ => cand.ref
       val generated: Tree = tpd.ref(ref).withSpan(span.startPos)
       val locked = ctx.typerState.ownedVars
       val adapted =
@@ -1242,6 +1244,7 @@ trait Implicits:
         val res = adapted.tpe match {
           case _: SearchFailureType => SearchFailure(adapted)
           case _ if ctx.reporter.hasErrors
+                    && config.Proscala.enabled(config.Proscala.DiagnosticGivens)
                     && cand.ref.symbol.hasAnnotation(defn.DiagnosticAnnot) =>
             // An `@internal.diagnostic` candidate errored (typically an aborted macro
             // expansion): keep its reported errors as the authoritative failure message.
