@@ -479,16 +479,18 @@ $(SJS3_LIB_JAR): $(DEPS_STAMP)
 	$(call jar_module,sjs3-library,$@,org.scala.lang.scala3.library.sjs1)
 
 # ---- 12a. proscala-library-sjs (the additions, for Scala.js) -----------------
-# The same sources as proscala-library, compiled for Scala.js against the
-# scalalib classes the recipe above leaves under $(CLASSES)/sjs-scalalib; the
-# jar keeps its .class, .tasty and .sjsir like any Scala.js Scala 3 artifact.
+# The same sources as proscala-library, compiled for Scala.js the way a
+# downstream Scala.js project is: typed against the JVM scala-library's TASTy
+# plus the Scala.js library and javalib (the scalalib's .sjsir only matters at
+# link time). The jar keeps its .class, .tasty and .sjsir like any Scala.js
+# Scala 3 artifact.
 ifneq ($(HAS_PROSCALA_LIB),)
 PROSCALA_SJS_LIB_JAR := $(LIB)/proscala-library_sjs1.jar
-$(PROSCALA_SJS_LIB_JAR): $(COMMON_ARGS) $(STAGE_JARS) $(SJS_SCALALIB_JAR) $(PROSCALA_LIB_SRC)
+$(PROSCALA_SJS_LIB_JAR): $(COMMON_ARGS) $(STAGE_JARS) $(SJS_LIBRARY_JAR) $(SJS_JAVALIB_JAR) $(PROSCALA_LIB_SRC)
 	@echo ">> proscala-library-sjs"
 	@rm -rf $(CLASSES)/proscala-library-sjs && mkdir -p $(CLASSES)/proscala-library-sjs
 	@cp $(COMMON_ARGS) $(CLASSES)/proscala-library-sjs.args
-	@printf '%s\n' -scalajs -classpath '$(call cpjoin,$(CLASSES)/sjs-scalalib $(SJS_CP))' \
+	@printf '%s\n' -scalajs -classpath '$(call cpjoin,$(SCALA_LIB_JAR) $(SJS_CP))' \
 	  -d $(CLASSES)/proscala-library-sjs >> $(CLASSES)/proscala-library-sjs.args
 	@printf '%s\n' $(sort $(PROSCALA_LIB_SRC)) >> $(CLASSES)/proscala-library-sjs.args
 	$(STAGEC) @$(CLASSES)/proscala-library-sjs.args
