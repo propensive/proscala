@@ -7,7 +7,7 @@ import scala.collection.mutable
 import core.Contexts.*
 import util.Property
 
-/** In-band markup for semantic diagnostics, enabled by `-Xsemantic-diagnostics`.
+/** In-band markup for semantic diagnostics, enabled by `-Zsemantic-diagnostics`.
  *
  *  While a `Message` is forced under the flag, the `i`/`em` string interpolators
  *  wrap the shown form of each interpolated argument in markers from the Unicode

@@ -16,7 +16,7 @@ import Types.*
 import core.tasty.{Attributes, TastyPickler, TreePickler}
 
 /** Pickles the types appearing in diagnostic messages to standalone TASTy, for
- *  embedding in `-Xsemantic-diagnostics` output.
+ *  embedding in `-Zsemantic-diagnostics` output.
  *
  *  A diagnostic type may mention things that no consumer can resolve: symbols
  *  defined in the (possibly failing) sources being compiled, error types,
