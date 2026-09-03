@@ -456,6 +456,7 @@ object StdNames {
     val conforms_ : N           = "$conforms"
     val consume: N              = "consume"
     val contents: N             = "contents"
+    val convert: N              = "convert"
     val copy: N                 = "copy"
     val create: N               = "create"
     val currentMirror: N        = "currentMirror"
