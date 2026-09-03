@@ -25,6 +25,8 @@ enum ScalaSettingCategories(val prefixLetter: String) extends SettingCategory:
   case AdvancedSetting extends ScalaSettingCategories("X")
   // Verbose settings, a category to configure the verbosity of the compiler
   case VerboseSetting extends ScalaSettingCategories("V")
+  // Proscala settings, a category for the fork's optional behaviours, each enabled by its own -Z<name> flag
+  case ProscalaSetting extends ScalaSettingCategories("Z")
 
 object ScalaSettings extends ScalaSettings
 
@@ -40,10 +42,11 @@ abstract class ScalaSettings extends SettingGroup, AllScalaSettings:
   val forkSettings: List[Setting[?]] = settingsByCategory(ForkSetting).sortBy(_.name)
   val advancedSettings: List[Setting[?]] = settingsByCategory(AdvancedSetting).sortBy(_.name)
   val verboseSettings: List[Setting[?]] = settingsByCategory(VerboseSetting).sortBy(_.name)
+  val proscalaSettings: List[Setting[?]] = settingsByCategory(ProscalaSetting).sortBy(_.name)
   val settingsByAliases: Map[String, Setting[?]] = allSettings.flatMap(s => s.aliases.map(_.name -> s)).toMap
 
 
-trait AllScalaSettings extends CommonScalaSettings, PluginSettings, VerboseSettings, OptimizerSettings, WarningSettings, XSettings, YSettings:
+trait AllScalaSettings extends CommonScalaSettings, PluginSettings, VerboseSettings, OptimizerSettings, WarningSettings, XSettings, YSettings, ZSettings:
   self: SettingGroup =>
 
   /* Path related settings */
@@ -633,3 +636,15 @@ private sealed trait YSettings:
   val YoutputOnlyTasty: Setting[Boolean] = BooleanSetting(ForkSetting, "Youtput-only-tasty", "Used to only generate the TASTy file without the classfiles", deprecation = Deprecation.removed())
 end YSettings
 
+/** -Z: Proscala's optional behaviours, each a patch on upstream Scala that is
+ *  enabled by its own flag, `-Z<name>` (see `Proscala.Feature`); `-Z` alone
+ *  prints the synopsis, as `-X` and `-Y` do.
+ */
+private sealed trait ZSettings:
+  self: SettingGroup =>
+
+  val Zhelp: Setting[Boolean] = BooleanSetting(ProscalaSetting, "Z", "Print a synopsis of Proscala's optional features.")
+  val Zfeature: Map[Proscala.Feature, Setting[Boolean]] =
+    Proscala.features.map(f => f -> BooleanSetting(ProscalaSetting, "Z" + f.name, s"${f.help} (patch ${f.patch})")).toMap
+
+end ZSettings
