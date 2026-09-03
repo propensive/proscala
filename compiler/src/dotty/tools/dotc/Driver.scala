@@ -105,7 +105,7 @@ class Driver {
                 report.error(em"Not a reporter: ${ctx.settings.Yreporter.value}")
           catch case e: ReflectiveOperationException =>
             report.error(em"Could not create reporter ${ctx.settings.Yreporter.value}: $e")
-        else if ctx.settings.XsemanticDiagnostics.value then
+        else if config.Proscala.enabled(config.Proscala.SemanticDiagnostics) then
           ictx.setReporter(new XmlReporter)
         val files = fileNames.flatMap(ctx.getFile)
         (files, fromTastySetup(files))

@@ -10,7 +10,7 @@ import interfaces.Diagnostic.{ERROR, WARNING}
 /** A reporter that emits diagnostics as a stream of top-level XML `<diagnostic>`
  *  elements, with semantic markup for the fragments of each message that were
  *  interpolated from types, symbols, names or trees, as recorded by
- *  [[DiagnosticMarkup]]. Installed by `-Xsemantic-diagnostics`.
+ *  [[DiagnosticMarkup]]. Installed by `-Zsemantic-diagnostics`.
  *
  *  The output is a sequence of XML fragments, not a single document: consumers
  *  should parse each top-level element independently. Types carry their
