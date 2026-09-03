@@ -47,7 +47,7 @@ class CompilationUnit protected (val source: SourceFile, val info: CompilationUn
 
   /** Synthetic line numbers for code inlined from other source files, emitted as a
    *  JSR-45 SourceDebugExtension by the backend. Created on first use in
-   *  `Inlines.dropInlined` under `-Xjsr45`; null if unset or nothing foreign was inlined.
+   *  `Inlines.dropInlined` under `-Zinline-source-maps`; null if unset or nothing foreign was inlined.
    */
   var smapRegistry: util.SmapRegistry | Null = null
 

@@ -5,7 +5,7 @@ package util
 import scala.collection.mutable
 
 /** Allocation of synthetic output line numbers for inlined code, serialized as a
- *  JSR-45 SMAP (the `SourceDebugExtension` classfile attribute, enabled by `-Xjsr45`).
+ *  JSR-45 SMAP (the `SourceDebugExtension` classfile attribute, enabled by `-Zinline-source-maps`).
  *
  *  Line numbers beyond the end of the primary source are allocated per distinct
  *  chain of inline frames. A chain's head is the position the code was written at,
