@@ -6,7 +6,7 @@ search normally, but its reported errors become the authoritative message if
 the overall search fails — taking precedence over `@implicitNotFound` and over
 the compiler's default "no given instance" text.
 
-Enabled by `-Zdiagnostic-givens` ([zflags](../zflags/zflags.md)); without it, upstream's code runs at every site this patch touches.
+Enabled by `-Zdiagnostic-givens` ([zflags](../zflags/zflags.md)); without it, upstream's code runs at every site this patch touches. The annotation ships in the supplementary `proscala-library` jar, not in `scala3-library`; see [compatibility.md](../compatibility.md).
 
 ## Context
 
@@ -29,7 +29,7 @@ space, so the compiler provides one.
 
 ## The mechanism
 
-- `scala.annotation.internal.diagnostic` (library) marks the given;
+- `scala.annotation.internal.diagnostic` (in the supplementary `proscala-library` jar) marks the given;
   `defn.DiagnosticAnnot` names it.
 - In `typedImplicit`, when the candidate reported errors and its symbol
   carries the annotation, the buffered errors are wrapped in a new

@@ -45,9 +45,9 @@ code and TASTy, are unchanged. Neither affects any of the four questions
 for code that compiles.
 
 The one footnote is searchdiag's annotation: `@scala.annotation.internal.diagnostic`
-is a Proscala library class, so a source file naming it does not compile
-under vanilla Scala, and the annotated given's own TASTy mentions the
-class. This costs downstream users nothing: the annotation is compile-time
+lives in Proscala's supplementary `proscala-library` jar, so a source file
+naming it does not compile without that jar, and the annotated given's own
+TASTy mentions the class. This costs downstream users nothing: the annotation is compile-time
 only (never loaded at runtime, no classfile attribute), and a vanilla
 consumer of such a library simply gets the ordinary "no given instance"
 message where a Proscala consumer gets the custom one.
@@ -137,7 +137,7 @@ unaffected in both directions, since none of the seven does anything there.
 ## New library types
 
 [spreadable](spreadable/spreadable.md) adds `scala.Spreadable`
-(`@experimental`) to the standard library. At a splice site the feature
+(`@experimental`) to the supplementary library described below. At a splice site the feature
 either casts (when the instance's representation is already the underlying
 `Seq`/`Array` — zero cost, bytecode identical to a hand-written boundary
 cast) or calls the instance's `spread` method. Both forms are ordinary

@@ -1,9 +1,12 @@
 # `-Z`: enable Proscala's optional behaviours by name
 
-Adds one compiler setting, `-Z<name>`, through which a build enables each
-of the fork's opt-in behaviours by name; where a name is not given, the
-compiler runs upstream's code at every site the corresponding patch touches.
-`-Z` lists the names, and an unknown name is an error.
+Adds a family of compiler settings, `-Z<name>`, through which a build enables
+each of the fork's opt-in behaviours by name — `-Zliterate-literals`,
+`-Zunion-captures` — in the style of upstream's `-X` and `-Y` options; where a
+name is not given, the compiler runs upstream's code at every site the
+corresponding patch touches. A bare `-Z` prints the synopsis of the names, as
+`-X` and `-Y` do for theirs, and an unknown name is reported as a bad option,
+as an unknown `-X` option is.
 
 ## Context
 
@@ -23,9 +26,10 @@ Before this change two such features already had flags of their own
 
 ## The setting
 
-`-Z` is a multi-choice setting in a new `ProscalaSetting` category (prefix
-letter `Z`, alongside upstream's `X`, `Y`, `W` and `V`). Its choices come from
-one registry, `dotty.tools.dotc.config.Proscala`:
+The `-Z` settings form a new `ProscalaSetting` category (prefix letter `Z`,
+alongside upstream's `X`, `Y`, `W` and `V`): one boolean setting per feature,
+declared in a loop over a single registry, `dotty.tools.dotc.config.Proscala`,
+plus the bare `-Z` synopsis flag:
 
 ```scala
 object Proscala:
@@ -34,7 +38,15 @@ object Proscala:
       "Re-type literals through a scala.Literate instance in scope.")
     ...
   def enabled(feature: Feature)(using Context): Boolean =
-    ctx.settings.Z.value.contains(feature.name)
+    ctx.settings.Zfeature(feature).value
+```
+
+```scala
+// ScalaSettings.scala, trait ZSettings
+val Zhelp: Setting[Boolean] =
+  BooleanSetting(ProscalaSetting, "Z", "Print a synopsis of Proscala's optional features.")
+val Zfeature: Map[Proscala.Feature, Setting[Boolean]] =
+  Proscala.features.map(f => f -> BooleanSetting(ProscalaSetting, "Z" + f.name, f.help)).toMap
 ```
 
 A gated patch tests its feature at each site it changes, keeping upstream's

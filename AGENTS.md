@@ -86,13 +86,13 @@ the minor/patch number: `3.9`, `3.10`.
   `doc/README.md` carries it in the `Flag` column. Flags that change pickled
   capture sets must be documented in `doc/compatibility.md` as shared across
   module boundaries. See `doc/zflags/zflags.md`.
-- A patch is a single self-contained change (one or a few commits) on upstream.
+- A patch is a single self-contained change (one or a few commits) on the stream base.
 - **Keep patches independent.** Do not stack a patch on another merely because they
-  were developed together. Each branch should hold only its own change on upstream.
+  were developed together. Each branch should hold only its own change on the base.
 - **Genuine dependencies only.** If a patch cannot work — or cannot even make sense —
   without another patch, build it on that patch's branch and name it
   `<dependency>-<patch>`, hyphen-separated. Example: `wasm-witcall` — the `witcall`
-  intrinsic builds on `wasm`, which itself builds on `upstream/<stream>`.
+  intrinsic builds on `wasm`, which itself builds on the stream base.
 - Prefer the shortest name that captures the real dependency. Long chains of many
   patch ids (`a-b-c-d-…`) are a smell — they are almost always an aggregation
   masquerading as a dependency and should be collapsed back to independent patches
@@ -214,7 +214,8 @@ compiles each module with that reference compiler, and lays out its artefacts
 
 - `release/<branch>/lib/`  — **the published jars**: everything we build (compiler,
   stdlib, tasty-core, repl, staging, tasty-inspector, sbt-bridge,
-  presentation-compiler, our Scala.js libraries, …) plus the Scala.js / scala-wasm
+  presentation-compiler, our Scala.js libraries, the supplementary
+  proscala-library for the JVM and Scala.js, …) plus the Scala.js / scala-wasm
   runtime jars, so a downloaded release can run Scala.js / WASM output
 - `release/<branch>/deps/` — the remaining third-party runtime jars (jline, guava,
   lsp4j, …), needed to run the compiler locally but not published
