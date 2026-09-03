@@ -60,7 +60,7 @@ trait BCodeHelpers(val bTypeLoader: BTypeLoader) extends BCodeIdiomatic {
   /** The JSR-45 SourceDebugExtension (SMAP) for one class generated from the current
    *  compilation unit, covering exactly the synthetic lines that class emitted (and the
    *  call sites they lead back to), or null if it emitted none. Non-null only under
-   *  `-Xjsr45`, when the class contains code inlined from other source files.
+   *  `-Zinline-source-maps`, when the class contains code inlined from other source files.
    *
    *  A unit's registry describes every inlined line in the unit, which for a unit that
    *  inlines heavily is far more than any one of its classes uses; emitting all of it in

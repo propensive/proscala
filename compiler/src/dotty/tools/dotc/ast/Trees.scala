@@ -37,7 +37,7 @@ object Trees {
   /** Property key holding the chain of inline frames of a tree inlined from another
    *  source file, innermost first: the head is the position the code was written at,
    *  each subsequent frame the enclosing inline call site. Accumulated per `Inlined`
-   *  node in `Inlines.dropInlined` under `-Xjsr45`, and resolved into
+   *  node in `Inlines.dropInlined` under `-Zinline-source-maps`, and resolved into
    *  `InlinedSourceLine` when the outermost call is dropped.
    */
   val InlinedOriginChain: Property.StickyKey[List[util.SmapRegistry.Frame]] = Property.StickyKey()
@@ -45,7 +45,7 @@ object Trees {
   /** Property key holding the synthetic output line (beyond the end of the primary
    *  source) that a tree inlined from another source file emits in the
    *  LineNumberTable, mapped back to its origin by the JSR-45 SourceDebugExtension
-   *  attribute (`-Xjsr45`).
+   *  attribute (`-Zinline-source-maps`).
    */
   val InlinedSourceLine: Property.StickyKey[Int] = Property.StickyKey()
 
