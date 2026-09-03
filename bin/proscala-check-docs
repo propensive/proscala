@@ -195,6 +195,7 @@ for s in "${STREAMS[@]}"; do
   # every origin branch is listed
   while IFS= read -r b; do
     leaf="${b#origin/feature/$s/}"
+    [ "$leaf" = zflags ] && continue   # the stream base, deliberately unlisted
     patches "$s" | grep -qx "$leaf" \
       || problem "branch origin/feature/$s/$leaf exists but is not in features/$s"
   done < <(git for-each-ref --format='%(refname:short)' "refs/remotes/origin/feature/$s/")
