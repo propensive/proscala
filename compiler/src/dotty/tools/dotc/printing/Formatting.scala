@@ -187,7 +187,7 @@ object Formatting {
   def fullNameOf(sym: Symbol)(using Context): Styled = Styled(sym, "full")(sym.showFullName)
 
   /** The string form of an interpolated value, marked up with its semantic
-   *  identity when `-Xsemantic-diagnostics` is active. Used both for direct
+   *  identity when `-Zsemantic-diagnostics` is active. Used both for direct
    *  arguments (`StringFormatter.showArg`) and for the elements of shown
    *  containers (`ShownDef.Shown.toStr`), so that the types in a shown
    *  `Seq[Type]` are marked individually.
