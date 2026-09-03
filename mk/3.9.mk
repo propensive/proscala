@@ -2,7 +2,7 @@
 # `release-3.9.0`). Included by the top-level Makefile once STREAM is known.
 # $(JARS) is defined by the Makefile before this file is included.
 
-VERSION            := 3.9.0-RC6-propensive
+VERSION            := 3.9.0-propensive
 # The branch of scala/scala3 that upstream/3.9 mirrors. Authoritative: the docs
 # are checked against it, and `proscala-rebase-tree -u` fast-forwards to it.
 UPSTREAM_REF       := release-3.9.0
