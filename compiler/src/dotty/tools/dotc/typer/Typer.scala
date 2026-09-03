@@ -1290,7 +1290,8 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
       case _: WildcardType => false
       case pt: ProtoType => true
       case pt => isFullyDefined(pt, ForceDegree.none) && (lit.tpe frozen_<:< pt)
-    if !defn.LiterateClass.exists
+    if !config.Proscala.enabled(config.Proscala.LiterateLiterals)
+       || !defn.LiterateClass.exists
        || !ctx.mode.is(Mode.ImplicitsEnabled)
        || ctx.mode.is(Mode.Pattern) || ctx.mode.is(Mode.Type) || ctx.mode.is(Mode.InAnnotation)
        // A literal in a quote pattern is matched structurally against the
