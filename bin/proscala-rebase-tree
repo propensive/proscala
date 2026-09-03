@@ -15,8 +15,7 @@
 # stream's `UPSTREAM_REF` in `mk/<stream>.mk`, which is the authoritative record
 # of which scala/scala3 branch a stream mirrors. With neither it leaves
 # `upstream/<stream>` alone and just replays the stream (use this after committing
-# a change to the stream's base, e.g. a build change while `feature/<s>/make`
-# still exists).
+# a change to the stream's base, `feature/<s>/zflags`).
 #
 # The stream's patches are read from `features/<stream>` on `main` — that list,
 # not the set of branches this clone happens to hold, defines the stream. A
@@ -24,11 +23,12 @@
 # branch that is not listed is an error (trunk is rebuilt from the list, so an
 # unlisted branch would be silently dropped from it).
 #
-# It rebases the stream's base (`feature/<s>/make` if that branch still exists,
-# otherwise the branches sit directly on `upstream/<s>`), then every
-# `feature/<s>/<patch>` onto its parent in dependency order (a patch named
-# `<dep>-<patch>` is built on `feature/<s>/<dep>`), and finally rebuilds
-# `trunk/<s>` as the merge of every patch. Each branch's own commits are worked
+# It rebases the stream's base (`feature/<s>/zflags`, the shared `-Z` flag
+# infrastructure every patch may use, if that branch exists; otherwise the
+# branches sit directly on `upstream/<s>`), then every `feature/<s>/<patch>` onto
+# its parent in dependency order (a patch named `<dep>-<patch>` is built on
+# `feature/<s>/<dep>`), and finally rebuilds `trunk/<s>` as the merge of every
+# patch. Each branch's own commits are worked
 # out as merge-base(branch, old-parent-tip) so only those commits are replayed.
 #
 # A branch that is checked out in a worktree is rebased in place, so working
@@ -168,17 +168,26 @@ rebase_branch() {
 }
 
 # --- enumerate the stream ----------------------------------------------------
-BASE_BRANCH="feature/$STREAM/make"
-HAVE_MAKE=0
-git show-ref --verify --quiet "refs/heads/$BASE_BRANCH" && HAVE_MAKE=1
-[ "$HAVE_MAKE" = 1 ] || BASE_BRANCH="$MIRROR"
+# The stream base: `feature/<s>/zflags` carries the `-Z` flag infrastructure
+# (see doc/zflags/zflags.md) and is not itself a patch — it is not listed in
+# features/<stream>, and every listed patch is rebased onto it.
+BASE_LEAF=zflags
+BASE_BRANCH="feature/$STREAM/$BASE_LEAF"
+HAVE_BASE=0
+git show-ref --verify --quiet "refs/heads/$BASE_BRANCH" && HAVE_BASE=1
+if [ "$HAVE_BASE" = 0 ] && git show-ref --verify --quiet "refs/remotes/origin/$BASE_BRANCH"; then
+  note "${PFX}create local $BASE_BRANCH from origin"
+  [ "$DRY" = 1 ] || git branch --quiet "$BASE_BRANCH" "origin/$BASE_BRANCH"
+  HAVE_BASE=1
+fi
+[ "$HAVE_BASE" = 1 ] || BASE_BRANCH="$MIRROR"
 
 # Patch leaf names come from the stream's feature list on `main`, NOT from
 # whichever branches this clone happens to have. A clone missing a branch would
 # otherwise rebuild trunk without that patch and report success — silently
 # dropping it. See AGENTS.md ("The stream feature lists").
 FEATURES="features/$STREAM"
-mapfile -t PATCHES < <(main_file "$FEATURES" | sed 's/#.*//' | tr -d '[:blank:]' | grep -v '^$' | grep -vx make | sort)
+mapfile -t PATCHES < <(main_file "$FEATURES" | sed 's/#.*//' | tr -d '[:blank:]' | grep -v '^$' | grep -vx "$BASE_LEAF" | sort)
 [ "${#PATCHES[@]}" -gt 0 ] || die "feature list '$FEATURES' is empty"
 
 # Reconcile the list with the branches actually present. Anything listed but
@@ -204,7 +213,7 @@ if [ "${#MISSING[@]}" -gt 0 ]; then
 fi
 while IFS= read -r leaf; do
   [ -n "$leaf" ] || continue
-  [ "$leaf" = make ] && continue
+  [ "$leaf" = "$BASE_LEAF" ] && continue
   printf '%s\n' "${PATCHES[@]}" | grep -qx "$leaf" \
     || die "branch feature/$STREAM/$leaf is not in '$FEATURES' — add it there, or delete the branch"
 done < <(git for-each-ref --format='%(refname:short)' "refs/heads/feature/$STREAM/" | sed "s#^feature/$STREAM/##")
@@ -252,8 +261,8 @@ SKIPPED=()     # branches skipped because a parent failed
 declare -A OLD_TIP NEW_TIP OK
 OLD_TIP["$BASE_BRANCH"]="$OLD_BASE_TIP"
 
-# --- rebase the base (only meaningful when it is feature/<s>/make) -----------
-if [ "$HAVE_MAKE" = 1 ]; then
+# --- rebase the base (only meaningful when it is feature/<s>/zflags) ---------
+if [ "$HAVE_BASE" = 1 ]; then
   # base sits on the mirror; replay its own commits onto the (possibly new) mirror.
   # The mirror only ever fast-forwards, so the old mirror tip stays an ancestor
   # and merge-base gives exactly the base's fork point.
@@ -308,8 +317,19 @@ if git show-ref --verify --quiet "refs/heads/$TRUNK"; then
     note "rebuilding $TRUNK on $BASE_BRANCH"
     for leaf in "${ORDER[@]}"; do
       branch="feature/$STREAM/$leaf"
-      git -C "$twt" merge --no-edit -m "Merge branch '$branch' into $TRUNK" "$branch" >/dev/null \
-        || die "merging $branch into $TRUNK conflicted (rerere may need priming) — resolve in $twt"
+      if ! git -C "$twt" merge --no-edit -m "Merge branch '$branch' into $TRUNK" "$branch" >/dev/null; then
+        # `git merge` exits non-zero on any conflict, even one rerere has already
+        # resolved and staged from a recorded resolution; if nothing is left
+        # unmerged, the merge only needs committing.
+        if [ -z "$(git -C "$twt" diff --name-only --diff-filter=U)" ] \
+           && git -C "$twt" rev-parse --quiet --verify MERGE_HEAD >/dev/null; then
+          git -C "$twt" commit --quiet --no-edit -m "Merge branch '$branch' into $TRUNK" \
+            || die "committing the rerere-resolved merge of $branch into $TRUNK failed — resolve in $twt"
+          note "merged $branch into $TRUNK using a recorded conflict resolution (rerere)"
+        else
+          die "merging $branch into $TRUNK conflicted — resolve in $twt, then re-run"
+        fi
+      fi
     done
     note "rebuilt $TRUNK"
   else
@@ -325,7 +345,7 @@ if [ "$DRY" = 1 ]; then
 fi
 if [ "${#FAILED[@]}" -eq 0 ] && [ "${#SKIPPED[@]}" -eq 0 ]; then
   # One ref per patch, in order; $BASE_BRANCH is the mirror itself unless the
-  # stream still carries feature/<s>/make, so only name it once.
+  # stream still carries feature/<s>/zflags, so only name it once.
   push_refs=("$MIRROR")
   [ "$BASE_BRANCH" = "$MIRROR" ] || push_refs+=("$BASE_BRANCH")
   for leaf in "${ORDER[@]}"; do push_refs+=("feature/$STREAM/$leaf"); done

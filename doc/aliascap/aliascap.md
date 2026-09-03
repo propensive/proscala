@@ -2,6 +2,8 @@
 
 Stops capture checking from localizing `caps.any` inside a type alias's own definition, fixing spurious "cannot flow into" errors when a non-capture-checked module's signature mentions a capability-carrying alias.
 
+Enabled by `-Z:alias-captures` ([zflags](../zflags/zflags.md)); without it, upstream's code runs at every site this patch touches.
+
 ## Context
 
 This patch touches `Setup.scala` in the capture-checking subsystem (`dotty.tools.dotc.cc`). Capture checking is Scala 3's experimental effect/resource tracking: types can carry a *capture set* (`Foo^{io}`) listing the capabilities a value may use. The *root capability* `caps.any` (written `^`) means "may capture anything". During the Setup phase, before rechecking, the compiler rewrites each symbol's declared type: among other things, `globalCapToLocal` replaces global occurrences of `caps.any` with a `LocalCap` — a fresh capability *owned by* that symbol, so that scoping rules can decide which capabilities may flow into it.

@@ -1,7 +1,8 @@
 # Patches carried by the 3.10 stream — the <patch> part of feature/3.10/<patch>.
 # Authoritative: bin/proscala-rebase-tree rebuilds trunk/3.10 from exactly these.
 # See AGENTS.md ("The stream feature lists"). Order is irrelevant; blank lines
-# and #-comments are ignored. Do not list `make` (the build lives on `main`).
+# and #-comments are ignored. Do not list `zflags` (the stream base, not a patch;
+# see doc/zflags/zflags.md).
 
 aliascap
 anonspec

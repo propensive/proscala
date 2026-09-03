@@ -2,6 +2,8 @@
 
 Stops the capture checker from classifying `IArray` as a mutable capability through its opaque alias to `Array`, so `IArray` construction and manipulation no longer produce spurious `^{fresh}` capture annotations.
 
+Enabled by `-Z:pure-iarrays` ([zflags](../zflags/zflags.md)); without it, upstream's code runs at every site this patch touches.
+
 ## Context
 
 Scala 3's experimental capture checking (`-language:experimental.captureChecking`, with strict mutability under `-Ycc-new`) tracks which *capabilities* a value captures. A value whose type carries no capabilities is *pure*: it can be stored anywhere, shared freely, and referenced from pure classes. Mutable objects are not pure — under strict mutability, a freshly allocated mutable object (such as an `Array`) is typed with a `^{fresh}` capability, marking it as exclusively-owned mutable state. To turn a mutable value into an immutable one you must `caps.freeze` it, relinquishing the right to mutate.

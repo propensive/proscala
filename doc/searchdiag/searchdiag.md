@@ -6,6 +6,8 @@ search normally, but its reported errors become the authoritative message if
 the overall search fails — taking precedence over `@implicitNotFound` and over
 the compiler's default "no given instance" text.
 
+Enabled by `-Z:diagnostic-givens` ([zflags](../zflags/zflags.md)); without it, upstream's code runs at every site this patch touches.
+
 ## Context
 
 Soundness's Frontier module provides a catch-all

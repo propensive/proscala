@@ -6,6 +6,8 @@ members' classifiers, and keeping an information-bearing empty capture set on
 a union with a capability member — so that types like `Unset | Array[Byte]`
 behave like their members do alone.
 
+Enabled by `-Z:union-captures` ([zflags](../zflags/zflags.md)); without it, upstream's code runs at every site this patch touches.
+
 ## Context
 
 Under the new capture-checking scheme with separation checking enabled

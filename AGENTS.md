@@ -41,13 +41,19 @@ the minor/patch number: `3.9`, `3.10`.
   that is the authoritative copy — the mapping below is checked against it:
   - `upstream/3.9` → `scala/scala3` `release-3.9.0`
   - `upstream/3.10` → `scala/scala3` `main`
+- **`feature/<stream>/zflags`** — the **stream base**: a single commit on
+  `upstream/<stream>` adding the `-Z` setting and the registry of names behind
+  which the fork's opt-in behaviours are enabled (`config.Proscala`; see
+  `doc/zflags/zflags.md`). Not a patch: it is not listed in `features/<stream>`,
+  every patch is rebased onto it, and `trunk/<stream>` is built on it. It is
+  edited only to register a new gated patch's name.
 - **`feature/<stream>/<patch>`** — one branch per patch per stream, a **pure-source
-  deviation based directly on `upstream/<stream>`**. It carries only its own change —
+  deviation based on the stream base**. It carries only its own change —
   no build files (those live on `main` and are overlaid at build time). `<patch>` is
   a short alphanumeric identifier (e.g. `aliascap`, `unboxedpure`, `wasm`). A stream
   only carries the patches it needs, so the set differs between streams.
 - **`trunk/<stream>`** — the aggregation of *all* of a stream's patches, merged onto
-  `upstream/<stream>`. It must always contain every patch named in
+  the stream base. It must always contain every patch named in
   `features/<stream>`. (Formerly `all/<stream>`.)
 - **`scratch/<feature>`** — a throwaway branch for work in progress, usually
   branched off a `trunk/<stream>` or `release/<stream>`. It is not part of the
@@ -66,9 +72,20 @@ the minor/patch number: `3.9`, `3.10`.
 
 ### Patch rules
 
-- Every patch is a pure-source deviation on `upstream/<stream>` — just its own
-  change, with **no build files** (the build lives on `main` and is overlaid at
-  build time). A bare id like `aliascap` means exactly that change on upstream.
+- Every patch is a pure-source deviation on the stream base
+  (`feature/<stream>/zflags`, itself one commit on `upstream/<stream>`) — just
+  its own change, with **no build files** (the build lives on `main` and is
+  overlaid at build time). A bare id like `aliascap` means exactly that change.
+- **Gate a patch behind `-Z` only where its off state is a meaningful choice**:
+  a change to what the compiler produces for code it already accepted, or one
+  that rejects code upstream accepts. A crash, hang or spurious-error fix is
+  always on. A gated patch registers its name in `config.Proscala` on the base
+  (one edit there, never in the patch) and tests
+  `config.Proscala.enabled(config.Proscala.<Feature>)` at each site, keeping
+  upstream's code as the other branch; its doc states the flag, and its row in
+  `doc/README.md` carries it in the `Flag` column. Flags that change pickled
+  capture sets must be documented in `doc/compatibility.md` as shared across
+  module boundaries. See `doc/zflags/zflags.md`.
 - A patch is a single self-contained change (one or a few commits) on upstream.
 - **Keep patches independent.** Do not stack a patch on another merely because they
   were developed together. Each branch should hold only its own change on upstream.
@@ -128,12 +145,14 @@ of truth and the copies are checked against it**:
 | which `scala/scala3` branch a stream mirrors | `UPSTREAM_REF` in `mk/<stream>.mk` |
 | what a stream releases as | `VERSION` in `mk/<stream>.mk` |
 | whether a patch has a reproduction | the filesystem, `doc/<patch>/repro*/` |
+| which `-Z` name enables a patch | `config.Proscala` on `feature/<stream>/zflags` |
 
     bin/proscala-check-docs        # exit 1 and list every divergence
     bin/proscala-check-docs -v     # also show what passed
 
 It checks the feature table against the lists, the `Repro` column against the
-reproductions that actually exist, the stream tables in `README.md` and this file
+reproductions that actually exist, the `Flag` column against the registry on
+each stream's `zflags` branch, the stream tables in `README.md` and this file
 against `mk/<stream>.mk`, the patch counts quoted above, that no feature doc
 hard-codes a stream when its patch spans several, that every relative link
 resolves, and — when the `origin/*` refs are present — that every feature branch
@@ -224,10 +243,12 @@ patches never drift far from the code they modify. Do this per stream with:
 The script (bash 4+) takes the stream's patches from `features/<stream>` (see *The
 stream feature lists*), creating any listed branch this clone is missing from
 `origin` and refusing to run if the list and the branches disagree. It then fetches
-`upstream`, fast-forwards `upstream/<stream>` to the ref, rebases every patch onto
-its parent (in dependency order — `wasm` before `wasm-witcall`; a plain patch's
-parent is `upstream/<stream>`), and finally rebuilds `trunk/<stream>` as the merge
-of all patches. It works out each branch's current base as
+`upstream`, fast-forwards `upstream/<stream>` to the ref, rebases the stream base
+`feature/<stream>/zflags` onto it, then every patch onto its parent (in dependency
+order — `wasm` before `wasm-witcall`; a plain patch's parent is the base), and
+finally rebuilds `trunk/<stream>` as the merge of all patches. A trunk merge that
+conflicts is committed automatically when `rerere` has a recorded resolution for
+it; otherwise the script stops and names the scratch worktree to resolve it in. It works out each branch's current base as
 `merge-base(branch, parent)` so only that branch's own commits are replayed, and it
 rebases branches in place when they are checked out in a worktree so your working
 copies are left alone. (`-n`/`--dry-run` previews the whole plan — including which

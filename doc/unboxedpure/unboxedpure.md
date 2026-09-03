@@ -2,6 +2,8 @@
 
 A capture-checking fix that stops the compiler from attaching meaningless capture sets to values of provably pure types, which previously caused spurious errors and override failures in inline typeclass code.
 
+Enabled by `-Z:unboxed-pure-types` ([zflags](../zflags/zflags.md)); without it, upstream's code runs at every site this patch touches.
+
 ## Context
 
 Scala 3's experimental capture checking tracks which *capabilities* (values with effects, such as file handles or async contexts) each value may capture. A type `T^{a, b}` is `T` capturing at most `a` and `b`. When a type appears in a position where its capture set cannot be tracked precisely — for instance, inside an invariant type argument or a type member — the checker *boxes* it: it wraps the type with a capture set, often a fresh inference variable written `^'sN`, to be solved later.

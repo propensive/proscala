@@ -36,8 +36,13 @@ Every branch name is prefixed by its role. For a given stream `<s>`:
   `scala/scala3`, fast-forwarded periodically. Everything else in the stream is
   rebased onto it. Nothing of ours is committed here.
 
+- **`feature/<s>/zflags`** — the **stream base**: one commit on `upstream/<s>`
+  adding the `-Z` setting through which the fork's opt-in behaviours are enabled
+  by name ([`doc/zflags/`](doc/zflags/zflags.md)). It is not a patch and not
+  listed in the stream's feature list; every patch sits on it.
+
 - **`feature/<s>/<patch>`** — one branch per patch, a **pure-source deviation based
-  directly on `upstream/<s>`** (the build lives on `main`, not here). Each holds a
+  on the stream base** (the build lives on `main`, not here). Each holds a
   single, self-contained change (e.g. `aliascap`, `unboxedpure`, `wasm`); its
   documentation lives on `main` under [`doc/<patch>/`](doc/README.md). A stream only
   carries the patches it needs, so the set differs between streams. A patch that
@@ -45,8 +50,8 @@ Every branch name is prefixed by its role. For a given stream `<s>`:
   and built on that branch.
 
 - **`trunk/<s>`** — the aggregation of *all* of a stream's patches, merged onto
-  `upstream/<s>`. It always contains every patch, and is the branch to build if you
-  want everything.
+  the stream base. It always contains every patch, and is the branch to build if
+  you want everything.
 
 - **`scratch/<feature>`** — a throwaway branch for work in progress, usually
   branched off a `trunk/<s>` or `release/<s>`. It is **not** part of the

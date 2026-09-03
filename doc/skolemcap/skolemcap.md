@@ -4,6 +4,8 @@ Stops the capture checker from rejecting `@retains` annotations that contain a
 `SkolemType`, by widening the skolem to `caps.any` — the standard sound
 over-approximation for a capability that cannot be named.
 
+Enabled by `-Z:retains-skolems` ([zflags](../zflags/zflags.md)); without it, upstream's code runs at every site this patch touches.
+
 ## Context
 
 A dependent result type can retain one of its parameters:

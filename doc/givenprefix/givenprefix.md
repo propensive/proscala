@@ -4,6 +4,8 @@ Gives every implicit search candidate an explicit package-object prefix, so
 that extension methods and conversions provided by top-level givens no longer
 leak the underlying type of a top-level opaque type in their results.
 
+Enabled by `-Z:given-prefixes` ([zflags](../zflags/zflags.md)); without it, upstream's code runs at every site this patch touches.
+
 ## Context
 
 An opaque type alias is transparent only inside its defining scope. The

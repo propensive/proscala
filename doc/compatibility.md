@@ -25,14 +25,18 @@ The four questions:
    thing only: whether an artifact *refers to* a library type that exists
    only in Proscala's standard library.
 
-Everything Proscala adds is opt-in — behind a compiler flag, an annotation,
-an `@experimental` library type, or an experimental language feature.
-Compiling an existing codebase with Proscala and none of these enabled
-produces artifacts indistinguishable from vanilla output.
+Everything Proscala adds is opt-in — behind a `-Z` flag
+([zflags](zflags/zflags.md)), an annotation, an `@experimental` library
+type, or an experimental language feature. Compiling an existing codebase
+with Proscala and none of these enabled produces artifacts indistinguishable
+from vanilla output. Every change that alters what the compiler *produces*
+for code it already accepted, or that rejects code vanilla accepts, is
+behind a `-Z` flag; the flags and the module-boundary rule they carry are
+in "The `-Z` flags" below.
 
 ## Diagnostics only
 
-[semdiag](semdiag/semdiag.md) (`-Xsemantic-diagnostics`) changes what the
+[semdiag](semdiag/semdiag.md) (`-Z:semantic-diagnostics`) changes what the
 compiler *prints*, never what it produces: without the flag, output is
 byte-for-byte unchanged; with it, only the console stream differs.
 [searchdiag](searchdiag/searchdiag.md) changes which *message* an already-
@@ -50,7 +54,7 @@ message where a Proscala consumer gets the custom one.
 
 ## Debug metadata
 
-[smap](smap/smap.md) (`-Xjsr45`, off by default) is the only feature that
+[smap](smap/smap.md) (`-Z:inline-source-maps`) is the only feature that
 changes emitted JVM classfiles for code both compilers accept — and only
 their metadata: it populates the standard `SourceDebugExtension` attribute
 (JSR-45) and gives inlined code synthetic `LineNumberTable` entries past
@@ -83,16 +87,52 @@ Two gradations matter:
   compiler crashed or rejected outright, so they cannot change the output
   of previously-working code.
 
-One consequence deserves spelling out for library authors using capture
-checking: inferred capture sets are pickled into TASTy, so several cc fixes
-([iarraypure](iarraypure/iarraypure.md), [unboxedpure](unboxedpure/unboxedpure.md),
-[aliascap](aliascap/aliascap.md), [unioncaps](unioncaps/unioncaps.md),
-[iarraypure-mutalias](iarraypure-mutalias/iarraypure-mutalias.md)) change
-*which* capture annotations a cc-compiled artifact carries — corrected ones
-rather than the spurious ones vanilla infers. The format is identical, and
-capture checking is experimental on both compilers, so such artifacts were
-already outside vanilla's stability guarantees; Proscala changes their
+The cc fixes that change *which* capture annotations a cc-compiled
+artifact carries — corrected ones rather than the spurious ones vanilla
+infers — are not always on: each is a `-Z` flag, and the next section says
+what enabling one commits a build to. The format is identical either way,
+and capture checking is experimental on both compilers, so such artifacts
+were already outside vanilla's stability guarantees; Proscala changes their
 content for the better, not their nature.
+
+## The `-Z` flags
+
+Thirteen features are enabled by name with `-Z:<name>,...`
+([zflags](zflags/zflags.md) has the mechanism and the full table); with a
+name absent, the compiler runs upstream's code at every site the feature
+touches. What matters for compatibility is the *scope* of each flag's effect,
+which falls into three groups.
+
+**Confined to the compilation.** The effect ends when the compiler exits;
+no artifact records whether the flag was on. `semantic-diagnostics` and
+`diagnostic-givens` change only what is printed; `inline-source-maps`
+changes only the debug attribute described above; `given-prefixes` only
+rejects code (a leak of an opaque type's representation) that vanilla
+accepts. Each module chooses these freely.
+
+**Recorded in the module's own artifacts, but complete there.**
+`literate-literals` and `spreadable-varargs` change how a literal or a
+splice is typed at its use site, and the result is pickled into that
+module's TASTy like any other typed tree; a consumer needs the library
+types (`scala.Literate`, `scala.Spreadable`), not the flag. Inline methods
+are no exception: a literal inside an inlined body is never re-typed at the
+expansion site, so what a consumer expands is what the defining module
+compiled.
+
+**Shared with every module that reads the TASTy.** Under capture checking,
+`pure-iarrays`, `opaque-mutability`, `union-captures`, `unboxed-pure-types`,
+`alias-captures`, `retains-bounds` and `retains-skolems` change the capture
+sets the checker *infers* and pickles — and a capture-checked consumer does
+not take those sets on trust: it re-derives capture information for the
+types it reads, applying its own rules. A consumer with `union-captures` off
+reading a module compiled with it on sees `Unset | Array[Byte]` classified
+differently from the annotations the producer wrote against it, and reports
+errors the producer never saw; the converse combination lets the consumer
+accept what the producer would have rejected. The rule is therefore: **enable
+these seven identically in every capture-checked module that shares TASTy**,
+and treat changing them like changing the compiler version — recompile the
+whole dependency chain. A module compiled without capture checking is
+unaffected in both directions, since none of the seven does anything there.
 
 ## New library types
 
@@ -126,7 +166,7 @@ conformance to the Component Model is.
 The honest list: every known case where Proscala's behaviour differs for
 code a vanilla compiler accepts.
 
-- **[givenprefix](givenprefix/givenprefix.md)** (always on) rejects code
+- **[givenprefix](givenprefix/givenprefix.md)** (`-Z:given-prefixes`) rejects code
   that reads an opaque type's representation through an extension method
   from a top-level given — a leak of the package object's privileged view
   that upstream already fixed for direct selections (the #18097 family)
@@ -134,7 +174,7 @@ code a vanilla compiler accepts.
   the fix is a candidate for upstreaming. This is the main case where
   question 1's "yes" needs the qualifier.
 - **[iarraypure-mutalias](iarraypure-mutalias/iarraypure-mutalias.md)**
-  (capture checking with `-Ycc-new` only) rejects mutation through an
+  (`-Z:opaque-mutability`, capture checking with `-Ycc-new`) rejects mutation through an
   opaque alias over a mutable type — closing a soundness hole. Code that
   treats such an alias as immutable-by-convention must accept read-only
   tracking or change representation.
@@ -170,9 +210,14 @@ consumers; `Spreadable` instances make it a runtime one.
 satisfy the rule above. The compilers agree on TASTy version, so neither
 rejects the other's files on version grounds.
 
+**Mixing flags in one build.** Vary the confined and module-complete `-Z`
+flags per module as you like; keep the seven capture-set flags identical
+across every capture-checked module that shares TASTy (see "The `-Z`
+flags").
+
 **Runtime.** Nothing in the fork requires a special JVM. The only runtime
 requirement any feature introduces is `scala.Spreadable` on the classpath
 where instances are loaded, and the scala-wasm runtime for the WASM target.
 
-**Debugging.** With `-Xjsr45`, prefer a JSR-45-aware debugger; expect raw
+**Debugging.** With `-Z:inline-source-maps`, prefer a JSR-45-aware debugger; expect raw
 stack traces through inlined code to show synthetic line numbers.

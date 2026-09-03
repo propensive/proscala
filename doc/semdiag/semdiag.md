@@ -1,11 +1,13 @@
 # Semantic diagnostics: XML error output with TASTy-encoded types
 
-Adds `-Xsemantic-diagnostics`, which replaces the console error output with a
+Adds `-Z:semantic-diagnostics`, which replaces the console error output with a
 stream of XML elements in which the fragments of each message that were
 interpolated from compiler entities — types, symbols, names, trees — are marked
 up as such, and every type additionally carries its TASTy serialization,
 Base64-encoded, so that a consumer can reconstruct it as a `TypeRepr`. Without
 the flag, output is byte-for-byte unchanged.
+
+Enabled by `-Z:semantic-diagnostics` ([zflags](../zflags/zflags.md)); without it, upstream's code runs at every site this patch touches.
 
 ## Context
 

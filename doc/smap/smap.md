@@ -1,7 +1,9 @@
 # smap
 
-`-Xjsr45`: emit JSR-45 SourceDebugExtension (SMAP) attributes that map inlined
+`-Z:inline-source-maps`: emit JSR-45 SourceDebugExtension (SMAP) attributes that map inlined
 code back to the source files it was written in.
+
+Enabled by `-Z:inline-source-maps` ([zflags](../zflags/zflags.md)); without it, upstream's code runs at every site this patch touches.
 
 ## Context
 
@@ -34,7 +36,7 @@ transparently; naive consumers just see large line numbers.
 // Util.scala
 object Util:
   inline def twice(inline x: Int): Int =
-    x + x        // without -Xjsr45, this line is unrepresentable in Main.class
+    x + x        // without -Z:inline-source-maps, this line is unrepresentable in Main.class
 
 // Main.scala
 class Main:

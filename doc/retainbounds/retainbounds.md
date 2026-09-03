@@ -5,6 +5,8 @@ Stops the capture checker from rejecting `@retains` annotations that contain a
 approximating the bounds with `caps.any`, the standard sound over-approximation
 for a capability that cannot be named.
 
+Enabled by `-Z:retains-bounds` ([zflags](../zflags/zflags.md)); without it, upstream's code runs at every site this patch touches.
+
 ## Context
 
 Under capture checking, a type's retained capabilities are recorded in an
