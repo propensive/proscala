@@ -502,11 +502,11 @@ object Inlines:
     val tree1 =
       if inlined.bindings.isEmpty then inlined.expansion
       else cpy.Block(inlined)(inlined.bindings, inlined.expansion)
-    if ctx.settings.Xjsr45.value then recordInlineOrigins(inlined, tree1)
+    if config.Proscala.enabled(config.Proscala.InlineSourceMaps) then recordInlineOrigins(inlined, tree1)
     // Reposition in the outer most inlined call
     if enclosingInlineds.nonEmpty then tree1
     else
-      if ctx.settings.Xjsr45.value then resolveInlineOrigins(tree1)
+      if config.Proscala.enabled(config.Proscala.InlineSourceMaps) then resolveInlineOrigins(tree1)
       reposition(tree1, inlined.span)
 
   /** Record, on every tree of `expansion` that was inlined from a source other than
