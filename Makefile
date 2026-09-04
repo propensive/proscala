@@ -638,8 +638,9 @@ release: stage1 stage2 extra launchers $(if $(WIT_SRC),$(SJS_LIB_SHIP))
 
 # ---- Distribution tarball ----------------------------------------------------
 # Bundle the published jars (release/<branch>/lib) into a single archive with a
-# top-level lib/ folder. This is what a published release attaches, in place of
-# the loose jars. Third-party deps (release/<branch>/deps) are not included.
+# top-level lib/ folder. A published release attaches this alongside the loose
+# jars (`release-jars`, mk/publish.mk). Third-party deps (release/<branch>/deps)
+# are not included.
 TARBALL := $(RELEASE)/proscala-$(VERSION).tar.gz
 .PHONY: tarball
 tarball: release

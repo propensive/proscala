@@ -20,6 +20,7 @@
 #
 #   make VERSION=<v> publish-bundle   # build, stage, sign, zip — no upload
 #   make VERSION=<v> publish          # ... and upload to the Central Portal
+#   make VERSION=<v> release-jars     # copy each published jar to release/<branch>/jars/<id>-<v>.jar
 #
 # Credentials, all from the environment:
 #   SONATYPE_USERNAME / SONATYPE_PASSWORD   a Central *user token*, not portal
@@ -180,6 +181,26 @@ PUB_TABLE := \
 # ==============================================================================
 # Targets
 # ==============================================================================
+
+# Copy each published jar to release/<branch>/jars/<artifactId>-<version>.jar:
+# the loose jars a GitHub release attaches beside the tarball, named as on Maven
+# Central so the two sets of artefacts match byte for byte. Driven by PUB_TABLE,
+# so the set can never drift from what goes to Central; the Scala.js runtime
+# jars that ride in the tarball's lib/ are third-party and not published, so
+# they are not copied either. No version guard: nothing is uploaded, so a
+# development `-propensive` version is fine here.
+PUB_JARS := $(RELEASE)/jars
+.PHONY: release-jars
+release-jars: release
+	@rm -rf '$(PUB_JARS)' && mkdir -p '$(PUB_JARS)'
+	@set -eu; \
+	 for record in $(foreach r,$(PUB_TABLE),'$(r)'); do \
+	   id=$$(printf  '%s' "$$record" | cut -d'|' -f1); \
+	   jar=$$(printf '%s' "$$record" | cut -d'|' -f2); \
+	   [ -f '$(LIB)'/"$$jar" ] || { echo "release-jars: missing $(LIB)/$$jar" >&2; exit 1; }; \
+	   cp '$(LIB)'/"$$jar" '$(PUB_JARS)'/"$$id-$(VERSION).jar"; \
+	 done
+	@echo "  jars    : $(words $(PUB_TABLE)) in $(PUB_JARS)"
 
 # Refuse to publish a development version. Plain `make` leaves VERSION at the
 # stream's `<base>-propensive`; a real publication is always driven by the

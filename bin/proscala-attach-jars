@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+#
+# proscala-attach-jars — attach the individual jars of a published release to
+# its GitHub release, beside the tarball.
+#
+# Usage:
+#   bin/proscala-attach-jars <tag> [<tag>...]      # e.g. 3.9.0-p16 3.10.1-dev-p16
+#
+# The release workflow attaches each published jar under its Maven name
+# (<artifactId>-<version>.jar) alongside proscala-<version>.tar.gz. A release
+# cut before it did so, or one whose upload step failed after the tag was made,
+# is completed with this: for each tag it takes the artefacts Maven Central
+# holds under dev.propensive at that version — the same bytes the workflow
+# copies out of release/<branch>/lib — verifies each against Central's
+# published SHA-1, and uploads them to the GitHub release. Re-running is safe:
+# an existing asset of the same name is replaced.
+#
+# Needs curl, shasum or sha1sum, and a `gh` logged in with the repo scope.
+
+set -euo pipefail
+
+die() { echo >&2 "proscala-attach-jars: $*"; exit 1; }
+
+[ $# -ge 1 ] || die "usage: bin/proscala-attach-jars <tag> [<tag>...]"
+command -v gh   >/dev/null 2>&1 || die "gh is not installed"
+command -v curl >/dev/null 2>&1 || die "curl is not installed"
+if command -v sha1sum >/dev/null 2>&1; then SHA1="sha1sum"; else SHA1="shasum -a 1"; fi
+
+REPO="propensive/proscala"
+CENTRAL="https://repo1.maven.org/maven2/dev/propensive"
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+# Every artefact Central lists under the group, one per line. Which of them
+# exist at a given version is decided per tag below, so unrelated artefacts
+# published under the same group are skipped by their absence.
+artifacts="$(curl --fail --silent --show-error "$CENTRAL/" \
+  | grep -oE 'href="[^"/]+/"' | sed -E 's/^href="([^"/]+)\/"$/\1/' | grep -v '^\.\.$' || true)"
+[ -n "$artifacts" ] || die "no artefacts listed under $CENTRAL/"
+
+for tag in "$@"; do
+  echo ">> $tag"
+  gh release view "$tag" -R "$REPO" --json tagName >/dev/null 2>&1 \
+    || die "no GitHub release for tag '$tag' in $REPO"
+  dir="$tmp/$tag"; mkdir -p "$dir"
+  n=0
+  while read -r id; do
+    [ -n "$id" ] || continue
+    jar="$id-$tag.jar"
+    url="$CENTRAL/$id/$tag/$jar"
+    curl --fail --silent --head --output /dev/null "$url" || continue
+    curl --fail --silent --show-error --output "$dir/$jar" "$url"
+    expected="$(curl --fail --silent --show-error "$url.sha1" | cut -d' ' -f1 | tr -d '[:space:]')"
+    actual="$($SHA1 "$dir/$jar" | cut -d' ' -f1)"
+    [ "$actual" = "$expected" ] || die "$jar: SHA-1 $actual does not match Central's $expected"
+    echo "   ok: $jar"
+    n=$((n + 1))
+  done <<< "$artifacts"
+  [ "$n" -gt 0 ] || die "Central has no dev.propensive artefacts at version $tag"
+  echo "   uploading $n jars to the $tag release"
+  gh release upload "$tag" -R "$REPO" --clobber "$dir"/*.jar
+  echo "   done"
+done
