@@ -6,12 +6,18 @@ name: Release
 # lives on the `main` branch and is overlaid at build time by bin/proscala-overlay.
 # The build compiles every module, versions it <upstream-version>-p<n> (n one
 # greater than the previous release for the stream), tags the commit, attaches
-# a single proscala-<version>.tar.gz (a top-level lib/ of the published jars),
+# a proscala-<version>.tar.gz (a top-level lib/ of the published jars) together
+# with each published jar under its Maven name (<artifactId>-<version>.jar),
 # and publishes the same jars to Maven Central under `dev.propensive`.
 on:
   push:
     branches:
       - 'release/**'
+    # A change to this workflow alone must not cut a release: it would publish
+    # a new -p<n> of identical jars, to append-only Maven Central too. Exercise
+    # such a change with workflow_dispatch, or wait for the next real merge.
+    paths-ignore:
+      - '.github/**'
   workflow_dispatch:
 
 permissions:
@@ -97,27 +103,31 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Building $version (stream=$stream, previous patch=${prev:-none})"
 
-      - name: Clean build + tarball
+      - name: Clean build + tarball + jars
         run: |
           set -euo pipefail
           s="${{ steps.ver.outputs.stream }}"
           v="${{ steps.ver.outputs.version }}"
           make STREAM="$s" BRANCH=dist VERSION="$v" clean
-          make STREAM="$s" BRANCH=dist VERSION="$v" tarball
+          make STREAM="$s" BRANCH=dist VERSION="$v" tarball release-jars
 
+      # The tarball and every published jar under its Maven Central name, in one
+      # command, so a release can never exist with only the tarball attached.
       - name: Tag and publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          shopt -s failglob
           v="${{ steps.ver.outputs.version }}"
+          jars=(release/dist/jars/*.jar)
           git tag "$v"
           git push origin "refs/tags/$v"
           gh release create "$v" \
             --title "$v" \
             --target "$GITHUB_SHA" \
             --notes "Automated Proscala trunk build for the ${{ steps.ver.outputs.stream }} stream, built from ${GITHUB_SHA}." \
-            "release/dist/proscala-${v}.tar.gz"
+            "release/dist/proscala-${v}.tar.gz" "${jars[@]}"
 
       # Last, because Maven Central is append-only: a published version can never
       # be replaced, only superseded by the next -p<n>. Everything reversible has
