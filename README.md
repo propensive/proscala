@@ -24,7 +24,7 @@ major Scala 3 release line, and its name omits the minor/patch number:
 
 | Stream | Tracks upstream                | Release versions   |
 | ------ | ------------------------------ | ------------------ |
-| `3.9`  | `scala/scala3` `release-3.9.0` | `3.9.0-RC6-p<n>`   |
+| `3.9`  | `scala/scala3` `release-3.9.0` | `3.9.0-p<n>`       |
 | `3.10` | `scala/scala3` `main`          | `3.10.1-dev-p<n>`  |
 
 The Branches
@@ -103,10 +103,11 @@ to `release/<branch>/`:
 - `release/<branch>/bin/` — `scalac` and `scala` launchers, ready to run
 
 `make deps` downloads dependencies only, `make tarball` bundles the published jars
-into a single `release/<branch>/proscala-<version>.tar.gz`, and `make clean` removes
-the current branch's build. Both `release/` and `.build/` are git-ignored. The
-stream is derived from the branch name; from a detached checkout pass it with
-`make STREAM=3.9|3.10`.
+into a single `release/<branch>/proscala-<version>.tar.gz`, `make release-jars` copies
+each of them to `release/<branch>/jars/<artifactId>-<version>.jar` under its Maven
+name, and `make clean` removes the current branch's build. Both `release/` and
+`.build/` are git-ignored. The stream is derived from the branch name; from a
+detached checkout pass it with `make STREAM=3.9|3.10`.
 
 Releases
 --------
@@ -116,9 +117,11 @@ Releases are published automatically to
 request is merged into a `release/<stream>` branch, a GitHub Actions workflow
 overlays the build from `main`, performs a clean build, tags it with the next
 version (`<upstream-version>-p<n>`, incrementing `<n>` from the previous release;
-`-dev-p<n>` for streams that track a non-final upstream), and attaches a single
+`-dev-p<n>` for streams that track a non-final upstream), and attaches
 `proscala-<version>.tar.gz` — a top-level `lib/` of everything Proscala builds plus
-the Scala.js / scala-wasm runtime.
+the Scala.js / scala-wasm runtime — together with each published jar under its
+Maven name (`<artifactId>-<version>.jar`), so the release assets match the
+artefacts on Maven Central byte for byte.
 
 Contributing
 ------------

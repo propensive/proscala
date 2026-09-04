@@ -226,8 +226,11 @@ Intermediate classes go under `.build/<branch>/`; downloaded Maven jars are shar
 across branches under `.build/jars`. Both `release/` and `.build/` are git-ignored,
 so a branch's output is never committed and survives switching branches. Useful
 targets: `make deps` (fetch dependencies only), `make tarball` (build, then bundle
-the published jars into a single `release/<branch>/proscala-<version>.tar.gz` — what
-a release attaches), `make clean` / `make distclean` (remove a branch's output).
+the published jars into a single `release/<branch>/proscala-<version>.tar.gz`),
+`make release-jars` (copy each published jar to
+`release/<branch>/jars/<artifactId>-<version>.jar`, under its Maven name — a release
+attaches the tarball and these jars), `make clean` / `make distclean` (remove a
+branch's output).
 Override the output path with `make BRANCH=<name>`. The stream is derived from the
 branch name; from a detached checkout (e.g. CI) pass it explicitly with
 `make STREAM=3.9|3.10`.
@@ -335,12 +338,23 @@ which:
    greater than the highest existing `-p` tag for that base (starting at `1`). A
    stream that tracks a non-final upstream carries a `-dev` marker in its `VERSION`,
    so it releases as `<base>-dev-p<n>`.
-3. **Builds** everything cleanly (`make … tarball`).
-4. **Tags** the commit with the version and creates a **GitHub release**, attaching a
-   single `proscala-<version>.tar.gz` — a top-level `lib/` of the jars we build plus
-   the Scala.js / scala-wasm runtime; third-party dependencies are not published.
+3. **Builds** everything cleanly (`make … tarball release-jars`).
+4. **Tags** the commit with the version and creates a **GitHub release**, attaching
+   `proscala-<version>.tar.gz` — a top-level `lib/` of the jars we build plus the
+   Scala.js / scala-wasm runtime; third-party dependencies are not published —
+   together with each published jar under its Maven name
+   (`<artifactId>-<version>.jar`), so the release assets and the Central artefacts
+   match byte for byte.
 5. **Publishes the same jars to Maven Central** (`make … publish`), under
    `dev.propensive`, at the same version.
+
+The workflow ignores pushes that touch only `.github/`, so a change to `release.yml`
+itself lands without cutting a release (which would otherwise publish a new `-p<n>`
+of identical jars, to append-only Central too); exercise it with `workflow_dispatch`
+or wait for the next real merge. A release that lacks its jars — one cut before the
+workflow attached them, or whose upload failed after the tag was made — is completed
+with `bin/proscala-attach-jars <tag>`, which takes them from Central, verifies each
+against Central's SHA-1 and uploads them beside the tarball.
 
 ### Publishing to Maven Central
 
@@ -443,7 +457,7 @@ Current streams and their release versions:
 
 | Stream | Tracks | Version |
 | ------ | --------------------------- | ------------------- |
-| `3.9`  | `scala/scala3 release-3.9.0` | `3.9.0-RC6-p<n>`    |
+| `3.9`  | `scala/scala3 release-3.9.0` | `3.9.0-p<n>`        |
 | `3.10` | `scala/scala3 main`          | `3.10.1-dev-p<n>`   |
 
 The GitHub token needs `contents: write` (declared in the workflow). Because the
