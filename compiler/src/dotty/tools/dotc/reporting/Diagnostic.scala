@@ -154,7 +154,7 @@ class Diagnostic(
   override def position: Optional[interfaces.SourcePosition] =
     if (pos.exists && pos.source.exists) Optional.of(pos) else Optional.empty()
   override def message: String =
-    msg.message.replaceAll("\u001B\\[[;\\d]*m", "")
+    DiagnosticMarkup.plain(msg.message).replaceAll("\u001B\\[[;\\d]*m", "")
   /** Structured related information for this diagnostic (scalameta/metals#3214). Currently the
    *  chain of inline call-sites surrounding the reported position: the filtering mirrors
    *  `MessageRendering.messageAndPos`, so the list matches the rendered "Inline stack trace" and
