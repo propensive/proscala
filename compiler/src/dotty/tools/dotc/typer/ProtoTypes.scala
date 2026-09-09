@@ -501,8 +501,13 @@ object ProtoTypes {
         inContext(protoCtx.withUncommittedTyperState) {
           val protoTyperState = ctx.typerState
           val oldConstraint = protoTyperState.constraint
+          // Literals are not rewritten through `Literate` instances here: this
+          // typing is against a wildcard, only to rank overload alternatives.
+          // The cached argument is adapted to the selected alternative's real
+          // formal afterwards, which is where the expected type can speak.
+          val literateCtx = ctx.fresh.setProperty(Typer.LiterateConversion, ())
           val args1 = args.mapWithIndexConserve((arg, idx) =>
-            cacheTypedArg(arg, arg => typer.typed(norm(arg, idx)), force = false, NoType))
+            cacheTypedArg(arg, arg => typer.typed(norm(arg, idx))(using literateCtx), force = false, NoType))
           val newConstraint = protoTyperState.constraint
 
           if !args1.exists(arg => isUndefined(arg.tpe)) then state.typedArgs = args1
@@ -543,9 +548,19 @@ object ProtoTypes {
      */
     def typedArg(arg: untpd.Tree, formal: Type)(using Context): Tree = {
       val wideFormal = formal.widenExpr
-      val argCtx =
+      val argCtx0 =
         if wideFormal eq formal then ctx.retractMode(Mode.InAnnotation)
         else ctx.retractMode(Mode.InAnnotation).withNotNullInfos(ctx.notNullInfos.retractMutables)
+      // An annotation's arguments are typed with `InAnnotation` retracted, so
+      // that mode cannot gate anything here. Literals in them must still keep
+      // their ordinary types: they are read back as constants (`@targetName`,
+      // `@implicitNotFound`), and searching for a `Literate` instance while
+      // the annotated symbol is completing can even cycle through a root
+      // import.
+      val argCtx =
+        if ctx.mode.is(Mode.InAnnotation)
+        then argCtx0.fresh.setProperty(Typer.LiterateConversion, ())
+        else argCtx0
       val locked = ctx.typerState.ownedVars
       val targ = cacheTypedArg(arg,
         typer.typedUnadapted(_, wideFormal, locked)(using argCtx),
