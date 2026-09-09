@@ -151,8 +151,16 @@ abstract class AccessProxies {
         if accessorClass.is(Package) then
           accessorClass = ctx.owner.topLevelClass
         val accessorName = accessorNameOf(accessed.name, accessorClass)
+        val mappedInfo = accessed.info match
+          // A module val's info is a TypeRef to its module class, and an accessor
+          // returning that is not a legal path — so any type selected through the
+          // accessor (`Priv.Thing`) is rejected as unrealizable. Remap it to the
+          // module's TermRef, which is stable. See test i22593.scala (issue #22593).
+          case tref @ TypeRef(prefix, _) if tref.symbol.is(Module) =>
+            TermRef(prefix, tref.symbol.companionModule)
+          case other => other
         val accessorInfo =
-          accessed.info.ensureMethodic.asSeenFrom(accessorClass.thisType, accessed.owner)
+          mappedInfo.ensureMethodic.asSeenFrom(accessorClass.thisType, accessed.owner)
         val accessor = accessorSymbol(accessorClass, accessorName, accessorInfo, accessed)
         rewire(reference, accessor)
       }
