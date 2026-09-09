@@ -1124,6 +1124,10 @@ class Definitions {
   @tu lazy val ProvisionalSuperClassAnnot: ClassSymbol = requiredClass("scala.annotation.internal.ProvisionalSuperClass")
   @tu lazy val DeprecatedAnnot: ClassSymbol = requiredClass("scala.deprecated")
   @tu lazy val DeprecatedOverridingAnnot: ClassSymbol = requiredClass("scala.deprecatedOverriding")
+  // Looked up leniently: the annotation ships in Proscala's supplementary library
+  // (proscala-library), which need not be on the classpath; without it no given
+  // can carry the annotation, so the search-failure logic never engages.
+  @tu lazy val DiagnosticAnnot: Symbol = getClassIfDefined("scala.annotation.internal.diagnostic")
   @tu lazy val DeprecatedInheritanceAnnot: ClassSymbol = requiredClass("scala.deprecatedInheritance")
   @tu lazy val DeprecatedNameAnnot: ClassSymbol = requiredClass("scala.deprecatedName")
   @tu lazy val ImplicitAmbiguousAnnot: ClassSymbol = requiredClass("scala.annotation.implicitAmbiguous")
