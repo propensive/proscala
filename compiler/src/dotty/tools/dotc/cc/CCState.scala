@@ -16,6 +16,15 @@ import Capabilities.Capability
 class CCState:
   import CCState.*
 
+  /** Maps the anonymous functions that implement a method's context-function result
+   *  chain (the closures counted by `ContextFunctionResults.contextResultCount`) to
+   *  that method. Erasure flattens these closures' parameters into the method's own
+   *  parameter list, so for level-checking purposes references bound inside the chain
+   *  are treated as being at the method's level. Populated by
+   *  `CheckCaptures.recheckDefDef`; consulted by `Capability.acceptsLevelOf`.
+   */
+  val contextResultClosures: EqHashMap[Symbol, Symbol] = EqHashMap()
+
   // ------ Error diagnostics -----------------------------
 
   /** Warnings relating to upper approximations of capture sets with
