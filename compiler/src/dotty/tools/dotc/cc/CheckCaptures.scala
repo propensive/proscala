@@ -868,6 +868,15 @@ class CheckCaptures extends Recheck, SymTransformer:
                && arg.tpe.isTrackableRef   // isTrackableRef --> we can get back original capture set by adaptation
                && !nuType.hasBoxedCapset // !isBoxed --> no risk of losing uses when unboxing in result
               => arg.tpe
+            case (nuType @ CapturingType(_, _), _) => nuType
+            case (nuType, arg: Tree)
+            // Rechecking widened a stable argument to a plain non-capturing type
+            // (e.g. box adaptation dealiasing a doubly-nested refining alias): keep
+            // the path, or a dependent result selecting a member through this
+            // parameter becomes a projection the call result no longer matches.
+            // No captures can be lost: the rechecked type has no capture set.
+            if !nuType.isSingleton && arg.tpe.isStable
+              => arg.tpe
             case (nuType, _) => nuType
           if argTypes1 ne argTypes then
             capt.println(i"improve $argTypes to $argTypes1 in $tree")
