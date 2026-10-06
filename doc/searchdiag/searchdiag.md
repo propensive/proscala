@@ -47,9 +47,39 @@ space, so the compiler provides one.
   import-suggestion addenda are suppressed.
 
 The candidate still *fails*, so every construct that depends on search failure
-behaves as if the catch-all were absent: `NotGiven` inverts correctly,
-`summonFrom` falls through, default `using` arguments apply, and nested
-searches (`Expr.summon`, other macros' probes) simply see a failed candidate.
+behaves as if the catch-all were absent: `summonFrom` falls through, default
+`using` arguments apply, and nested searches (`Expr.summon`, other macros'
+probes) simply see a failed candidate.
+
+## `NotGiven`
+
+`NotGiven` needs one more rule. Upstream resolves `NotGiven[X]` by inverting
+*each candidate's* result (`negateIfNot` in `Implicits.rank`): a candidate for
+`NotGiven[X]` that fails yields `NotGiven.value`, one that succeeds yields a
+failure — which is how `NotGiven.amb1(using ev: X)` implements the negation.
+A universal catch-all `[T] => T` is itself a candidate for `NotGiven[X]`, and
+it is tried first (lexical scope precedes implicit scope). If it fails, the
+inversion turns that failure into a success for `NotGiven[X]` whether or not an
+`X` exists, and `NotGiven`'s own instances are never reached: `NotGiven[X]`
+holds for every `X`.
+
+Two measures, either of which suffices:
+
+- `negateIfNot` does not invert the failure of a candidate that is itself
+  marked `@internal.diagnostic`: its failing is not evidence that `X` is
+  absent. The search then proceeds to the implicit scope, where
+  `amb1`/`amb2`/`default` decide. The test is the candidate's annotation, not
+  the failure's type: when `X` is genuinely absent, the catch-all's
+  `DiagnosticFailure` from the nested search for `X` propagates into `amb1`'s
+  own failure, and that one must still invert.
+- Frontier's catch-all, when its target is `NotGiven[X]`, succeeds with
+  `NotGiven.value` instead of aborting; the inversion fails the candidate
+  (discarding its typer state, so nothing is committed) with the same effect.
+
+Both are in place. Found as propensive/soundness#2123: under
+`import soundness.*` every `NotGiven`-guarded given in Soundness was either
+ambiguous with its unguarded sibling or silently selected when it should not
+have been.
 
 ## The transparent chain rule
 
@@ -69,14 +99,17 @@ on the code branches). With a patched compiler:
 
 ```sh
 scalac -d out Macro_1.scala
-scalac -classpath out -d out Test_2.scala   # error: CUSTOM DIAGNOSTIC: Missing
-scalac -classpath out -d out Pos_2.scala    # compiles cleanly
+scalac -Zdiagnostic-givens -classpath out -d out Test_2.scala      # error: CUSTOM DIAGNOSTIC: Missing
+scalac -Zdiagnostic-givens -classpath out -d out Pos_2.scala       # compiles cleanly
+scalac -Zdiagnostic-givens -classpath out -d out NotGiven_2.scala  # error: no NotGiven[Present]
 ```
 
 `Test_2.scala` summons an `@implicitNotFound`-annotated trait with the
 annotated catch-all in scope: the reported error must be the macro's own
 message (`CUSTOM DIAGNOSTIC: Missing`), not the annotation's. `Pos_2.scala`
 exercises `NotGiven`, a default `using` argument and a `summonFrom` fallback
-with the catch-all in scope: all must compile. Unpatched (or with the
-annotation removed), the neg case reports the `@implicitNotFound` message with
-a "macro expansion was stopped" note instead of the diagnostic.
+with the catch-all in scope: all must compile. `NotGiven_2.scala` summons
+`NotGiven[Present]` with a `Present` given in scope: it must be rejected.
+Unpatched (or with the annotation removed), the neg case reports the
+`@implicitNotFound` message with a "macro expansion was stopped" note instead
+of the diagnostic, and `NotGiven_2.scala` compiles.
