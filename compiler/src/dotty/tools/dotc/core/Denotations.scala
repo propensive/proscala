@@ -880,6 +880,15 @@ object Denotations {
         // wholesale by an installAfter; in this case, proceed to the next
         // denotation and try again.
         nextDefined
+      else if valid.runId > currentPeriod.runId then
+        // The denotation was already brought forward to a NEWER run than the reading
+        // context's: the reader holds a stale context (e.g. a `LazyRef`/`TypeMap` closure
+        // created in an earlier run and forced after a compilation-suspension re-run, as
+        // capture-checking Setup does over TASTy-loaded collection traits). The old flock
+        // was re-stamped in place, so no denotation for the stale period exists any more;
+        // reading the fresher one is safe, whereas bringing it "forward" to the older run
+        // would corrupt the newer run's state (or loop).
+        this
       else if valid.runId != currentPeriod.runId then
         toNewRun
       else if currentPeriod > valid then
