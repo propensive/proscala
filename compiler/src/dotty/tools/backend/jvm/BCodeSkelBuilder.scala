@@ -7,7 +7,7 @@ import scala.collection.{immutable, mutable}
 import scala.tools.asm
 import dotty.tools.dotc.ast.tpd
 import dotty.tools.dotc.ast.TreeTypeMap
-import dotty.tools.dotc.ast.Trees.SyntheticUnit
+import dotty.tools.dotc.ast.Trees.{InlinedSourceLine, SyntheticUnit}
 import dotty.tools.dotc.core.Decorators.*
 import dotty.tools.dotc.core.Flags.*
 import dotty.tools.dotc.core.StdNames.*
@@ -142,6 +142,11 @@ trait BCodeSkelBuilder extends BCodeHelpers {
     protected var claszSymbol: Symbol = uninitialized
     private var isCZStaticModule    = false
 
+    /** The synthetic line numbers this class's methods actually emitted, so that its
+     *  SourceDebugExtension carries only the part of the unit's SMAP it needs (-Zinline-source-maps).
+     */
+    private val usedSyntheticLines = mutable.Set.empty[Int]
+
     // keep track of interfaces that are used in super calls, as they need to be directly inherited even if they are also indirectly inherited
     val superCallTargets = mutable.LinkedHashSet[ClassBType]()
 
@@ -170,6 +175,7 @@ trait BCodeSkelBuilder extends BCodeHelpers {
       thisName          = bTypeLoader.classBTypeFromSymbol(claszSymbol).internalName
 
       cnode = new ClassNode1()
+      usedSyntheticLines.clear()
 
       val cd = if (isCZStaticModule) {
         // Move statements from the primary constructor following the superclass constructor call to
@@ -344,7 +350,9 @@ trait BCodeSkelBuilder extends BCodeHelpers {
                   superClass, interfaceNames.toArray)
 
       if (BackendUtils.emitSource) {
-        cnode.visitSource(ctx.compilationUnit.source.file.name, null /* SourceDebugExtension */)
+        // Runs after the class's methods have been emitted, so `usedSyntheticLines` is complete.
+        cnode.visitSource(ctx.compilationUnit.source.file.name,
+            sourceDebugExtension(usedSyntheticLines))
       }
 
       BCodeUtils.enclosingMethodAttribute(claszSymbol, bTypeLoader.classBTypeFromSymbol(_).internalName, bTypeLoader.methodBTypeFromSymbol(_).descriptor) match {
@@ -622,12 +630,16 @@ trait BCodeSkelBuilder extends BCodeHelpers {
       }
 
       if (BackendUtils.emitLines && tree.span.exists && !tree.hasAttachment(SyntheticUnit)) {
-        val nr =
-          val sourcePos = tree.sourcePos
-          (
-            if sourcePos.exists then sourcePos.source.positionInUltimateSource(sourcePos).line
-            else ctx.source.offsetToLine(tree.span.point) // fallback
-          ) + 1
+        val nr = tree.getAttachment(InlinedSourceLine) match
+          case Some(syntheticLine) => // inlined from another source file (-Zinline-source-maps)
+            usedSyntheticLines += syntheticLine
+            syntheticLine
+          case None =>
+            val sourcePos = tree.sourcePos
+            (
+              if sourcePos.exists then sourcePos.source.positionInUltimateSource(sourcePos).line
+              else ctx.source.offsetToLine(tree.span.point) // fallback
+            ) + 1
 
         if (nr != lastEmittedLineNr) {
           lastEmittedLineNr = nr

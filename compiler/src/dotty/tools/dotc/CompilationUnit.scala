@@ -45,6 +45,12 @@ class CompilationUnit protected (val source: SourceFile, val info: CompilationUn
   /** Pickled TASTY binaries, indexed by class. */
   var pickled: Map[ClassSymbol, () => Array[Byte]] = Map()
 
+  /** Synthetic line numbers for code inlined from other source files, emitted as a
+   *  JSR-45 SourceDebugExtension by the backend. Created on first use in
+   *  `Inlines.dropInlined` under `-Zinline-source-maps`; null if unset or nothing foreign was inlined.
+   */
+  var smapRegistry: util.SmapRegistry | Null = null
+
   /** The fresh name creator for the current unit.
    *  FIXME(#7661): This is not fine-grained enough to enable reproducible builds,
    *  see https://github.com/scala/scala/commit/f50ec3c866263448d803139e119b33afb04ec2bc
