@@ -1504,7 +1504,7 @@ trait Implicits:
                 case _ => fail
             end healAmbiguous
 
-            negateIfNot(tryImplicit(cand, contextual)) match {
+            negateIfNot(cand, tryImplicit(cand, contextual)) match {
               case fail: SearchFailure =>
                 if fail eq ImplicitSearchTooLargeFailure then
                   fail
@@ -1549,9 +1549,18 @@ trait Implicits:
                 .getOrElse(ordered.maxBy(_.tree.treeSize))
         }
 
-      def negateIfNot(result: SearchResult) =
+      def negateIfNot(cand: Candidate, result: SearchResult) =
         if (isNotGiven)
           result match {
+            case fail: SearchFailure
+            if config.Proscala.enabled(config.Proscala.DiagnosticGivens)
+               && cand.ref.symbol.hasAnnotation(defn.DiagnosticAnnot) =>
+              // The failure of an `@internal.diagnostic` candidate for `NotGiven[X]` is
+              // not evidence that `X` is absent, so it is not inverted into a success;
+              // `NotGiven`'s own instances decide. (The failure *type* cannot be the
+              // test: a nested diagnostic failure propagates into `amb1`'s failure when
+              // `X` is genuinely absent, and that one must still invert.)
+              fail
             case _: SearchFailure =>
               SearchSuccess(ref(defn.NotGiven_value), defn.NotGiven_value.termRef, 0)(
                 ctx.typerState.fresh().setCommittable(true),
