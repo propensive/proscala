@@ -951,18 +951,19 @@ final class ClassfileParser(
         sym.addAnnotation(ThrowsAnnotation(cls.asClass))
       }
 
-      permittedSubclasses.foreach { child =>
-        // Resolve the permitted subclass lazily, inside the deferred annotation tree: a
-        // sealed Java interface may permit an implementation class whose own signature
-        // refers back to (other) sealed interfaces in the same library — resolving the
-        // child during this symbol's completion then forms a completion cycle (e.g. the
-        // JDK 25 `java.lang.classfile` API: MethodModel permits BufferedMethodBuilder$Model,
-        // and BufferedMethodBuilder's parents lead back to the sealed MethodInfo).
-        sym.addAnnotation(Annotation.deferredSymAndTree(defn.ChildAnnot) {
+      // The children of a Java enum are its enum constants, registered in `MemberCompleter`.
+      // javac lists the anonymous classes of constants with bodies as permitted subclasses
+      // of the (implicitly sealed) enum class; they must not be registered as children,
+      // otherwise a match on the constants would be reported as non-exhaustive.
+      if !sym.flagsUNSAFE.is(Flags.Enum) then permittedSubclasses.foreach { child =>
+        sym.addAnnotation(Annotation.deferredSymAndTree(defn.ChildAnnot)({
+          // It's important to fetch this symbol in the deferred tree function,
+          // since otherwise it may create cycles, e.g.,
+          // A extends from B which also permits C which also extends from D which permits A
           val cls = getClassSymbol(child.name)
           New(defn.ChildAnnot.typeRef.appliedTo(cls.owner.thisType.select(cls.name, cls)), Nil)
             .withSpan(NoSpan)
-        })
+        }))
       }
 
       def fillInParamNames(t: Type): Type = t match

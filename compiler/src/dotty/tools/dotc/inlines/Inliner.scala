@@ -11,6 +11,7 @@ import NameKinds.InlineBinderName
 import ProtoTypes.shallowSelectionProto
 import SymDenotations.SymDenotation
 import Inferencing.isFullyDefined
+import config.Feature
 import config.Printers.inlining
 import ErrorReporting.errorTree
 import util.{SimpleIdentitySet, SrcPos}
@@ -353,7 +354,7 @@ class Inliner(val call: tpd.Tree)(using Context):
       if bindingFlags.is(Inline) && argIsBottom then
         newArg = Typed(newArg, TypeTree(formal.widenExpr)) // type ascribe RHS to avoid type errors in expansion. See i8612.scala
       if isByName then DefDef(boundSym, newArg)
-      else ValDef(boundSym, newArg, inferred = true)
+      else ValDef(boundSym, newArg)
     }.withSpan(boundSym.span)
     // Under capture checking, do not record the skolem: avoid-time recovery substitutes it
     // into the expansion's type, where cc's Fresh roots cannot absorb it — a summoned
@@ -627,7 +628,11 @@ class Inliner(val call: tpd.Tree)(using Context):
    *  the method will return: `Foo.OpaqueInt`
    */
   def unpackProxiesFromResultType(inlined: Inlined): Type =
-    if thisTypeProxyExists then mapBackToOpaques.typeMap(thisTypeUnpacker.typeMap(inlined.expansion.tpe))
+    if thisTypeProxyExists then
+      val unpacked = mapBackToOpaques.typeMap(thisTypeUnpacker.typeMap(inlined.expansion.tpe))
+      // base inlined.tpe always avoids bindings in it's type (behavior built-in to the
+      // Inlined(...) constructor) so we do that here too
+      TypeAssigner.avoidingType(unpacked, inlined.bindings)
     else inlined.tpe
 
   /** Populate `thisProxy` and `paramProxy` as follows:
@@ -747,6 +752,12 @@ class Inliner(val call: tpd.Tree)(using Context):
         // reference to a private method is kept at runtime.
         cpy.Select(tree)(qual.asInstance(qual.tpe.widen), name)
 
+      case tree: TypeTree if Feature.ccEnabled =>
+        // cc.Setup.setupTraverser.transformTT creates scope-dependent capture types,
+        // cached by tree identity in transform.Recheck.Rechecker.nuTypes. Sharing a
+        // TypeTree would reuse the definition's (or another call's) capture roots
+        // in this expansion. See tests/pos-custom-args/captures/inline-result-captures.scala.
+        tree.cloneIn(tree.source)
       case tree => tree
     }
 
@@ -815,7 +826,7 @@ class Inliner(val call: tpd.Tree)(using Context):
     // corresponding arguments or proxies on the type and term level. It also changes
     // the owner from the inlined method to the current owner.
 
-    // This is reused through InlineTraitAncestors for inline traits, so inlinedMethod might not exist there  
+    // This is reused through InlineTraitAncestors for inline traits, so inlinedMethod might not exist there
     val oldOwners = if (inlinedMethod.exists) then inlinedMethod :: Nil else Nil
     val newOwners = if (inlinedMethod.exists) then ctx.owner :: Nil else Nil
 
@@ -1122,7 +1133,10 @@ class Inliner(val call: tpd.Tree)(using Context):
               case tp: TypeRef if tp.typeSymbol.isOpaqueAlias =>
                 val sym = tp.typeSymbol
                 apply(sym.opaqueAlias.asSeenFrom(tp.prefix, sym.owner))
-              case tp =>
+              case tp: TypeRef if tp.typeSymbol.isAliasType =>
+                val tp1 = tp.dealias
+                if tp1 eq tp then tp else apply(tp1)
+              case _ =>
                 mapOver(tp)
 
           val actualTp = dealiasOpaques(res.tpe)
@@ -1263,6 +1277,19 @@ class Inliner(val call: tpd.Tree)(using Context):
        * E.g. We need to keep the skolem in tests/pos/i26885.scala but expect it widened in tests/pos/i26031.scala.
        */
       case (_, sk: SkolemType) if externalParamProxySkolem.get(tree.symbol).contains(sk) => tree.cast(sk)
+      /* Same as above, but for nested types (see tests/pos/i26958.scala).
+       */
+      case _ if externalParamProxySkolem.nonEmpty =>
+        val wtp = tree.tpe.widen
+        val substed = new TypeMap:
+          def apply(t: Type): Type = t match
+            case t: SkolemType =>
+              externalParamProxySkolem.collectFirst:
+                case (sym, `t`) => sym.termRef
+              .getOrElse(t)
+            case _ => mapOver(t)
+        .apply(wtp)
+        if (substed ne wtp) && (substed <:< pt) then tree.cast(pt) else tree
       case _ => tree
   end InlineTyper
 
@@ -1345,7 +1372,7 @@ class Inliner(val call: tpd.Tree)(using Context):
               case none => t
             }
             super.transform(t1)
-          case t: Apply =>
+          case t: (Apply | TypeApply) =>
             val t1 = super.transform(t)
             if (t1 `eq` t) t else BetaReduce(t1)
           case Block(Nil, expr) =>
