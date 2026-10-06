@@ -23,8 +23,6 @@ lazycycle
 literate
 macroalias
 modulepath
-nullreceiver
-permitlazy
 proxyskolem
 prunecomplete
 retainbounds

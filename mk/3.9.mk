@@ -1,11 +1,11 @@
 # Per-stream build configuration for the 3.9 stream (tracks scala/scala3
-# `release-3.9.0`). Included by the top-level Makefile once STREAM is known.
+# `lts-3.9`). Included by the top-level Makefile once STREAM is known.
 # $(JARS) is defined by the Makefile before this file is included.
 
-VERSION            := 3.9.0-propensive
+VERSION            := 3.9.1-dev-propensive
 # The branch of scala/scala3 that upstream/3.9 mirrors. Authoritative: the docs
 # are checked against it, and `proscala-rebase-tree -u` fast-forwards to it.
-UPSTREAM_REF       := release-3.9.0
+UPSTREAM_REF       := lts-3.9
 REF_VERSION        := 3.8.4
 BASE_SCALAJS_VERSION    := 1.22.0
 COMPILER_IFACE_VER := 1.12.0

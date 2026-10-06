@@ -7,7 +7,7 @@ VERSION            := 3.10.1-dev-propensive
 # The branch of scala/scala3 that upstream/3.10 mirrors. Authoritative: the docs
 # are checked against it, and `proscala-rebase-tree -u` fast-forwards to it.
 UPSTREAM_REF       := main
-REF_VERSION        := 3.10.0-RC1
+REF_VERSION        := 3.10.0-RC3
 BASE_SCALAJS_VERSION    := 1.22.0
 COMPILER_IFACE_VER := 1.12.0
 UTIL_IFACE_VER     := 1.11.5
@@ -36,6 +36,6 @@ TREE_ASM_NAMES := asm asm-tree asm-analysis asm-util asm-commons
 TREE_ASM_MAVEN_PATHS := $(foreach n,$(TREE_ASM_NAMES),org/ow2/asm/$(n)/$(TREE_ASM_VERSION)/$(n)-$(TREE_ASM_VERSION).jar)
 TREE_ASM_JARS := $(foreach n,$(TREE_ASM_NAMES),$(JARS)/$(n)-$(TREE_ASM_VERSION).jar)
 TREE_ASM_COORDS := org.ow2.asm:asm-util:$(TREE_ASM_VERSION) org.ow2.asm:asm-commons:$(TREE_ASM_VERSION)
-# The 3.10.0-RC1 reference compiler depends on the same unshaded jars (see its
+# The 3.10.0-RC3 reference compiler depends on the same unshaded jars (see its
 # POM), not on scala-asm, so they go on the reference classpath as well.
 REF_ASM_JARS := $(foreach n,$(TREE_ASM_NAMES),$(n)-$(TREE_ASM_VERSION).jar)
