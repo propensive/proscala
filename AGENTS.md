@@ -39,7 +39,7 @@ the minor/patch number: `3.9`, `3.10`.
   fast-forwarded periodically. Everything else in the stream is rebased onto it.
   Which branch each mirrors is recorded as `UPSTREAM_REF` in `mk/<stream>.mk`, and
   that is the authoritative copy — the mapping below is checked against it:
-  - `upstream/3.9` → `scala/scala3` `release-3.9.0`
+  - `upstream/3.9` → `scala/scala3` `lts-3.9`
   - `upstream/3.10` → `scala/scala3` `main`
 - **`feature/<stream>/zflags`** — the **stream base**: a single commit on
   `upstream/<stream>` adding the `-Z` setting and the registry of names behind
@@ -107,9 +107,9 @@ streams: a patch only exists where it is needed, and some are upstreamed or beco
 obsolete in a later stream.
 
     features/3.9    33 patches   carries castbox, depset, splicealias, samstateful, staleread, virtualdir
-    features/3.10   35 patches   adds anonspec, anykindcap, boolunapply, integratemap, macroalias, modulepath, prunecomplete, unioncaps; drops those six
+    features/3.10   33 patches   adds anonspec, anykindcap, boolunapply, integratemap, macroalias, modulepath, prunecomplete, unioncaps; drops those six, and nullreceiver and permitlazy (fixed upstream)
 
-Twenty-six patches are common to both streams.
+Twenty-four patches are common to both streams.
 
 **This list is authoritative, not descriptive.** `bin/proscala-rebase-tree`
 rebuilds `trunk/<stream>` as the merge of exactly these patches, so the list — not
@@ -241,7 +241,7 @@ We track `scala/scala3` closely and re-base the whole tree onto it frequently, s
 patches never drift far from the code they modify. Do this per stream with:
 
     bin/proscala-rebase-tree <stream> <upstream-ref>
-    # e.g. bin/proscala-rebase-tree 3.9 upstream/release-3.9.0
+    # e.g. bin/proscala-rebase-tree 3.9 upstream/lts-3.9
     #      bin/proscala-rebase-tree 3.10 upstream/main
 
 The script (bash 4+) takes the stream's patches from `features/<stream>` (see *The
@@ -457,7 +457,7 @@ Current streams and their release versions:
 
 | Stream | Tracks | Version |
 | ------ | --------------------------- | ------------------- |
-| `3.9`  | `scala/scala3 release-3.9.0` | `3.9.0-p<n>`        |
+| `3.9`  | `scala/scala3 lts-3.9`       | `3.9.1-dev-p<n>`    |
 | `3.10` | `scala/scala3 main`          | `3.10.1-dev-p<n>`   |
 
 The GitHub token needs `contents: write` (declared in the workflow). Because the

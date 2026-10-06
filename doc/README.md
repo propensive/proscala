@@ -32,6 +32,10 @@ same assertion at its source.
 expansion in a unit) that the fork deliberately does **not** patch — every
 affected Soundness site was fixed honestly at source — kept with its two
 reproductions so the diagnostic is recognisable when it next appears.
+[permitlazy](permitlazy/permitlazy.md) and
+[nullreceiver](nullreceiver/nullreceiver.md) left the 3.10 stream in October
+2026, when upstream `main` fixed both at source (#27129 and #27094); they
+remain on 3.9 until `lts-3.9` backports those fixes.
 
 | Feature | Description | Streams | Kind | Repro | Flag |
 | ------- | ----------- | ------- | ---- | ----- | ---- |
@@ -56,8 +60,8 @@ reproductions so the diagnostic is recognisable when it next appears.
 | [literate](literate/literate.md) | Re-type literals through a `Literate` instance in scope | 3.9, 3.10 | feature | yes | `-Zliterate-literals` |
 | [macroalias](macroalias/macroalias.md) | Strip ordinary aliases when the macro-expansion check reveals opaques | 3.10 | bug fix | yes | always on |
 | [modulepath](modulepath/modulepath.md) | Give an inline accessor for a module the module's `TermRef` | 3.10 | bug fix | yes | always on |
-| [nullreceiver](nullreceiver/nullreceiver.md) | Widen bottom-typed call receivers to Object in the backend | 3.9, 3.10 | bug fix (crash) | yes | always on |
-| [permitlazy](permitlazy/permitlazy.md) | Lazy resolution of permitted subclasses in classfile parsing | 3.9, 3.10 | bug fix | yes | always on |
+| [nullreceiver](nullreceiver/nullreceiver.md) | Widen bottom-typed call receivers to Object in the backend | 3.9 | bug fix (crash) | yes | always on |
+| [permitlazy](permitlazy/permitlazy.md) | Lazy resolution of permitted subclasses in classfile parsing | 3.9 | bug fix | yes | always on |
 | [proxyskolem](proxyskolem/proxyskolem.md) | No skolem-typed inline argument proxies under capture checking | 3.9, 3.10 | bug fix | yes (2: `repro`, `repro2`) | always on |
 | [prunecomplete](prunecomplete/prunecomplete.md) | Do not force completion when filtering prunable inline methods | 3.10 | bug fix (crash) | FIXME | always on |
 | [retainbounds](retainbounds/retainbounds.md) | Sanitize `TypeBounds` in `@retains` arguments to the top capability | 3.9, 3.10 | bug fix | yes | `-Zretains-bounds` |

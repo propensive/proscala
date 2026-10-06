@@ -51,3 +51,15 @@ Everything downstream — the invocation opcode selection and the emitted descri
 ## Relevance to Soundness
 
 Soundness is compiled with exactly the combination that triggers this: `-Yexplicit-nulls` is set globally (`build.mill`, line 106), and capture checking is being rolled out module-by-module via the `cc(options)` helper that appends `-Ycc-new` (`build.mill`, around line 123). Soundness code also does heavy null flow typing at Java-interop boundaries — for example `lib/turbulence/src/core/turbulence.Manifold.scala` matches queue results against `case null =>` and branches on `if error0 == null`, and `lib/fulminate/src/core/fulminate_core.scala` flow-types `position == null`. In branches like these, any universal-member call (`hashCode`, `toString`, logging a value) on the narrowed-to-`Null` binding sends a bottom-typed receiver into the backend, which crashed the compiler before this patch.
+
+## Upstream status
+
+Fixed upstream in October 2026 by #27094 ("Fix backend crash for
+`null.hashCode`", `181885adf8`, closing #27093), which handles the problem one
+step earlier: when the qualifier's class is `Null` or `Nothing` the backend now
+passes no specific receiver, so `genCallMethod` falls back to the method's
+owner (`Object` for the universal members). Upstream guards only the
+`Apply`/`Select` path where this patch guarded every `genCallMethod` caller,
+but the reproduction above compiles on an unpatched `main`, so the 3.10
+stream no longer carries the patch; 3.9 keeps it until `lts-3.9` backports
+the fix.

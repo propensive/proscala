@@ -75,3 +75,11 @@ class Method(model: jlc.MethodModel):
 ```
 
 Both referencing `MethodModel` and exhaustivity-checking matches over the sealed `CodeElement` hierarchy require the compiler to parse these JDK classfiles and their `PermittedSubclasses` attributes; without this patch, compiling Mandible fails with the cyclic-reference error above.
+
+## Upstream status
+
+Fixed upstream in October 2026 by #27129 ("ClassfileParser: Compute permitted
+symbols lazily to avoid cyclic refs", `9fdd008071`, closing #27108), which
+makes exactly this change — `getClassSymbol(child.name)` moves inside the
+`deferredSymAndTree` thunk. The 3.10 stream therefore no longer carries the
+patch; 3.9 keeps it until `lts-3.9` backports the fix.

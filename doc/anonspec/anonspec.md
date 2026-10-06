@@ -53,3 +53,13 @@ One of three defects this stream carries from #26156's unconditional
 machinery (see [prunecomplete](../prunecomplete/prunecomplete.md) for the
 completion-forcing one); like it, an upstream candidate. 3.9 predates #26156
 and needs no patch.
+
+## Upstream status
+
+Upstream #26842 (September 2026) removed the `.get`, so the crash itself is
+fixed on `main`. Its replacement, however, is
+`.map(_.hasSpecializedParams).nonEmpty`, which is just `isDefined`: every
+specialization candidate now counts as specialized, whether or not it has
+specialized parameters. This patch therefore still differs from upstream — it
+keeps the original `hasSpecializedParams` predicate via `exists` — and remains
+an upstream candidate for that correction.
