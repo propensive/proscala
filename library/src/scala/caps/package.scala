@@ -102,6 +102,15 @@ trait Separate extends Stateful, ExclusiveCapability
 @experimental
 trait Unscoped extends ExclusiveCapability, Classifier
 
+/** The shared counterpart of `Unscoped`: a marker trait for shared capabilities that are not
+ *  subject to scoping restrictions. A capability so classified may be aliased freely, as any
+ *  `SharedCapability`, and may also be created at any level — the case of an ambient effect
+ *  strategy that captures nothing scoped and is handed out by a polymorphic given at its use
+ *  site. `Unscoped` itself extends `ExclusiveCapability`, so the two cannot be combined.
+ */
+@experimental
+trait SharedUnscoped extends SharedCapability, Classifier
+
 @experimental
 trait Mutable extends Stateful, Unscoped
 
