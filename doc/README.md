@@ -66,10 +66,12 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [prunecomplete](prunecomplete/prunecomplete.md) | Do not force completion when filtering prunable inline methods | 3.10 | bug fix (crash) | FIXME | always on |
 | [retainbounds](retainbounds/retainbounds.md) | Sanitize `TypeBounds` in `@retains` arguments to the top capability | 3.9, 3.10 | bug fix | yes | `-Zretains-bounds` |
 | [returnavoid](returnavoid/returnavoid.md) | Avoid only pattern-bound term symbols in rechecked returns | 3.9, 3.10 | bug fix | yes | always on |
+| [rootclassify](rootclassify/rootclassify.md) | Give a differently-classified fresh capability its own root | 3.9 | bug fix | yes | always on |
 | [sambox](sambox/sambox.md) | Capability-implied captures on SAM anonymous-class type members | 3.9, 3.10 | bug fix | yes | always on |
 | [samstateful](samstateful/samstateful.md) | Read-only views of constant method-result capture sets | 3.9 | bug fix | yes | always on |
 | [searchdiag](searchdiag/searchdiag.md) | Preserve an `@internal.diagnostic` candidate's errors as the search-failure message | 3.9, 3.10 | feature | yes | `-Zdiagnostic-givens` |
 | [semdiag](semdiag/semdiag.md) | `-Zsemantic-diagnostics`: XML error output with TASTy-encoded types | 3.9, 3.10 | feature | n/a | `-Zsemantic-diagnostics` |
+| [sharedunscoped](sharedunscoped/sharedunscoped.md) | A shared, level-exempt classifier: `caps.SharedUnscoped` | 3.9 | feature | yes | always on |
 | [skolemcap](skolemcap/skolemcap.md) | Widen skolems in retains sets to the top capability | 3.9, 3.10 | bug fix | yes (needs Soundness classpath) | `-Zretains-skolems` |
 | [smap](smap/smap.md) | `-Zinline-source-maps`: JSR-45 SMAP attributes mapping inlined code to its source files | 3.9, 3.10 | feature | n/a | `-Zinline-source-maps` |
 | [splicealias](splicealias/splicealias.md) | Give spliced type binders their spliced type as info | 3.9 | bug fix | yes | always on |
