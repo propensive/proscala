@@ -2,7 +2,7 @@
 
 Adds `scala.caps.SharedUnscoped`, the shared counterpart of `caps.Unscoped`, so that a capability may be both freely aliased (exempt from separation checking) and created at any level (exempt from the scoping check that `Unscoped` exempts exclusive capabilities from).
 
-Always on: the patch adds a library trait and widens three classifier tests to recognise it; code that does not mention the trait is unaffected.
+Always on: the patch adds a library trait and widens the classifier tests to recognise it; code that does not mention the trait is unaffected. The trait ships in the supplementary `proscala-library` jar (beside `Spreadable` and `Literate`), not in `scala-library`, which stays byte-identical to upstream's; the compiler looks it up leniently (`getClassIfDefined`), so a classpath without the jar simply has no capability classified this way.
 
 ## Context
 
@@ -35,7 +35,7 @@ With `Throwing[E] extends Tactic[E], caps.Unscoped` (and `Tactic` exclusive) the
 
 ## The solution
 
-A new marker trait in `scala.caps`:
+A new marker trait in `scala.caps`, defined in `library-proscala/src/scala/caps/SharedUnscoped.scala`:
 
 ```scala
 /** The shared counterpart of `Unscoped`: a marker trait for shared capabilities that are not
