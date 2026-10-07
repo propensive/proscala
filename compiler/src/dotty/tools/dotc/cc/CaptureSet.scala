@@ -1073,8 +1073,14 @@ object CaptureSet:
           def fail = i"attempting to add $elem to $this"
 
           def hideIn(ac: LocalCap): Boolean =
-            assert(elem.tryClassifyAs(ac.hiddenSet.classifier), fail)
-            if isRefining then
+            if !elem.tryClassifyAs(ac.hiddenSet.classifier) then
+              // The root is already classified incompatibly with `elem` (e.g. an Unscoped
+              // root and a SharedCapability element): `elem` cannot be hidden here and
+              // gets a root of its own below. This used to be an assertion, which made a
+              // capture set mixing differently-classified fresh capabilities a crash.
+              capt.println(i"classifier mismatch when subsuming in a LocalCap, cannot add $elem to $ac / $fail")
+              false
+            else if isRefining then
               // If a variable is added by addCaptureRefinements in a synthetic
               // refinement of a class type, don't do level checking. The problem is
               // that the variable might be matched against a type that does not have
