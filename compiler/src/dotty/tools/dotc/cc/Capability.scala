@@ -215,7 +215,7 @@ object Capabilities:
     def acceptsLevelOf(ref: Capability)(using Context): Boolean =
       if ccConfig.useLocalCapLevels && !CCState.collapseLocalCaps then
         ccOwner.isContainedIn(ref.levelOwner.widenOwner(skipModules = true))
-        || classifier.derivesFrom(defn.Caps_Unscoped)
+        || classifier.isUnscopedClassifier
       else ref.core match
         case ResultCap(_) | _: ParamRef => false
         case _ => true
@@ -566,7 +566,7 @@ object Capabilities:
           case prefix: ThisType if setOwner.isTerm && setOwner.owner == prefix.cls =>
             setOwner
           case prefix: Capability => prefix.computeOwner(mapUnscoped)
-          case NoPrefix if mapUnscoped && classifier.derivesFrom(defn.Caps_Unscoped) =>
+          case NoPrefix if mapUnscoped && classifier.isUnscopedClassifier =>
             ctx.owner.topLevelClass
               .orElse: // fallback needed if ctx.owner is a toplevel module val
                 assert(ctx.owner.is(ModuleVal))
@@ -1271,7 +1271,7 @@ object Capabilities:
     override def mapCapability(c: Capability, deep: Boolean) = c match
       case c: LocalCap =>
         if variance >= 0 then
-          if sym.isAnonymousFunction && c.classifier.derivesFrom(defn.Caps_Unscoped) then
+          if sym.isAnonymousFunction && c.classifier.isUnscopedClassifier then
             c
           else if sym.exists && !c.ccOwner.isContainedIn(sym) then
             //println(i"not mapping $c with ${c.ccOwner} in $sym")

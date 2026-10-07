@@ -815,6 +815,12 @@ extension (sym: Symbol) {
       // too annoying. This is a hole since a default getter's result type
       // might leak into a type variable.
 
+  /** Does `sym`, a classifier, exempt the capabilities it classifies from level checking?
+   *  True for `Unscoped` and for its shared counterpart `SharedUnscoped`.
+   */
+  def isUnscopedClassifier(using Context): Boolean =
+    sym.derivesFrom(defn.Caps_Unscoped) || sym.derivesFrom(defn.Caps_SharedUnscoped)
+
   /** If `sym` is a method or a non-static inner class, a capture set
    *  representing the captured references of the environment associated with `sym`.
    */

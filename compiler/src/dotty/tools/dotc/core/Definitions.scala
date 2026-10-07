@@ -1042,6 +1042,7 @@ class Definitions {
     @tu lazy val Caps_Control: ClassSymbol = requiredClass("scala.caps.Control")
     @tu lazy val Caps_Stateful: ClassSymbol = requiredClass("scala.caps.Stateful")
     @tu lazy val Caps_Unscoped: ClassSymbol = requiredClass("scala.caps.Unscoped")
+    @tu lazy val Caps_SharedUnscoped: ClassSymbol = requiredClass("scala.caps.SharedUnscoped")
     @tu lazy val Caps_Mutable: ClassSymbol = requiredClass("scala.caps.Mutable")
     @tu lazy val Caps_Read: ClassSymbol = requiredClass("scala.caps.Read")
     @tu lazy val Caps_CapSet: ClassSymbol = requiredClass("scala.caps.CapSet")
@@ -2068,7 +2069,7 @@ class Definitions {
   @tu lazy val ccExperimental: Set[Symbol] = Set(
     CapsModule, CapsModule.moduleClass, PureClass,
     /* Caps_Classifier, Caps_SharedCapability, Caps_Control, -- already stable */
-    Caps_ExclusiveCapability, Caps_Mutable, Caps_Read, Caps_Unscoped, Caps_Stateful,
+    Caps_ExclusiveCapability, Caps_Mutable, Caps_Read, Caps_Unscoped, Caps_SharedUnscoped, Caps_Stateful,
     Caps_Shared, RequiresCapabilityAnnot,
     Caps_any, Caps_fresh, Caps_CapSet, Caps_ContainsTrait, Caps_ContainsModule, Caps_ContainsModule.moduleClass,
     ConsumeAnnot, UseAnnot, ReserveAnnot, AssumeSafeAnnot, RejectSafeAnnot,
