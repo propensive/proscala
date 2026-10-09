@@ -106,7 +106,7 @@ lines and `#` comments ignored and order irrelevant. The lists differ between
 streams: a patch only exists where it is needed, and some are upstreamed or become
 obsolete in a later stream.
 
-    features/3.9    35 patches   carries castbox, depset, splicealias, samstateful, staleread, virtualdir, rootclassify, sharedunscoped
+    features/3.9    36 patches   carries castbox, depset, splicealias, samstateful, staleread, virtualdir, rootclassify, sharedunscoped, classifiermeet
     features/3.10   33 patches   adds anonspec, anykindcap, boolunapply, integratemap, macroalias, modulepath, prunecomplete, unioncaps; drops those six, and nullreceiver and permitlazy (fixed upstream)
 
 Twenty-four patches are common to both streams.
