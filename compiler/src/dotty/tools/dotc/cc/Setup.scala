@@ -1123,14 +1123,21 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
   // ------ Checks to run at Setup ----------------------------------------
 
   private def checkClassifiedInheritance(cls: ClassSymbol)(using Context): Unit =
+    val classifiers = cls.baseClasses.filter(_.isClassifiedCapabilityClass).distinct
+
+    // Two unrelated classifiers are acceptable when another classifier among the base classes
+    // derives from both: a declared meet, which `classifier` then picks as the least classifier.
+    def met(c: ClassSymbol, c1: ClassSymbol): Boolean =
+      classifiers.exists(m => m.derivesFrom(c) && m.derivesFrom(c1))
+
     def recur(cs: List[ClassSymbol]): Unit = cs match
       case c :: cs1 =>
         for c1 <- cs1 do
-          if !c.derivesFrom(c1) && !c1.derivesFrom(c) then
+          if !c.derivesFrom(c1) && !c1.derivesFrom(c) && !met(c, c1) then
             report.error(em"$cls inherits two unrelated classifier traits: $c and $c1", cls.srcPos)
         recur(cs1)
       case Nil =>
-    recur(cls.baseClasses.filter(_.isClassifiedCapabilityClass).distinct)
+    recur(classifiers)
 
   // ------ Checks to run after main capture checking --------------------------
 
