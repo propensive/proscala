@@ -17,9 +17,9 @@
 #
 # The exact upstream commits are written into the tag's annotation, so the
 # release workflow builds what was checked here even after main has moved on.
-# Pushing the tag runs .github/workflows/release.yml, which builds every target,
-# and only when all have built, creates the GitHub release and publishes to Maven
-# Central. Maven Central is append-only: the tag is the point of no return.
+# Pushing the tag runs .github/workflows/release.yml, which builds every target
+# and, only when all have built, creates the GitHub release with every target's
+# artefacts. Releases go to GitHub Releases only.
 #
 # It refuses unless HEAD is origin/main, the checkout has no uncommitted changes
 # to tracked files, bin/proscala-check passes, the version is greater than every

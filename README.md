@@ -27,6 +27,7 @@ for a snapshot of upstream `main`, under versions that name both:
 ```scala
 scalaOrganization := "dev.propensive"
 scalaVersion      := "3.10.0-proscala-1.0.0"   // Proscala 1.0.0 on Scala 3.10.0
+// and a resolver for the release's Maven repository: see Releases
 ```
 
 Version numbers follow semantic versioning, as [AGENTS.md](AGENTS.md) defines
@@ -106,21 +107,33 @@ compiler and third-party dependencies from Maven Central (cached under
 `make deps` downloads dependencies only, `make tarball` bundles the published jars
 into a single `release/3.10/proscala-<version>.tar.gz`, `make release-jars` copies
 each of them to `release/3.10/jars/<artifactId>-<version>.jar` under its Maven
-name, and `make clean` removes the build.
+name, `make maven-repo` zips a Maven repository of them with their POMs, and
+`make clean` removes the build.
 
 Releases
 --------
 
 Releases are published automatically to
-[GitHub Releases](https://github.com/propensive/proscala/releases) and Maven
-Central. A release is a tag `v<x.y.z>` on `main`, pushed by
+[GitHub Releases](https://github.com/propensive/proscala/releases), and only
+there. A release is a tag `v<x.y.z>` on `main`, pushed by
 `bin/proscala-release <x.y.z>`, which records the exact upstream commits it is
 for. A GitHub Actions workflow then builds every target — each Scala release
 from 3.9.0 on, and upstream `main` as it was when the tag was cut — and, only
 once all have built, attaches each target's `proscala-<version>.tar.gz` (a
 top-level `lib/` of everything Proscala builds plus the Scala.js / scala-wasm
-runtime) and each published jar under its Maven name to the GitHub release, and
-publishes the same jars to Maven Central.
+runtime), each jar under its Maven name, and `proscala-<version>-maven.zip`, a
+Maven repository of them, to the GitHub release. Unzipped and named as a
+resolver, that repository lets a build use the fork in place of Scala:
+
+```scala
+val proscala = file("/path/to/proscala-repo")   // the unzipped proscala-<version>-maven.zip
+resolvers         += "proscala" at proscala.toURI.toString
+scalaOrganization := "dev.propensive"
+scalaVersion      := "3.10.0-proscala-1.0.0"
+// sbt also wants these two, which Proscala does not provide as it expects:
+excludeDependencies += "dev.propensive" % "scaladoc_3"   // no scaladoc is built
+scalaCompilerBridgeBinaryJar := Some(proscala / s"dev/propensive/scala3-sbt-bridge/${scalaVersion.value}/scala3-sbt-bridge-${scalaVersion.value}.jar")
+```
 
 Contributing
 ------------

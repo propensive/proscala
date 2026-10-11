@@ -7,12 +7,13 @@ name: Release
 # with <version> = <scala version>-proscala-<x.y.z>. This workflow:
 #
 #   plan     reads the targets (or, run by hand, works them out for a dry run)
-#   build    for each target, in parallel: builds the tree and the distribution,
-#            and the signed Maven Central bundle — nothing leaves the runner yet
-#   publish  only once every target has built: creates the GitHub release with
-#            every tarball and jar, then uploads every bundle to Maven Central
+#   build    for each target, in parallel: builds the tree, the distribution and
+#            the Maven-layout repository — nothing leaves the runner yet
+#   publish  only once every target has built: creates the GitHub release, with
+#            every target's tarball, jars and repository
 #
-# So a release either publishes for all its targets or for none. Run by hand
+# Releases go to GitHub Releases only. A release publishes for all its targets
+# or for none. Run by hand
 # (workflow_dispatch) it is a dry run: it plans and builds, and publishes nothing.
 on:
   push:
@@ -82,41 +83,19 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      # Checked before anything slow happens: a release that builds for an hour
-      # and then cannot sign should stop in seconds instead.
-      - name: Import the signing key
-        if: needs.plan.outputs.dry == 'false'
-        env:
-          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        run: |
-          set -euo pipefail
-          [ -n "${GPG_PRIVATE_KEY:-}" ] && [ -n "${GPG_PASSPHRASE:-}" ] \
-            || { echo "release: GPG_PRIVATE_KEY / GPG_PASSPHRASE secrets are missing" >&2; exit 1; }
-          printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --quiet --import
-          printf 'release' | gpg --batch --yes --pinentry-mode loopback \
-            --passphrase "$GPG_PASSPHRASE" --armor --detach-sign --output /dev/null
-          echo "Signing key imported and verified."
-
       # The commit, not the spec: `main` has moved on since the tag was cut.
       - name: Build the source tree
         run: bin/proscala-tree "${{ matrix.commit }}" worktrees/dist
 
       - name: Build the distribution
         working-directory: worktrees/dist
-        env:
-          PROSCALA_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
           set -euo pipefail
           v="${{ matrix.version }}"
           make BRANCH=dist VERSION="$v" clean
-          make BRANCH=dist VERSION="$v" tarball release-jars
-          if [ "${{ needs.plan.outputs.dry }}" = false ]; then
-            make BRANCH=dist VERSION="$v" publish-bundle
-          fi
-          mkdir -p ../../out/assets ../../out/bundles
-          cp "release/dist/proscala-$v.tar.gz" release/dist/jars/*.jar ../../out/assets/
-          if [ -f "release/dist/proscala-$v-bundle.zip" ]; then cp "release/dist/proscala-$v-bundle.zip" ../../out/bundles/; fi
+          make BRANCH=dist VERSION="$v" tarball release-jars maven-repo
+          mkdir -p ../../out
+          cp "release/dist/proscala-$v.tar.gz" "release/dist/proscala-$v-maven.zip" release/dist/jars/*.jar ../../out/
 
       - uses: actions/upload-artifact@v4
         with:
@@ -131,21 +110,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check the Central credentials
-        env:
-          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
-          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
-        run: |
-          [ -n "${SONATYPE_USERNAME:-}" ] && [ -n "${SONATYPE_PASSWORD:-}" ] \
-            || { echo "release: SONATYPE_USERNAME / SONATYPE_PASSWORD secrets are missing" >&2; exit 1; }
-
       - uses: actions/download-artifact@v4
         with:
           path: built
           merge-multiple: true
 
-      # The tarballs and every published jar, under their Maven names, in one
-      # command, so the release can never exist with only some of them attached.
+      # Every target's tarball, jars (under their Maven names) and Maven-layout
+      # repository, in one command, so the release can never exist with only
+      # some of them attached.
       - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -160,27 +132,20 @@ jobs:
             echo '| Scala | sbt `scalaVersion` (with `scalaOrganization := "dev.propensive"`) |'
             echo '| --- | --- |'
             git tag -l --format='%(contents)' "$tag" | awk '$1 == "target" { printf "| %s (`%s`) | `%s` |\n", $2, substr($3, 1, 10), $4 }'
+            echo
+            echo 'Each `proscala-<version>-maven.zip` is a Maven repository of that build. Unzip them into one'
+            echo 'directory and use it in sbt with:'
+            echo
+            echo '```scala'
+            echo 'val proscala = file("/path/to/proscala-repo")   // the unzipped proscala-<version>-maven.zip'
+            echo 'resolvers         += "proscala" at proscala.toURI.toString'
+            echo 'scalaOrganization := "dev.propensive"'
+            echo 'scalaVersion      := "<version from the table>"'
+            echo '// sbt also wants these two, which Proscala does not provide as it expects:'
+            echo 'excludeDependencies += "dev.propensive" % "scaladoc_3"   // no scaladoc is built'
+            echo 'scalaCompilerBridgeBinaryJar := Some(proscala / s"dev/propensive/scala3-sbt-bridge/${scalaVersion.value}/scala3-sbt-bridge-${scalaVersion.value}.jar")'
+            echo '```'
           } > notes.md
           gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "Proscala ${{ needs.plan.outputs.version }}" --notes-file notes.md \
-            built/assets/*
-
-      # Last, because Maven Central is append-only. Each target is its own
-      # deployment; a failure here can be retried for the same bundles by
-      # re-running this job.
-      - name: Publish to Maven Central
-        env:
-          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
-          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
-        run: |
-          set -euo pipefail
-          shopt -s failglob
-          token=$(printf '%s:%s' "$SONATYPE_USERNAME" "$SONATYPE_PASSWORD" | base64 | tr -d '\n')
-          for zip in built/bundles/*.zip; do
-            v="$(basename "$zip" -bundle.zip)"; v="${v#proscala-}"
-            echo ">> uploading dev.propensive-proscala:$v"
-            curl --fail-with-body --silent --show-error -X POST \
-              -H "Authorization: Bearer $token" -F "bundle=@$zip" \
-              "https://central.sonatype.com/api/v1/publisher/upload?name=dev.propensive-proscala:$v&publishingType=AUTOMATIC"
-            echo
-          done
+            built/*
