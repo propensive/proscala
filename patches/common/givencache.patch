@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 8 Aug 2026 12:28:58 +0200
+Subject: Keep given aliases cached when capture checking is enabled
+
+UncacheGivenAliases demotes a stable `lazy given val` alias to a def, giving
+it an ExprType underlying. Under capture checking the val is a stable,
+trackable reference that may already be named in capture sets; after the
+demotion those @retains elements refer to a method, which is not a legal
+capability, and cc Setup crashes with IllegalCaptureRef when a later
+dependent-summon cast forces the set. Reproduced deterministically from
+3.9.0-RC5 (whose new dependent-summon casts force such sets); the demotion is
+only an optimization, so it is skipped when cc is enabled anywhere.
+
+Developed with LLM assistance (Claude); 10-line reproduction in the feature
+documentation.
+
+Proscala-Patch: givencache
+---
+ .../dotty/tools/dotc/transform/UncacheGivenAliases.scala | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/compiler/src/dotty/tools/dotc/transform/UncacheGivenAliases.scala b/compiler/src/dotty/tools/dotc/transform/UncacheGivenAliases.scala
+index 6e02ea7c227c98cd4c4cd6fd407071ab75b1a2bf..5980887a3828529ab526705c1a9b6cd0a398d04a 100644
+--- a/compiler/src/dotty/tools/dotc/transform/UncacheGivenAliases.scala
++++ b/compiler/src/dotty/tools/dotc/transform/UncacheGivenAliases.scala
+@@ -8,6 +8,7 @@ import core.Contexts.*
+ import core.Types.*
+ import core.Flags.*
+ import ast.tpd
++import config.Feature
+ 
+ object UncacheGivenAliases:
+   val name: String = "uncacheGivenAliases"
+@@ -53,7 +54,13 @@ class UncacheGivenAliases extends MiniPhase with IdentityDenotTransformer:
+    */
+   override def transformValDef(tree: ValDef)(using Context): Tree =
+     val sym = tree.symbol
+-    if sym.isAllOf(LazyGiven) && !needsCache(sym, tree.rhs) then
++    // Under capture checking, a stable given alias val is a trackable reference that
++    // may already be named in capture sets ({x} in a retains annotation). Demoting it
++    // to a def gives it an ExprType underlying, which is no longer a legal capability
++    // and crashes cc Setup (IllegalCaptureRef) when a later cast or summon forces the
++    // set. Skip the optimization when cc is on anywhere; semantics are unchanged.
++    if sym.isAllOf(LazyGiven) && !needsCache(sym, tree.rhs)
++        && !Feature.ccEnabledSomewhere then
+       sym.copySymDenotation(
+         initFlags = sym.flags &~ Lazy | Method,
+         info = ExprType(sym.info))

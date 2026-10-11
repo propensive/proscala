@@ -1,0 +1,102 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 4 Aug 2026 09:33:56 +0200
+Subject: Do not constrain type arguments by an AnyKind bound's capture set
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+`recheckTypeArg` propagates a formal type parameter's bound capture set onto the
+argument, so `mkAbs[Ref^{r6}]` is rejected when the parameter is declared
+`[A <: Any^{}]`. The guard exempts bounds that say nothing about captures —
+`Any` and `Singleton` — but not `AnyKind`, whose capture set is empty for the
+same reason `Any`'s is: it is the top of the kind lattice, not a statement about
+capabilities.
+
+The consequence is that any capturing type argument to an `AnyKind`-bounded
+parameter is checked against `{}` and rejected:
+
+    def anyKindBound[T <: AnyKind]: Unit = ()
+    anyKindBound[Int => Int]   // error: Reference `any` is not included in
+                               // the allowed capture set {} of the type
+                               // parameter bound scala.AnyKind
+    def anyBound[T]: Unit = ()
+    anyBound[Int => Int]       // fine
+
+`quoted.Type` and `TypeRepr.of` are declared `[T <: AnyKind]`, so this breaks
+every capture-checked macro that mentions a function type reflectively —
+`TypeRepr.of[value => value2]` and friends. Soundness's `mercator` hits it four
+times building a `MethodType` for `map`.
+
+Adding `AnyKind` to the exemptions restores that. The bound `Any^{}` still
+constrains as intended: `tests/neg-custom-args/captures/capset-bounds.scala`,
+added by the commit that introduced this check, still reports both of its
+expected errors unchanged.
+
+Introduced upstream in 196eada95d ("Propagate capsets of type parameter bounds
+into argument capsets", 2026-07-14), which landed with the note "One failing
+test, to be checked". Affects 3.10 only; 3.9 predates the check.
+
+Developed with LLM assistance (Claude, Anthropic). Verified by building the
+compiler, reducing the failure to three lines, confirming the neg test that
+introduced the check is unaffected, and rebuilding Soundness's mercator module.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+Proscala-Patch: anykindcap
+---
+ .../src/dotty/tools/dotc/cc/CheckCaptures.scala | 10 +++++++---
+ .../captures/anykind-capset.scala               | 17 +++++++++++++++++
+ 2 files changed, 24 insertions(+), 3 deletions(-)
+ create mode 100644 tests/pos-custom-args/captures/anykind-capset.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala b/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
+index 0cfeb6d3485d87f167ee3009569ebd4c26aa07c4..eb853450a595628c19befb175bc568be473bff58 100644
+--- a/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
++++ b/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
+@@ -1071,6 +1071,8 @@ class CheckCaptures extends Recheck, SymTransformer:
+     /** Check that capture set of type argument subcaptures capture set of bounds.
+      *  We don't check if
+      *   - the bound is exactly any since that is capture polymorphic top, or
++     *   - the bound is AnyKind, which is the top of the kind lattice and so says
++     *     nothing about captures, exactly as Any says nothing, or
+      *   - the bound is FromJavaObject (the `Object` bound of Java type parameters),
+      *     which is the capture polymorphic top for Java interop, or
+      *   - the bound is singleton, since that's not a "real" bound, or
+@@ -1084,9 +1086,11 @@ class CheckCaptures extends Recheck, SymTransformer:
+       val argRefs = argType.captureSet
+       val hiBound = formal.bounds.hi
+       val boundRefs = hiBound.captureSet
+-      // Is `hiBound` exactly `Any`, or `FromJavaObject` (Java's `Object` bound)?
+-      // These are capture polymorphic top types, so they do not constrain arguments.
+-      val isPolymorphicTop = hiBound.isExactlyAny || hiBound.isFromJavaObject
++      // Is `hiBound` exactly `Any`, `AnyKind`, or `FromJavaObject` (Java's `Object`
++      // bound)? These are capture polymorphic top types, so they do not constrain
++      // arguments.
++      val isPolymorphicTop =
++        hiBound.isExactlyAny || hiBound.isRef(defn.AnyKindClass) || hiBound.isFromJavaObject
+       val canCheck =
+         !isPolymorphicTop && !hiBound.isRef(defn.SingletonClass)
+         && !boundRefs.elems.exists:
+diff --git a/tests/pos-custom-args/captures/anykind-capset.scala b/tests/pos-custom-args/captures/anykind-capset.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..ec38fea85a14013cd9b144fa09a09b600b08ae95
+--- /dev/null
++++ b/tests/pos-custom-args/captures/anykind-capset.scala
+@@ -0,0 +1,17 @@
++import language.experimental.captureChecking
++
++// An `AnyKind`-bounded type parameter must not constrain its argument's capture
++// set: `AnyKind` is the top of the kind lattice, so it says nothing about
++// captures, exactly as `Any` says nothing. `Type`/`TypeRepr.of` are declared
++// this way, so without this a capture-checked macro cannot mention a function
++// type reflectively.
++object Test:
++  def anyKindBound[T <: AnyKind]: Unit = ()
++  def anyBound[T]: Unit = ()
++
++  def impureViaAnyKind = anyKindBound[Int => Int]
++  def impureViaAny = anyBound[Int => Int]
++
++  def reflected(using q: quoted.Quotes) =
++    import q.reflect.*
++    TypeRepr.of[Int => Int]

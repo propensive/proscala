@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Mon, 6 Jul 2026 15:19:31 +0200
+Subject: Keep root capabilities global in type alias infos
+
+Setup.transformExplicitType localized caps.any to a LocalCap owned by the
+symbol whose info is being transformed, including for type aliases. A type
+alias's own info is not consulted by capture-checked units (Setup expands
+aliases at each using symbol, localizing roots per use site), but it is
+exposed when the signature of a symbol from a unit that was NOT capture
+checked mentions the alias: such signatures are fluidified without
+following aliases, so rechecking dealiases late and meets a capability at
+the alias's own (package-)level, which no use-site capability can flow
+into. Applying a method of a non-capture-checked module with a result
+type like `Tactic[E]^ ?=> T` (spelled through an alias such as
+`raises`) then fails with:
+
+    Found:    (contextual$N : Tactic[E])
+    Required: Tactic[E]^{any}
+    ... not visible from any in type raises
+
+Keeping the root global in alias infos lets recheck freshen it per
+application, matching the behaviour of capture-checked callees.
+
+Diagnostic wording changes in three neg tests (boundschecks2,
+boundschecks3, i19330): notes now print 'the root capability caps.any'
+instead of 'a root capability in the type of type T'; the errors
+themselves are unchanged.
+
+Enabled by `-Z:alias-captures`; without it, upstream's code runs at every site this
+patch touches.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: aliascap
+---
+ compiler/src/dotty/tools/dotc/cc/Setup.scala | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/Setup.scala b/compiler/src/dotty/tools/dotc/cc/Setup.scala
+index 8511945c57b15d049349640158d63170cde8a581..cc408977422129d170f27869b568507f3f88a4e8 100644
+--- a/compiler/src/dotty/tools/dotc/cc/Setup.scala
++++ b/compiler/src/dotty/tools/dotc/cc/Setup.scala
+@@ -576,6 +576,17 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
+             |following a function arrow such as `=>` or `->`.""")
+ 
+     if initialVariance < 0 then tp2
++    else if sym.isAliasType && config.Proscala.enabled(config.Proscala.AliasCaptures) then
++      // Keep `caps.any` global in a type alias's own info. Capture-checked units expand
++      // aliases during Setup of each USING symbol, localizing root capabilities per use
++      // site, so the alias's own info is not consulted there. It is consulted when the
++      // signature of a symbol from a unit that was NOT capture-checked mentions the alias:
++      // such signatures are fluidified without following aliases, so rechecking dealiases
++      // late and would expose a LocalCap owned by the alias itself — a capability at the
++      // alias's own (package-)level that no use-site capability can flow into. Leaving the
++      // root global here lets recheck freshen it per application, matching the behaviour
++      // of capture-checked callees (mixed-compilation interop).
++      tp2
+     else globalCapToLocal(tp2, Origin.InDecl(sym))
+   end transformExplicitType
+ 

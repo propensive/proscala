@@ -1,0 +1,172 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Mon, 6 Jul 2026 17:07:21 +0200
+Subject: Treat context-result closure params as method-level in level checks
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+A method whose result type stacks context functions gets its body
+elaborated as a chain of nested closures, and erasure flattens those
+closures' parameters into the method's own parameter list
+(ContextFunctionResults). Capture checking, however, level-checked
+references bound inside the chain against the closures' own anonfun
+symbols, so the inner layer's body could not reference the outer
+layer's parameter: the method-result fresh rejected it:
+
+    Reference `contextual$1` is not included in the allowed capture
+    set {any} of an enclosing function literal ...
+    where: any is a root capability in the result type of method f
+
+for e.g.
+
+    def f(): (A^) ?=> (B^) ?=> Int = ... summon[A] ...
+
+while the equivalent single-layer method compiles. CheckCaptures now
+registers the closures counted by ContextFunctionResults
+.contextResultCount when rechecking a method, and acceptsLevelOf maps
+a reference whose level owner is such a closure up to the method —
+aligning level checking with the post-erasure reality.
+
+The neg test erased-methods2.scala (whose header notes it 'was a neg
+test before') encodes exactly this limitation and now compiles; its
+foo9a/foo10a mirror the safer-exceptions stacked-CanThrow pattern that
+is sound under erasure flattening.
+
+Proscala-Patch: ctxresult
+---
+ .../src/dotty/tools/dotc/cc/CCState.scala     |  9 +++++++++
+ .../src/dotty/tools/dotc/cc/Capability.scala  | 12 +++++++++++-
+ .../src/dotty/tools/dotc/cc/CaptureSet.scala  |  7 +++++++
+ .../dotty/tools/dotc/cc/CheckCaptures.scala   | 19 ++++++++++++++++++-
+ .../captures/erased-methods2.scala            |  6 +++---
+ 5 files changed, 48 insertions(+), 5 deletions(-)
+ rename tests/{neg-custom-args => pos-custom-args}/captures/erased-methods2.scala (87%)
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/CCState.scala b/compiler/src/dotty/tools/dotc/cc/CCState.scala
+index 6ee581d76f5f8444fc83a4a4fc5c186e2a53d61b..59e2e4d280bc5773a8523fa863f451485942d05d 100644
+--- a/compiler/src/dotty/tools/dotc/cc/CCState.scala
++++ b/compiler/src/dotty/tools/dotc/cc/CCState.scala
+@@ -16,6 +16,15 @@ import Capabilities.Capability
+ class CCState:
+   import CCState.*
+ 
++  /** Maps the anonymous functions that implement a method's context-function result
++   *  chain (the closures counted by `ContextFunctionResults.contextResultCount`) to
++   *  that method. Erasure flattens these closures' parameters into the method's own
++   *  parameter list, so for level-checking purposes references bound inside the chain
++   *  are treated as being at the method's level. Populated by
++   *  `CheckCaptures.recheckDefDef`; consulted by `Capability.acceptsLevelOf`.
++   */
++  val contextResultClosures: EqHashMap[Symbol, Symbol] = EqHashMap()
++
+   // ------ Error diagnostics -----------------------------
+ 
+   /** Warnings relating to upper approximations of capture sets with
+diff --git a/compiler/src/dotty/tools/dotc/cc/Capability.scala b/compiler/src/dotty/tools/dotc/cc/Capability.scala
+index 45ac62521accc722ebd180945a908626b0d8919f..7943b319723bc2cf87bec3786cadd9f547703f66 100644
+--- a/compiler/src/dotty/tools/dotc/cc/Capability.scala
++++ b/compiler/src/dotty/tools/dotc/cc/Capability.scala
+@@ -233,7 +233,17 @@ object Capabilities:
+         case _ =>
+           !ccConfig.useLocalCapLevels
+           || CCState.collapseLocalCaps
+-          || ccOwner.isContainedIn(ref.levelOwner.widenOwner(skipModules = true))
++          || {
++            // A reference bound inside a closure that implements a method's
++            // context-function result chain is at the method's level: erasure
++            // flattens those closures' parameters into the method's parameter list.
++            // See CCState.contextResultClosures.
++            val refLevel = ref.levelOwner
++            val adjustedLevel = ccState.contextResultClosures.lookup(refLevel) match
++              case meth: Symbol => meth
++              case null => refLevel
++            ccOwner.isContainedIn(adjustedLevel.widenOwner(skipModules = true))
++          }
+           || classifier.derivesFrom(defn.Caps_Unscoped)
+ 
+     /** Classify this LocalCap as `cls`, provided `isClassified` is still false.
+diff --git a/compiler/src/dotty/tools/dotc/cc/CaptureSet.scala b/compiler/src/dotty/tools/dotc/cc/CaptureSet.scala
+index 8b42bbe9abe90af96c5ec1beb2d408d605273057..a40efe04d454e0944ba696c714abae3bad0063d0 100644
+--- a/compiler/src/dotty/tools/dotc/cc/CaptureSet.scala
++++ b/compiler/src/dotty/tools/dotc/cc/CaptureSet.scala
+@@ -932,7 +932,14 @@ object CaptureSet:
+       case _ =>
+         if owner.exists then
+           val elemVis = elem.visibility
++          // A capability bound in a closure that implements a method's context-function
++          // result chain is at the method's level: erasure flattens those closures'
++          // parameters into the method's parameter list (see CCState.contextResultClosures).
++          val adjustedVis = ccState.contextResultClosures.lookup(elemVis) match
++            case meth: Symbol => meth
++            case null => elemVis
+           !elemVis.isProperlyContainedIn(owner)
++          || adjustedVis == owner
+           || nestedOK && elemVis.owner == owner
+         else true
+ 
+diff --git a/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala b/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
+index eb853450a595628c19befb175bc568be473bff58..da67b78d10ccea99f62ef6fcd283d15ada5ca301 100644
+--- a/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
++++ b/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
+@@ -18,7 +18,7 @@ import typer.ErrorReporting.err
+ import typer.ProtoTypes.{LhsProto, WildcardSelectionProto, SelectionProto}
+ import util.{SimpleIdentitySet, EqHashMap, EqHashSet, SrcPos, Property}
+ import util.chaining.tap
+-import transform.{Recheck, PreRecheck, CapturedVars}
++import transform.{Recheck, PreRecheck, CapturedVars, ContextFunctionResults}
+ import Recheck.*
+ import scala.collection.mutable
+ import CaptureSet.{withCaptureSetsExplained, IncludeFailure, MutAdaptFailure, VarState}
+@@ -1368,6 +1368,23 @@ class CheckCaptures extends Recheck, SymTransformer:
+     override def recheckDefDef(tree: DefDef, sym: Symbol)(using Context): Type =
+       if Synthetics.isExcluded(sym) then sym.info
+       else {
++        // Register the closures that implement this method's context-function result
++        // chain: erasure flattens their parameters into the method's parameter list
++        // (see ContextFunctionResults), so level checking treats references bound
++        // inside the chain as being at the method's level (see CCState.contextResultClosures).
++        def registerContextResults(rhs: Tree, n: Int)(using Context): Unit =
++          if n > 0 then rhs match
++            case Block(List(anonDef: DefDef), _: Closure) =>
++              ccState.contextResultClosures(anonDef.symbol) = sym
++              registerContextResults(anonDef.rhs, n - 1)
++            case Block(_, expr) => registerContextResults(expr, n)
++            case Inlined(_, _, expansion) => registerContextResults(expansion, n)
++            case Typed(expr, _) => registerContextResults(expr, n)
++            case _ =>
++        if !sym.isAnonymousFunction then
++          registerContextResults(
++            tree.rhs, ContextFunctionResults.contextResultCount(sym))
++
+         val saved = curEnv
+         val localSet = sym.useSet
+         if sym.isAnonymousFunction && !localSet.isConst then
+diff --git a/tests/neg-custom-args/captures/erased-methods2.scala b/tests/pos-custom-args/captures/erased-methods2.scala
+similarity index 87%
+rename from tests/neg-custom-args/captures/erased-methods2.scala
+rename to tests/pos-custom-args/captures/erased-methods2.scala
+index 7d818d1d85ec38a5ee8257af607143d547a57fa5..cbf59b4f4b55d53d41413543d2140dc5bce89623 100644
+--- a/tests/neg-custom-args/captures/erased-methods2.scala
++++ b/tests/pos-custom-args/captures/erased-methods2.scala
+@@ -1,4 +1,4 @@
+-// was a neg test before
++// was a neg test before context-result closure params became method-level
+ import language.experimental.saferExceptions
+ import language.experimental.erasedDefinitions
+ import language.experimental.captureChecking
+@@ -22,7 +22,7 @@ def foo9a(i: Int)
+      ?=> (x$2: CT[Ex2]^)
+      ?=>
+       //given (CT[Ex3]^) = x$1
+-      Throw(new Ex3) // error
++      Throw(new Ex3)
+ 
+ def foo10a(i: Int)
+   : (erased x$0: CT[Ex3]^)
+@@ -32,4 +32,4 @@ def foo10a(i: Int)
+   = (erased x$1: CT[Ex3]^)
+      ?=> (erased x$2: CT[Ex2]^)
+      ?=> (erased x$3: CT[Ex1]^)
+-     ?=> Throw(new Ex3) // error
++     ?=> Throw(new Ex3)

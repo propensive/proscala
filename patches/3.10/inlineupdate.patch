@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 11 Jul 2026 07:39:36 +0200
+Subject: Propagate update classification to inline accessors
+
+Under separation checking, an inline method that mutates state through a
+private member generates a synthetic accessor (inline$x_= or a call
+forwarder) that is not classified as an update method, so the mutation
+fails the exclusivity check inside the accessor. Give the accessor the
+Mutable flag when the accessed symbol is an update method, or when it is
+a mutable field and the accessor is its setter.
+
+Proscala-Patch: inlineupdate
+---
+ .../src/dotty/tools/dotc/transform/AccessProxies.scala | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/compiler/src/dotty/tools/dotc/transform/AccessProxies.scala b/compiler/src/dotty/tools/dotc/transform/AccessProxies.scala
+index 98a759730f8def8d4f30afd4a087a2fc45724237..93d227937f6f3336035c1268beafa4e9e1f140a2 100644
+--- a/compiler/src/dotty/tools/dotc/transform/AccessProxies.scala
++++ b/compiler/src/dotty/tools/dotc/transform/AccessProxies.scala
+@@ -11,6 +11,7 @@ import NameOps.*
+ import Decorators.*
+ import Types.*
+ import util.Spans.Span
++import config.Feature
+ import config.Printers.transforms
+ import Annotations.ExperimentalAnnotation
+ 
+@@ -89,6 +90,15 @@ abstract class AccessProxies {
+       if accessed.is(Private) then sym.setFlag(Final)
+       else if sym.allOverriddenSymbols.exists(!_.is(Deferred)) then sym.setFlag(Override)
+       if accessed.is(Erased) then sym.setFlag(Erased)
++      // Under separation checking, an accessor for an update method, or a setter accessor
++      // for a mutable field, must itself count as an update method (see
++      // cc.Mutability.isUpdateMethod): otherwise any inline method that updates state
++      // through a private member fails the exclusivity check inside the synthetic accessor
++      // ("access is in method X, which is not an update method").
++      if Feature.enabled(Feature.separationChecking)
++         && (accessed.isAllOf(Mutable | Method)
++             || accessed.is(Mutable) && !accessed.is(Method) && name.isSetterName)
++      then sym.setFlag(Mutable)
+       ExperimentalAnnotation.copy(accessed).foreach(sym.addAnnotation)
+       sym
+     }

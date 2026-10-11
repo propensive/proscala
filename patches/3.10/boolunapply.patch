@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 8 Aug 2026 16:08:53 +0200
+Subject: Keep Boolean results of nullary case-class unapplies under capture
+ checking
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The capture-checking synthetics augmentation ("Two different versions of
+unapply types depending on consume", upstream e954236aaf) rewrites a
+non-consume case-class unapply's result type to the scrutinee's singleton
+x.type. A nullary case class's synthesized unapply returns Boolean, so the
+rewrite retypes every `case C() =>` pattern to the scrutinee singleton where
+Boolean is required — surfacing, under macro re-splicing or plain rechecking,
+as "Found: C^{x} Required: Boolean" (Soundness's mandible Opcode patterns,
+anthology's CompilerError). Boolean results are now left unchanged.
+
+Developed with LLM assistance (Claude).
+
+Proscala-Patch: boolunapply
+---
+ compiler/src/dotty/tools/dotc/cc/Synthetics.scala | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/Synthetics.scala b/compiler/src/dotty/tools/dotc/cc/Synthetics.scala
+index 123abd39d88d614455a9fb72cc72f90844fffdf3..b3f82f574e6cfd6802d24dd67a414c3e0c68397b 100644
+--- a/compiler/src/dotty/tools/dotc/cc/Synthetics.scala
++++ b/compiler/src/dotty/tools/dotc/cc/Synthetics.scala
+@@ -97,6 +97,10 @@ object Synthetics:
+           case _ =>
+             if paramInfo.hasAnnotation(defn.ConsumeAnnot)
+             then CapturingType(tp, CaptureSet.universal)
++            // A nullary case class's synthesized unapply returns Boolean, not the
++            // scrutinee; substituting `x.type` retypes `case C() =>` patterns to the
++            // scrutinee singleton where Boolean is required.
++            else if tp.widenDealias.isRef(defn.BooleanClass) then tp
+             else trackedParam
+         info.derivedLambdaType(paramInfos = newParamInfo :: Nil, resType = newResult(info.resType))
+           .showing(i"augment unapply type $info to $result", capt)

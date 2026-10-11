@@ -1,0 +1,209 @@
+#!/usr/bin/env bash
+#
+# proscala-export — write a stream's tree back out as patch files.
+#
+# Usage:
+#   bin/proscala-export <stream> [<dir>] [--drop <patch>]...
+#
+# Reads the commits above UPSTREAM_SHA in <dir> (default worktrees/<stream>), one
+# per patch, each carrying a `Proscala-Patch: <name>` trailer, and makes
+# patches/<stream>/ match them: one file per commit, and `series` in commit order.
+# Then it proves the result: applying the new series onto UPSTREAM_SHA must give
+# exactly the tree's content, or nothing is written.
+#
+# Where a file goes:
+#   - patches/<stream>/<p>.patch exists         -> it is rewritten;
+#   - else patches/common/<p>.patch exists      -> common is rewritten if every
+#     other stream using it still applies with the new version (and they are named,
+#     since their trees change); otherwise the patch is forked to patches/<stream>/;
+#   - else (a new patch)                         -> patches/<stream>/<p>.patch.
+#   A stream copy that has become identical in effect to common is removed.
+#
+# A patch that was in `series` but has no commit is an error unless named with
+# --drop, so a patch can never disappear by accident (e.g. after `git am --skip`).
+# Nothing is committed: review `git diff` on main and commit it yourself.
+
+set -euo pipefail
+PROSCALA_PROG=proscala-export
+# shellcheck source=proscala-lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/proscala-lib.sh"
+
+stream="" dir="" drops=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --drop)    [ -n "${2:-}" ] || die "--drop needs a patch name"; drops+=("$2"); shift 2 ;;
+    -h|--help) sed -n '3,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -*) die "unknown option $1" ;;
+    *)  if [ -z "$stream" ]; then stream="$1"
+        elif [ -z "$dir" ]; then dir="$1"
+        else die "too many arguments"; fi
+        shift ;;
+  esac
+done
+require_stream "$stream"
+sha="$(upstream_sha "$stream")"
+dir="${dir:-$PROSCALA_ROOT/worktrees/$stream}"
+case "$dir" in /*) ;; *) dir="$PWD/$dir" ;; esac
+P="$PROSCALA_ROOT/patches"
+
+[ -d "$dir" ] || die "$dir does not exist (bin/proscala-tree $stream creates it)"
+ts="$(stream_file "$dir" || true)"
+[ -z "$ts" ] || [ "$ts" = "$stream" ] || die "$dir was built for stream $ts, not $stream"
+op="$(in_progress "$dir")"
+[ -z "$op" ] || die "$dir is mid-operation ($op); finish it first"
+[ -z "$(git -C "$dir" status --porcelain --untracked-files=no)" ] \
+  || die "$dir has uncommitted changes; commit them (with a Proscala-Patch trailer) first"
+git -C "$dir" merge-base --is-ancestor "$sha" HEAD \
+  || die "$dir is not built on mk/$stream.mk's UPSTREAM_SHA $sha. After changing UPSTREAM_SHA, rebase the tree: cd $dir && git rebase --onto $sha \$(cat \$(git rev-parse --absolute-git-dir)/proscala-base)"
+
+# --- read the tree -------------------------------------------------------------
+names=() commits=()
+declare -A seen=()
+while IFS= read -r c; do
+  short="$(git -C "$dir" rev-parse --short "$c")"
+  [ "$(git -C "$dir" rev-list --parents -n1 "$c" | wc -w)" -eq 2 ] \
+    || die "commit $short is a merge; a patch must be a single ordinary commit"
+  p="$(commit_patch_name "$dir" "$c")"
+  [ -n "$p" ] || die "commit $short ($(git -C "$dir" log -1 --format=%s "$c")) has no 'Proscala-Patch: <name>' trailer"
+  [[ "$p" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] || die "commit $short: '$p' is not a valid patch name (lower-case letters and digits, hyphen-separated)"
+  [ "$p" != common ] && [ "$p" != series ] || die "commit $short: '$p' is a reserved name"
+  [ -z "${seen[$p]:-}" ] || die "two commits are both patch '$p' ($short and ${seen[$p]}); squash them into one"
+  [ "$(git -C "$dir" log -1 --format=%B "$c" | grep -cx -- '---')" -eq 0 ] \
+    || die "commit $short ($p): its message has a line that is just '---', which 'git am' would cut the message at"
+  seen[$p]="$short"
+  names+=("$p"); commits+=("$c")
+done < <(git -C "$dir" rev-list --reverse "$sha..HEAD")
+[ "${#names[@]}" -gt 0 ] || die "$dir has no patch commits above $sha"
+[ "${names[0]}" = zflags ] || die "the first patch must be zflags (the stream base), not ${names[0]}"
+
+mapfile -t old < <(series "$stream")
+declare -A inold=()
+for p in "${old[@]}"; do inold[$p]=1; done
+declare -A dropping=()
+for d in ${drops[@]+"${drops[@]}"}; do
+  [ -n "${inold[$d]:-}" ] || die "--drop $d: '$d' is not in patches/$stream/series"
+  [ -z "${seen[$d]:-}" ] || die "--drop $d: the tree still has a commit for '$d'"
+  dropping[$d]=1
+done
+for p in "${old[@]}"; do
+  [ -n "${seen[$p]:-}" ] || [ -n "${dropping[$p]:-}" ] \
+    || die "patches/$stream/series has '$p' but the tree has no commit for it (pass --drop $p to remove it on purpose)"
+done
+# A deliberate reorder (rebase -i) is fine, but say so.
+kept_old="$(for p in "${old[@]}"; do if [ -n "${seen[$p]:-}" ]; then echo "$p"; fi; done)"
+kept_new="$(for p in "${names[@]}"; do if [ -n "${inold[$p]:-}" ]; then echo "$p"; fi; done)"
+[ "$kept_old" = "$kept_new" ] || note "the order of the series has changed"
+
+# --- generate and place ----------------------------------------------------------
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/proscala-export.XXXXXX")"
+trap 'rm -rf "$tmp"; if [ -n "${APPLIED_INDEX:-}" ]; then rm -f "$APPLIED_INDEX"; fi' EXIT
+
+# users_of_common <p> — the other streams whose series takes <p> from common
+users_of_common() {
+  local o
+  for o in $(streams); do
+    [ "$o" = "$stream" ] && continue
+    in_series "$o" "$1" || continue
+    [ -f "$P/$o/$1.patch" ] && continue
+    echo "$o"
+  done
+}
+
+declare -A dest=()                # dest[p] = where the new file goes
+changed_common=()                 # p=file overrides accepted for common so far
+declare -A affected=()            # other streams whose tree a common change alters
+for i in "${!names[@]}"; do
+  p="${names[$i]}"
+  export_commit "$dir" "${commits[$i]}" > "$tmp/$p.patch"
+  if [ -f "$P/$stream/$p.patch" ]; then
+    dest[$p]="$P/$stream/$p.patch"
+    # collapse a stream copy that now says what common says
+    if [ -f "$P/common/$p.patch" ] && [ "$(patch_id "$tmp/$p.patch")" = "$(patch_id "$P/common/$p.patch")" ]; then
+      dest[$p]="collapse"
+    fi
+  elif [ -f "$P/common/$p.patch" ]; then
+    if cmp -s "$tmp/$p.patch" "$P/common/$p.patch"; then
+      dest[$p]="unchanged"
+      continue
+    fi
+    ok=1 users=()
+    for o in $(users_of_common "$p"); do
+      users+=("$o")
+      if apply_series "$o" ${changed_common[@]+"${changed_common[@]}"} "$p=$tmp/$p.patch" >/dev/null; then
+        rm -f "$APPLIED_INDEX"; APPLIED_INDEX=""
+      else
+        ok=0
+      fi
+    done
+    if [ "$ok" = 1 ]; then
+      dest[$p]="$P/common/$p.patch"
+      changed_common+=("$p=$tmp/$p.patch")
+      for o in ${users[@]+"${users[@]}"}; do affected[$o]="${affected[$o]:+${affected[$o]} }$p"; done
+    else
+      dest[$p]="$P/$stream/$p.patch"
+      warn "$p no longer applies to $(printf '%s ' "${users[@]}")from one shared file; forking it to patches/$stream/$p.patch"
+    fi
+  else
+    dest[$p]="$P/$stream/$p.patch"
+  fi
+done
+
+# --- prove it: the new series must rebuild the tree exactly --------------------------
+subst=()
+for p in "${names[@]}"; do
+  case "${dest[$p]}" in
+    unchanged) ;;
+    collapse)  subst+=("$p=$P/common/$p.patch") ;;
+    *)         subst+=("$p=$tmp/$p.patch") ;;
+  esac
+done
+# apply_series reads the series file, so stage the new one in place temporarily
+cp "$P/$stream/series" "$tmp/series.orig"
+{
+  echo "# Patches of the $stream stream, in the order they are applied onto mk/$stream.mk's"
+  echo "# UPSTREAM_SHA. Each name resolves to patches/$stream/<name>.patch, else to"
+  echo "# patches/common/<name>.patch. Written by bin/proscala-export; see AGENTS.md."
+  echo
+  printf '%s\n' "${names[@]}"
+} > "$tmp/series.new"
+cp "$tmp/series.new" "$P/$stream/series"
+if ! apply_series "$stream" ${subst[@]+"${subst[@]}"}; then
+  cp "$tmp/series.orig" "$P/$stream/series"
+  die "the exported series does not apply to UPSTREAM_SHA; nothing written"
+fi
+got="$(GIT_INDEX_FILE="$APPLIED_INDEX" git -C "$PROSCALA_ROOT" write-tree)"
+rm -f "$APPLIED_INDEX"; APPLIED_INDEX=""
+want="$(git -C "$dir" rev-parse 'HEAD^{tree}')"
+if [ "$got" != "$want" ]; then
+  # a collapse can be the cause; retry with the stream copies kept
+  cp "$tmp/series.orig" "$P/$stream/series"
+  die "applying the exported series gives tree $got, but $dir has $want; nothing written"
+fi
+
+# --- write ---------------------------------------------------------------------
+wrote=0
+for p in "${names[@]}"; do
+  case "${dest[$p]}" in
+    unchanged) ;;
+    collapse)
+      rm -f "$P/$stream/$p.patch"
+      note "$p: the $stream copy now matches patches/common/$p.patch, so it was removed"
+      wrote=$((wrote + 1)) ;;
+    *)
+      if ! cmp -s "$tmp/$p.patch" "${dest[$p]}"; then
+        cp "$tmp/$p.patch" "${dest[$p]}"
+        wrote=$((wrote + 1))
+      fi ;;
+  esac
+done
+for d in "${!dropping[@]}"; do
+  rm -f "$P/$stream/$d.patch"
+  if [ -f "$P/common/$d.patch" ] && [ -z "$(users_of_common "$d")" ]; then
+    rm -f "$P/common/$d.patch"
+  fi
+  note "dropped $d from the $stream stream"
+done
+note "patches/$stream: $wrote file$([ "$wrote" = 1 ] || echo s) written, ${#names[@]} patches in series"
+for o in "${!affected[@]}"; do
+  warn "shared patch(es) ${affected[$o]} changed in patches/common/: the $o stream's tree changes too — rebuild and test it (bin/proscala-tree $o --reset)"
+done

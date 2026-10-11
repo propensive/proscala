@@ -1,0 +1,121 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 4 Aug 2026 17:12:46 +0200
+Subject: Recheck a block's result expression in its statements' context
+
+`Recheck.recheckStats` threads an `import` among a block's statements into the
+context used for the statements that follow it, but returned `Unit`, so that
+context was discarded. `recheckBlock` then rechecked the block's *result
+expression* in its own outer context, where the import is not in scope.
+
+Typer does not have this problem: `typedBlockStats` returns the context it ends
+with, and `typedBlock` types the result expression in it. This makes the recheck
+mirror that.
+
+Only capture-checked code reaches the recheck, so the visible symptom is that
+`import scala.language.unsafeNulls` stops applying part-way down a method:
+
+    def f(input: String, n: Int): Unit =
+      import scala.language.unsafeNulls
+      val direct: String = input.substring(0, 1)   // a statement: fine
+      var i = 0
+      while i < n do                               // the result expression:
+        val inLoop: String = input.substring(0, 1) // "Found: String | Null"
+        i += 1
+
+Every nullable value inside the trailing `while` was rejected, while the
+identical line above it compiled. Soundness's `stratiform` hits this four times,
+in `Tel.documentShowable` and `internal.matchAtomText`.
+
+The two other `recheckStats` callers, `recheckClassDef` and `recheckPackageDef`,
+have no trailing expression and ignore the returned context.
+
+tests/explicit-nulls/unsafe-common already runs with `-Yexplicit-nulls
+-Yno-flexible-types`, so the new test only has to switch capture checking on.
+
+Assisted-by: Claude Opus 5 (see LLM_POLICY.md)
+Proscala-Patch: blockimport
+---
+ .../dotty/tools/dotc/transform/Recheck.scala  | 18 ++++++++---
+ .../unsafe-nulls-block-expr.scala             | 31 +++++++++++++++++++
+ 2 files changed, 44 insertions(+), 5 deletions(-)
+ create mode 100644 tests/explicit-nulls/unsafe-common/unsafe-nulls-block-expr.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/transform/Recheck.scala b/compiler/src/dotty/tools/dotc/transform/Recheck.scala
+index 8a63dd7eba06ad812f93d4c14983bd34d50142da..2c50cb2b33615125781c9d105eaed0ce4a31afc7 100644
+--- a/compiler/src/dotty/tools/dotc/transform/Recheck.scala
++++ b/compiler/src/dotty/tools/dotc/transform/Recheck.scala
+@@ -403,8 +403,11 @@ abstract class Recheck extends Phase, SymTransformer:
+       TypeOps.avoid(tp, symsToAvoid)
+ 
+     private def recheckBlock(stats: List[Tree], expr: Tree, pt: Type)(using Context): Type =
+-      recheckStats(stats)
+-      val exprType = recheck(expr, pt)
++      // The result expression is rechecked in the context the statements leave
++      // behind, since an `import` among them is in scope for it too — exactly as
++      // Typer rechecks it in the context `typedBlockStats` returns.
++      val exprCtx = recheckStats(stats)
++      val exprType = recheck(expr, pt)(using exprCtx)
+       avoidLocals(exprType, localSyms(stats).filterConserve(_.isTerm))
+ 
+     def recheckBlock(tree: Block, pt: Type)(using Context): Type = tree match
+@@ -518,14 +521,19 @@ abstract class Recheck extends Phase, SymTransformer:
+     def recheckStat(stat: Tree)(using Context): Unit =
+       recheck(stat)
+ 
+-    def recheckStats(stats: List[Tree])(using Context): Unit =
+-      @tailrec def traverse(stats: List[Tree])(using Context): Unit = stats match
++    /** Recheck all statements, returning the context they leave in scope: an
++     *  `import` among them applies to whatever follows the statement list as
++     *  well, so callers that have a trailing expression must recheck it in the
++     *  returned context rather than their own.
++     */
++    def recheckStats(stats: List[Tree])(using Context): Context =
++      @tailrec def traverse(stats: List[Tree])(using Context): Context = stats match
+         case (imp: Import) :: rest =>
+           traverse(rest)(using ctx.importContext(imp, imp.symbol))
+         case stat :: rest =>
+           recheckStat(stat)
+           traverse(rest)
+-        case _ =>
++        case _ => ctx
+       traverse(stats)
+ 
+     /** A hook to prevent rechecking a ValDef or DefDef.
+diff --git a/tests/explicit-nulls/unsafe-common/unsafe-nulls-block-expr.scala b/tests/explicit-nulls/unsafe-common/unsafe-nulls-block-expr.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..29342464a977f627a5d4646c054de64e9c371c8a
+--- /dev/null
++++ b/tests/explicit-nulls/unsafe-common/unsafe-nulls-block-expr.scala
+@@ -0,0 +1,31 @@
++import language.experimental.captureChecking
++
++// An `import scala.language.unsafeNulls` among a block's statements is in scope
++// for the block's *result expression* too, not only for the statements that
++// follow it. Under capture checking the block is rechecked, and the recheck used
++// to drop the statements' context before rechecking the result expression, so
++// every nullable value in the trailing expression was rejected.
++//
++// `direct` is a statement and always compiled; the `while` loop is the method
++// body's result expression, and everything inside it used to fail with
++// "Found: String | Null, Required: String".
++
++object UnsafeNullsBlockExpr:
++  def f(input: String, n: Int): Unit =
++    import scala.language.unsafeNulls
++
++    val direct: String = input.substring(0, 1)
++
++    var i = 0
++
++    while i < n do
++      val inLoop: String = input.substring(0, 1)
++
++      if i > 0 then
++        val inIf: String = input.substring(0, 1)
++
++        while i < n do
++          val deep: String = input.substring(0, 1)
++          i += 1
++
++      i += 1

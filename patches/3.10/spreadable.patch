@@ -1,0 +1,234 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Mon, 3 Aug 2026 16:29:04 +0200
+Subject: Splice any type with a Spreadable instance into a vararg position
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Squashed from 2 commits, oldest first:
+
+* Splice any type with a Spreadable instance into a vararg position
+
+A `T*` parameter is a `Seq[T]` underneath, so only a `Seq` or an `Array` can be
+spliced with `xs*`. An abstraction that hides one — an opaque type alias over a
+`Vector`, as Soundness's prelude uses throughout — cannot be, and neither can an
+unrelated type that merely has elements to offer.
+
+`scala.Spreadable[T]` grants that permission for one type, and only at splice
+positions. It is not a `Conversion`: the typer consults it nowhere else, so the
+abstraction stays opaque under member selection, which is what made a companion
+`Conversion[Series[e], Seq[e]]` unusable — that also resurrects `head`, `apply`
+and the rest of the `Seq` surface the alias exists to hide.
+
+The instance names the `Seq`/`Array` it spreads to as its `Out`. Where the
+representation already is one — the opaque-alias case — the splice elaborates
+to a cast and `spread` is never called, so nothing is allocated and nothing is
+added at erasure; the instance written inside the alias's own file, where the
+alias is transparent, is just the identity. Otherwise `spread` converts, which
+is what admits a type unrelated to the collections.
+
+The cast targets the representation, never the instance's `Out`: an instance
+naming an `Out` its type does not actually have would otherwise be a
+ClassCastException at runtime rather than a compile error.
+
+Elaboration stays on the failure path of `typedWildcardStarArgExpr`, so every
+splice that already typechecks is untouched, as is behaviour inside the alias's
+defining scope. The retype and the implicit search run in a fresh typer state
+that is committed only when the expression really was spreadable, so an
+erroneous splice — a mistyped one inside a quote, pre-typed during speculative
+overload resolution — cannot leak type variables or quote-hole registrations
+into the enclosing state.
+
+`Out` is deliberately unbounded. `<: Seq[?] | Array[?]` would be the honest
+bound but cannot be written: an opaque alias over an `Array` — `IArray` itself —
+does not conform to it outside its defining scope, which is the very case this
+serves. The compiler checks at the splice site instead, seeing through opaque
+aliases as it goes.
+
+`Spreadable` is `@experimental`, which is the whole gate: instances cannot be
+written outside experimental mode, so no separate language import is needed.
+
+Known limitation: under `-Ycc-new` the instance cannot be keyed on a type
+capturing the root capability — `Spreadable[Vector[() => Unit]]` is rejected
+with "type variable T cannot be instantiated ... captures the root capability
+`any`". That is a general capture-checking restriction on type arguments,
+reproducible with a bare `trait Box[T]`. Element types capturing a named
+capability are unaffected.
+
+Replaces the `spliceopaque` patch, which pierced any opaque alias over a
+`Seq`/`Array` unconditionally, with no way for a library to opt out.
+
+Developed with LLM assistance (Claude, Anthropic). Verified against a compiler
+built from this change: aliases over `Vector` and over `IArray`, an unrelated
+class needing a real conversion, and callee type-parameter inference through the
+splice; an alias without an instance gets the stock error and `.head` on one
+with an instance is still not a member; bytecode shows no `spread` call for the
+alias cases; and both of spliceopaque's crash reproductions error cleanly.
+
+Enabled by `-Z:spreadable-varargs`; without it, upstream's code runs at every site this
+patch touches.
+
+* Ship Spreadable in the supplementary proscala-library jar
+
+The standard library additions of the fork live under library-proscala/src and
+are built into their own jar (proscala-library, plus a Scala.js variant), so the
+scala-library and scalajs-scalalib jars are byte-identical to what upstream
+builds from the same tree. The compiler looks the class up by name and runs
+without it.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: spreadable
+---
+ .../dotty/tools/dotc/core/Definitions.scala   |  5 ++
+ .../src/dotty/tools/dotc/typer/Typer.scala    | 62 ++++++++++++++++++-
+ library-proscala/src/scala/Spreadable.scala   | 51 +++++++++++++++
+ 3 files changed, 117 insertions(+), 1 deletion(-)
+ create mode 100644 library-proscala/src/scala/Spreadable.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/core/Definitions.scala b/compiler/src/dotty/tools/dotc/core/Definitions.scala
+index 66f62900e0778d92c6f3fe70ad061ff9cedf8071..c5e4640623f98c9b3e5e7865b09a87ee45e7a550 100644
+--- a/compiler/src/dotty/tools/dotc/core/Definitions.scala
++++ b/compiler/src/dotty/tools/dotc/core/Definitions.scala
+@@ -1014,6 +1014,11 @@ class Definitions {
+       val methodName = if CanEqualClass.name == tpnme.Eql then nme.eqlAny else nme.canEqualAny
+       CanEqualClass.companionModule.requiredMethod(methodName)
+ 
++  // Looked up leniently: a splice consults it only on the failure path, so a
++  // library without `scala.Spreadable` simply never matches.
++  @tu lazy val SpreadableClass: Symbol = getClassIfDefined("scala.Spreadable")
++    def Spreadable_spread(using Context): Symbol = SpreadableClass.requiredMethod(nme.spread)
++
+   // Looked up leniently, like Spreadable: a literal consults it only when an
+   // instance can possibly be in scope, so a library without `scala.Literate`
+   // never searches. `convert` is deliberately not a member of the trait (a
+diff --git a/compiler/src/dotty/tools/dotc/typer/Typer.scala b/compiler/src/dotty/tools/dotc/typer/Typer.scala
+index 01fd73dcdc70f51ff152c0be17a4a4bacfdeb817..c626c0eee1f339b07b25adc3c3695ab5297c34f6 100644
+--- a/compiler/src/dotty/tools/dotc/typer/Typer.scala
++++ b/compiler/src/dotty/tools/dotc/typer/Typer.scala
+@@ -1480,7 +1480,67 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
+         // irrespective of whether the method we're calling is a Java or Scala method,
+         // so the expected type is the union `Seq[T] | Array[_ <: T]`.
+         val ptArg = fromRepeated(pt)
+-        val expr0 = typedExpr(tree.expr, ptArg)
++        def typedRegular(using Context): Tree = typedExpr(tree.expr, ptArg)
++        def seeThrough(tp: Type)(using Context): Type = tp match
++          case tp: TypeRef if tp.symbol.isOpaqueAlias =>
++            seeThrough(tp.translucentSuperType)
++          case tp: AppliedType if tp.tycon.typeSymbol.isOpaqueAlias =>
++            seeThrough(tp.translucentSuperType)
++          case _ => tp
++        // A covariant alias over `IArray` uncovers as `Array[? <: T]`, whose repeated
++        // translation is the wildcard-argument `(? <: T)*` — a form the capture
++        // checker cannot translate back (TypeBounds of a TypeBounds argument). Cast
++        // to `Array[T]` instead: the erasure is the same, and the vararg adaptation
++        // reconstructs the `Array[? <: T]` view where it needs it.
++        def dropArrayWildcard(tp: Type)(using Context): Type = tp match
++          case AppliedType(tycon, List(arg: TypeBounds)) if tp.derivesFrom(defn.ArrayClass) =>
++            tycon.appliedTo(arg.hi)
++          case _ => tp
++        // A type that is not itself a `Seq` or `Array` may still be spliced if its
++        // author granted permission with a `Spreadable` instance. Unlike a
++        // `Conversion`, that permission is confined to this position: it is consulted
++        // only here, so it never fires on a member selection.
++        //
++        // Where the value's representation already is a `Seq`/`Array` — an opaque
++        // alias over a `Vector`, say — the splice is a cast, which is a no-op at
++        // erasure and calls nothing; otherwise `spread` is invoked to convert.
++        def spreadable(expr: Tree)(using Context): Tree =
++          val wide = expr.tpe.widenDealias
++          def spliceable(tp: Type) =
++            tp.derivesFrom(defn.SeqClass) || tp.derivesFrom(defn.ArrayClass)
++          if !defn.SpreadableClass.exists || spliceable(wide) then expr
++          else
++            val formal = defn.SpreadableClass.typeRef.appliedTo(wide)
++            val instance = inferImplicitArg(formal, tree.span)
++            if instance.tpe.isError || instance.tpe.isInstanceOf[SearchFailureType] then expr
++            else
++              // Cast to the *representation*, never to the instance's `Out`: an
++              // instance naming an `Out` its type does not actually have would
++              // otherwise be a ClassCastException at runtime rather than an error.
++              val under = seeThrough(wide)
++              if spliceable(under) then expr.cast(dropArrayWildcard(under))
++              else
++                // A genuinely different type: convert through the instance. `Out` may
++                // itself be an opaque alias (`IArray`), so see through it in turn.
++                val converted = instance.select(defn.Spreadable_spread).appliedTo(expr)
++                val outWide = converted.tpe.widenDealias
++                val outUnder = seeThrough(outWide)
++                if !spliceable(outUnder) then expr        // `Out` left abstract
++                else if outUnder ne outWide then converted.cast(dropArrayWildcard(outUnder))
++                else converted
++        val expr0 = if !config.Proscala.enabled(config.Proscala.SpreadableVarargs) then typedRegular
++        else tryEither(typedRegular) { (fallVal, fallState) =>
++          // The retype must be speculative too: unless the expression really is
++          // spreadable, the original failure is restored and nothing the retype or
++          // the implicit search did — fresh type variables, quote-hole
++          // registrations — may leak into the enclosing typer state.
++          val nestedCtx = ctx.fresh.setNewTyperState()
++          val bare = typedExpr(tree.expr)(using nestedCtx)
++          val spread = spreadable(bare)(using nestedCtx)
++          if (spread ne bare) && !nestedCtx.reporter.hasErrors
++          then { nestedCtx.typerState.commit(); spread }
++          else { fallState.commit(); fallVal }
++        }
+         val expr1 = if ctx.explicitNulls && (!ctx.mode.is(Mode.Pattern)) then
+             if expr0.tpe.isNullType then
+               // If the type of the argument is `Null`, we cast it to array directly.
+diff --git a/library-proscala/src/scala/Spreadable.scala b/library-proscala/src/scala/Spreadable.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..88cbec8b79cf3775ebf1b3e78883cb612d9faf20
+--- /dev/null
++++ b/library-proscala/src/scala/Spreadable.scala
+@@ -0,0 +1,51 @@
++package scala
++
++import scala.annotation.experimental
++
++/** Witnesses that a value of type `T` may be spliced into a vararg position,
++ *  `f(value*)`, and gives the `Seq` or `Array` it spreads to.
++ *
++ *  A `T*` parameter is a `Seq[T]` underneath, so only a `Seq` or an `Array` can
++ *  normally be spliced. An abstraction that hides one of those — an opaque type
++ *  alias over `Vector`, say — cannot be, and neither can an unrelated type that
++ *  merely has a sequence of elements to offer.
++ *
++ *  A `Spreadable` instance grants that permission for one type, at splice
++ *  positions only. It is not a [[Conversion]]: it never applies to a member
++ *  selection, so the abstraction stays opaque everywhere else.
++ *
++ *  `Out` must be given concretely by the instance, since it is the type the
++ *  splice is elaborated against:
++ *
++ *  ```scala
++ *  object Series:
++ *    opaque type Series[+e] = Vector[e]
++ *    // written where the alias is transparent, so this is the identity
++ *    given [e] => (Spreadable[Series[e]] { type Out = Vector[e] }) =
++ *      new Spreadable[Series[e]]:
++ *        type Out = Vector[e]
++ *        def spread(value: Series[e]): Vector[e] = value
++ *  ```
++ *
++ *  When the value's representation already is `Out` — the opaque-alias case —
++ *  the compiler elaborates the splice as a cast, which is a no-op at erasure,
++ *  and `spread` is never called. Otherwise `spread` is invoked to convert.
++ */
++@experimental
++trait Spreadable[T]:
++
++  /** The `Seq` or `Array` that `T` spreads to. An instance must specify this
++   *  concretely, e.g. `Spreadable[Foo] { type Out = Vector[Bar] }`.
++   *
++   *  Deliberately unbounded. `<: Seq[?] | Array[?]` would be the honest bound
++   *  but cannot be written: an opaque alias over an `Array` — `IArray` itself,
++   *  for one — does not conform to it outside its defining scope, which is the
++   *  very situation this type exists to serve. The compiler checks at the
++   *  splice site instead, seeing through opaque aliases as it does so.
++   */
++  type Out
++
++  /** Convert `value` to the sequence spliced into the vararg position. Not
++   *  called when `T`'s representation is already `Out`.
++   */
++  def spread(value: T): Out

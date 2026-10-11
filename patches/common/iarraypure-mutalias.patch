@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Mon, 27 Jul 2026 07:45:45 +0200
+Subject: Classify opaque aliases over mutable types under capture checking
+
+An opaque alias over Array (or a Stateful class) previously lost its
+mutability classification outside its defining scope: the classification
+recursion falls through to the alias's upper bound, so plain parameters
+of such a type were untracked pure values that subsumed into exclusive
+receivers, silently bypassing the read-only discipline. The recursion
+now pierces opaque aliases via translucentSuperType, so an alias over a
+mutable type is tracked exactly like the type it hides.
+
+The stdlib's IArray alias stays excluded, matching its iarraypure
+treatment: aliases over IArray classify as immutable, both directly and
+when IArray is reached by dealiasing inside a defining scope.
+
+Developed and tested with LLM assistance (Claude, Anthropic), reviewed
+by hand.
+
+Enabled by `-Z:opaque-mutability`; without it, upstream's code runs at every site this
+patch touches.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: iarraypure-mutalias
+---
+ compiler/src/dotty/tools/dotc/cc/CaptureOps.scala | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala b/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala
+index 24ff282573c7312e5a63b9a048db94a0b058d224..b0bec25c79ed0a45aa6424d1d7146a6913d8a450 100644
+--- a/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala
++++ b/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala
+@@ -430,6 +430,9 @@ extension (tp: Type)
+       val sym = tp.typeSymbol
+       if sym.isClass
+       then (if sym.isArrayUnderStrictMut then defn.Caps_Mutable else sym).derivesFrom(cls)
++      else if sym.isOpaqueAlias && !(sym eq defn.IArrayAlias)
++          && config.Proscala.enabled(config.Proscala.OpaqueMutability)
++      then tp.translucentSuperType.derivesFromCapTrait(cls)
+       else tp.superType.derivesFromCapTrait(cls)
+     case tp: (TypeProxy & ValueType) =>
+       tp.superType.derivesFromCapTrait(cls)

@@ -1,0 +1,73 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Mon, 13 Jul 2026 13:59:32 +0200
+Subject: Infer the capture set of recursive-implicit dictionary instances
+
+A memoized recursive/by-name implicit is emitted as a synthetic dictionary
+class with `val $_inst = new <dictionary>`. Under capture checking, if a
+memoized entry is capability-typed, `new <dictionary>` captures those
+capabilities, but the val was typed with the bare dictionary class type and so
+rejected the capturing constructor with `Found: <dict>^{...} Required: <dict>`.
+
+Type the instance val's tree as inferred (`inferred = true`) so capture
+checking solves its capture set from the constructor rather than forcing the
+pure class type. Pure dictionaries infer an empty set and are unchanged; only
+the capability-carrying case, which previously did not type-check, is affected.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Proscala-Patch: dictcaps
+---
+ .../dotty/tools/dotc/typer/Implicits.scala    |  9 +++++++-
+ tests/pos-custom-args/captures/dictcaps.scala | 21 +++++++++++++++++++
+ 2 files changed, 29 insertions(+), 1 deletion(-)
+ create mode 100644 tests/pos-custom-args/captures/dictcaps.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/typer/Implicits.scala b/compiler/src/dotty/tools/dotc/typer/Implicits.scala
+index f559513ebbdb725f69eafefed6b385d3faa449f8..67f94ef192a4dffa042b6541b20a2ad62522edd8 100644
+--- a/compiler/src/dotty/tools/dotc/typer/Implicits.scala
++++ b/compiler/src/dotty/tools/dotc/typer/Implicits.scala
+@@ -2153,7 +2153,14 @@ final class SearchRoot extends SearchHistory:
+             val classDef = ClassDef(classSym, DefDef(constr), vdefs)
+ 
+             val valSym = newLazyImplicit(classSym.typeRef, span)
+-            val inst = ValDef(valSym, New(classSym.typeRef, Nil))
++            // Mark the memoizing val's type inferred: under capture checking the dictionary
++            // instance captures whatever its (possibly capability-typed) entries capture, so
++            // `new <dictionary>` has a non-empty capture set. An inferred type lets capture
++            // checking solve that set from the constructor rather than forcing the pure
++            // `classSym.typeRef`, which would reject the capturing instance. This is a private
++            // detail of the recursive-implicit memoization: the escaping result term's type
++            // (`res` below) is unchanged, so a laundered/pure resolution stays pure at its use.
++            val inst = ValDef(valSym, New(classSym.typeRef, Nil), inferred = true)
+ 
+             // Substitute dictionary references into outermost result term.
+             val res = substVsymRefs(
+diff --git a/tests/pos-custom-args/captures/dictcaps.scala b/tests/pos-custom-args/captures/dictcaps.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..aeb19a50afabc5a1f229c6845e61dedb4157364d
+--- /dev/null
++++ b/tests/pos-custom-args/captures/dictcaps.scala
+@@ -0,0 +1,21 @@
++import language.experimental.captureChecking
++
++// A recursive by-name implicit whose resolution is memoized into a synthetic
++// `$_lazy_implicit` dictionary class. When a memoized entry is capability-typed —
++// here `intFoo`'s result captures the ambient `Cap`, and the recursive `pair`
++// entries transitively hold it — constructing the dictionary (`new <dictionary>`)
++// captures those capabilities. The dictionary instance val must therefore be typed
++// with an inferred capture set rather than the bare class type; otherwise capture
++// checking rejects the capturing constructor with
++// `Found: <dict>^{...}  Required: <dict>`.
++class Cap
++trait Foo[T]
++
++object Foo:
++  implicit def intFoo(implicit c: Cap^): Foo[Int]^{c} = new Foo[Int] {}
++  implicit def pair[T, U]
++      (implicit fe: => Foo[Int]^, fooT: => Foo[(T, U)]^, fooU: => Foo[(U, T)]^): Foo[(T, U)] =
++    new Foo[(T, U)] {}
++  implicit def string: Foo[String] = new Foo[String] {}
++
++def test(implicit c: Cap^): Foo[(Int, String)] = implicitly[Foo[(Int, String)]]

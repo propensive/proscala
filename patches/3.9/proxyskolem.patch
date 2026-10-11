@@ -1,0 +1,46 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 8 Aug 2026 12:28:57 +0200
+Subject: Do not type inline argument proxies with skolems under capture
+ checking
+
+Upstream #26563 (3.9.0-RC5) types the proxy for an unstable argument to a
+dependent inline method with the typer-minted SkolemType, and casts the
+expansion to the skolem-mentioning call type. Under capture checking this is
+doubly wrong: the skolem-typed binding bakes the local proxy's capture set
+into the expansion type, where it cannot be avoided into a pure declared
+result (derivation results summoned via summonFrom fail with "capability
+`typeclass` cannot flow into capture set {}"); and when a transparent inline
+macro resplices an already-inlined argument, the retype mints a fresh,
+never-unifiable skolem ("Found: (?1 : X) Required: (?2 : X)"). Keeping the
+pre-RC5 widened proxy type in cc-enabled units restores the behaviour every
+cc unit had before RC5, while leaving the #26153/#26031 fix active elsewhere;
+upstream's own regression tests for it still pass.
+
+Developed with LLM assistance (Claude); both failure modes have standalone
+reproductions in the feature documentation, and causation was established by
+reverse-applying the upstream commit alone.
+
+Proscala-Patch: proxyskolem
+---
+ compiler/src/dotty/tools/dotc/inlines/Inliner.scala | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/compiler/src/dotty/tools/dotc/inlines/Inliner.scala b/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
+index c53f12347da2945d3534903166e24c031f4b0d37..080fabdd18a3e26dacda8e38cae9d32b15c57cc9 100644
+--- a/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
++++ b/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
+@@ -313,7 +313,12 @@ class Inliner(val call: tpd.Tree)(using Context):
+       else argtpe.widen
+     // If the call result type used a skolem for this argument, use the same skolem
+     // as the proxy type. `?1` has `argtpe.widen` as its underlying type.
+-    val proxySkolem = if argIsBottom then None else skolem
++    // Under capture checking, keep the pre-RC5 widened proxy type: cc has its own
++    // healing of inline-proxy captures, and a skolem-typed proxy bakes the local
++    // binding's capture (and skolem identity) into the expansion type, where it can
++    // neither be avoided into a pure declared result nor unified across a macro
++    // resplice retype (upstream #26563 casualties).
++    val proxySkolem = if argIsBottom || config.Feature.ccEnabled then None else skolem
+     val bindingType = proxySkolem match
+       case Some(sk) => if isByName then ExprType(sk) else sk
+       case None => baseBindingType

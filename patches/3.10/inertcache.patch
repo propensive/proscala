@@ -1,0 +1,58 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 7 Jul 2026 23:05:03 +0200
+Subject: Cache inert types in capture-checking Setup
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+A type that Setup maps to the identical instance contains nothing to
+transform under any traversal state, so it never needs re-walking.
+Without this, deeply-nested alias unions — such as HTML content
+category types, hundreds of shared singleton labels behind several
+alias layers — are re-expanded once per path through
+mapFollowingAliases, which is exponential in the alias nesting depth:
+a single method signature over such a type did not finish compiling.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Proscala-Patch: inertcache
+---
+ compiler/src/dotty/tools/dotc/cc/Setup.scala | 24 +++++++++++++++-----
+ 1 file changed, 18 insertions(+), 6 deletions(-)
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/Setup.scala b/compiler/src/dotty/tools/dotc/cc/Setup.scala
+index cc408977422129d170f27869b568507f3f88a4e8..92220ed1f2e525e6d98e132ee8a3f5c588822e7c 100644
+--- a/compiler/src/dotty/tools/dotc/cc/Setup.scala
++++ b/compiler/src/dotty/tools/dotc/cc/Setup.scala
+@@ -254,13 +254,25 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
+ 
+     protected def innerApply(tp: Type): Type
+ 
++    // Types that map to themselves (`eq`) contain nothing for Setup to transform under any
++    // traversal state, so they never need re-walking. Without this, deeply-nested alias
++    // unions (e.g. HTML content-category types: hundreds of shared singleton labels behind
++    // several alias layers) are re-expanded once per path through `mapFollowingAliases`,
++    // which is exponential in the alias nesting depth.
++    private val inertTypes = new java.util.IdentityHashMap[Type, Type]()
++
+     final def apply(tp: Type) =
+-      val saved = isTopLevel
+-      if variance < 0 then isTopLevel = false
+-      try tp match
+-        case defn.RefinedFunctionOf(rinfo: MethodType) => mapRefinedFunction(tp, rinfo)
+-        case _ => innerApply(tp)
+-      finally isTopLevel = saved
++      if inertTypes.containsKey(tp) then tp
++      else
++        val saved = isTopLevel
++        if variance < 0 then isTopLevel = false
++        try
++          val tp1 = tp match
++            case defn.RefinedFunctionOf(rinfo: MethodType) => mapRefinedFunction(tp, rinfo)
++            case _ => innerApply(tp)
++          if tp1 eq tp then inertTypes.put(tp, tp)
++          tp1
++        finally isTopLevel = saved
+ 
+     def mapRefinedFunction(tp: Type, rinfo: MethodType): Type =
+       val rinfo1 = apply(rinfo)

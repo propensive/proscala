@@ -1,0 +1,180 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Thu, 3 Sep 2026 10:31:13 +0100
+Subject: Add -Z, the settings that enable Proscala's optional behaviours by
+ name
+
+Each opt-in patch is enabled by its own flag, `-Z<name>` (`-Zliterate-literals`,
+`-Zunion-captures`), in the style of -X and -Y; where a name is not given the
+compiler runs upstream's code at every site the patch touches. The flags are
+declared in a loop over one registry, `config.Proscala`, which holds each
+feature's name, patch and help text; a bare -Z prints the synopsis of them
+like -X and -Y do, and an unknown name is rejected like any other option.
+Patches test `Proscala.enabled(Proscala.<Feature>)` at their sites.
+
+This is the stream's base: every patch is rebased onto it, so the registry is
+edited only here, never in a patch (see doc/zflags/zflags.md on main).
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: zflags
+---
+ .../dotty/tools/dotc/config/CliCommand.scala  |  6 +-
+ .../tools/dotc/config/CompilerCommand.scala   |  3 +-
+ .../dotty/tools/dotc/config/Proscala.scala    | 55 +++++++++++++++++++
+ .../tools/dotc/config/ScalaSettings.scala     | 17 +++++-
+ 4 files changed, 78 insertions(+), 3 deletions(-)
+ create mode 100644 compiler/src/dotty/tools/dotc/config/Proscala.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/config/CliCommand.scala b/compiler/src/dotty/tools/dotc/config/CliCommand.scala
+index 5504914a078e08581ed3cd1fb6ee1a60e37682a2..f9cb32af569af74baf2df89fc4ae772f79941af6 100644
+--- a/compiler/src/dotty/tools/dotc/config/CliCommand.scala
++++ b/compiler/src/dotty/tools/dotc/config/CliCommand.scala
+@@ -88,7 +88,7 @@ trait CliCommand:
+     prefix + "\n" + availableOptionsMsg(cond)
+ 
+   protected def isStandard(s: Setting[?])(using settings: ConcreteSettings)(using SettingsState): Boolean =
+-    !isVerbose(s) && !isWarning(s) && !isAdvanced(s) && !isPrivate(s) || s.name == "-Werror" || s.name == "-Wconf"
++    !isVerbose(s) && !isWarning(s) && !isAdvanced(s) && !isPrivate(s) && !isProscala(s) || s.name == "-Werror" || s.name == "-Wconf"
+   protected def isVerbose(s: Setting[?])(using settings: ConcreteSettings)(using SettingsState): Boolean =
+     s.name.startsWith("-V") && s.name != "-V"
+   protected def isWarning(s: Setting[?])(using settings: ConcreteSettings)(using SettingsState): Boolean =
+@@ -97,6 +97,8 @@ trait CliCommand:
+     s.name.startsWith("-X") && s.name != "-X"
+   protected def isPrivate(s: Setting[?])(using settings: ConcreteSettings)(using SettingsState): Boolean =
+     s.name.startsWith("-Y") && s.name != "-Y"
++  protected def isProscala(s: Setting[?])(using settings: ConcreteSettings)(using SettingsState): Boolean =
++    s.name.startsWith("-Z") && s.name != "-Z"
+   protected def isHelping(s: Setting[?])(using settings: ConcreteSettings)(using SettingsState): Boolean =
+     cond(s.value) {
+       case ss: List[?] if s.isMultivalue => ss.contains("help")
+@@ -114,6 +116,8 @@ trait CliCommand:
+     createUsageMsg("Possible advanced", shouldExplain = true, isAdvanced)
+   protected def yusageMessage(using settings: ConcreteSettings)(using SettingsState) =
+     createUsageMsg("Possible private", shouldExplain = true, isPrivate)
++  protected def zusageMessage(using settings: ConcreteSettings)(using SettingsState) =
++    createUsageMsg("Possible Proscala", shouldExplain = true, isProscala)
+ 
+   /** Used for the formatted output of -Xshow-phases */
+   protected def phasesMessage(using Context): String =
+diff --git a/compiler/src/dotty/tools/dotc/config/CompilerCommand.scala b/compiler/src/dotty/tools/dotc/config/CompilerCommand.scala
+index 3ad1585812b3435891e55720b0e085118e99833c..727872eea5e19f649ec9b862fcc347b390584e23 100644
+--- a/compiler/src/dotty/tools/dotc/config/CompilerCommand.scala
++++ b/compiler/src/dotty/tools/dotc/config/CompilerCommand.scala
+@@ -16,12 +16,13 @@ abstract class CompilerCommand extends CliCommand:
+         else if (settings.Whelp.value) wusageMessage
+         else if (settings.Xhelp.value) xusageMessage
+         else if (settings.Yhelp.value) yusageMessage
++        else if (settings.Zhelp.value) zusageMessage
+         else if (settings.showPlugins.value) ctx.base.pluginDescriptions
+         else if (settings.XshowPhases.value) phasesMessage
+         else ""
+ 
+   final def isHelpFlag(using settings: ConcreteSettings)(using SettingsState): Boolean =
+     import settings.*
+-    val flags = Set(help, Vhelp,  Whelp, Xhelp, Yhelp, showPlugins, XshowPhases)
++    val flags = Set(help, Vhelp,  Whelp, Xhelp, Yhelp, Zhelp, showPlugins, XshowPhases)
+     // Check `isHelping` first so that `:help` is detected before we call `_.value` where it would fail if the setting is not a Boolean
+     allSettings.exists(isHelping) || flags.exists(_.value)
+diff --git a/compiler/src/dotty/tools/dotc/config/Proscala.scala b/compiler/src/dotty/tools/dotc/config/Proscala.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..45b52f9494bd9559466be10ab92d01d1acb964a4
+--- /dev/null
++++ b/compiler/src/dotty/tools/dotc/config/Proscala.scala
+@@ -0,0 +1,55 @@
++package dotty.tools.dotc
++package config
++
++import core.Contexts.*
++
++/** Proscala's optional behaviours.
++ *
++ *  Each is a patch on upstream Scala that is enabled by its own flag, `-Z<name>`
++ *  (`-Zliterate-literals`, `-Zunion-captures`), in the style of `-X` and `-Y`;
++ *  where a feature is not enabled the compiler runs upstream's code at every
++ *  site the patch touches. A bare `-Z` prints the synopsis of the names. The
++ *  documentation of each patch lives on Proscala's `main` branch under
++ *  `doc/<patch>/`.
++ */
++object Proscala:
++
++  enum Feature(val name: String, val patch: String, val help: String):
++    case AliasCaptures extends Feature("alias-captures", "aliascap",
++      "Keep root capabilities global in type alias infos under capture checking.")
++    case DiagnosticGivens extends Feature("diagnostic-givens", "searchdiag",
++      "Report an @internal.diagnostic given's own errors as the message of a failed implicit search.")
++    case GivenPrefixes extends Feature("given-prefixes", "givenprefix",
++      "Seal package-object prefixes on implicit candidates, so a top-level given cannot leak an opaque type's representation.")
++    case InlineSourceMaps extends Feature("inline-source-maps", "smap",
++      "Emit JSR-45 SourceDebugExtension (SMAP) attributes mapping inlined code back to its source files.")
++    case LiterateLiterals extends Feature("literate-literals", "literate",
++      "Re-type literals through a scala.Literate instance in scope.")
++    case OpaqueMutability extends Feature("opaque-mutability", "iarraypure-mutalias",
++      "Classify opaque aliases over mutable types as mutable under capture checking.")
++    case PureIArrays extends Feature("pure-iarrays", "iarraypure",
++      "Treat IArray as pure under capture checking.")
++    case RetainsBounds extends Feature("retains-bounds", "retainbounds",
++      "Approximate TypeBounds in @retains arguments by the top capability.")
++    case RetainsSkolems extends Feature("retains-skolems", "skolemcap",
++      "Widen skolems in @retains sets to the top capability.")
++    case SemanticDiagnostics extends Feature("semantic-diagnostics", "semdiag",
++      "Emit diagnostics as XML with semantic markup, embedding diagnostic types as Base64-encoded TASTy.")
++    case SpreadableVarargs extends Feature("spreadable-varargs", "spreadable",
++      "Splice any value with a scala.Spreadable instance into a vararg position.")
++    case UnboxedPureTypes extends Feature("unboxed-pure-types", "unboxedpure",
++      "Do not box pure types with vacuous or pure-tuple capture sets under capture checking.")
++    case UnionCaptures extends Feature("union-captures", "unioncaps",
++      "Classify and preserve capture information on union types under capture checking.")
++  end Feature
++
++  export Feature.*
++
++  /** Every feature, in the order a bare `-Z` lists them. */
++  val features: List[Feature] = Feature.values.toList
++
++  /** Is `feature` enabled with its `-Z<name>` flag in this context? */
++  def enabled(feature: Feature)(using Context): Boolean =
++    ctx.settings.Zfeature(feature).value
++
++end Proscala
+diff --git a/compiler/src/dotty/tools/dotc/config/ScalaSettings.scala b/compiler/src/dotty/tools/dotc/config/ScalaSettings.scala
+index fa671e836bdb4d7036f9d503e76590e725928b7b..3a5787430f922547ba9778c8c0eb25e3386b04df 100644
+--- a/compiler/src/dotty/tools/dotc/config/ScalaSettings.scala
++++ b/compiler/src/dotty/tools/dotc/config/ScalaSettings.scala
+@@ -24,6 +24,8 @@ enum ScalaSettingCategories(val prefixLetter: String) extends SettingCategory:
+   case AdvancedSetting extends ScalaSettingCategories("X")
+   // Verbose settings, a category to configure the verbosity of the compiler
+   case VerboseSetting extends ScalaSettingCategories("V")
++  // Proscala settings, a category for the fork's optional behaviours, each enabled by its own -Z<name> flag
++  case ProscalaSetting extends ScalaSettingCategories("Z")
+ 
+ object ScalaSettings extends ScalaSettings
+ 
+@@ -39,10 +41,11 @@ abstract class ScalaSettings extends SettingGroup, AllScalaSettings:
+   val forkSettings: List[Setting[?]] = settingsByCategory(ForkSetting).sortBy(_.name)
+   val advancedSettings: List[Setting[?]] = settingsByCategory(AdvancedSetting).sortBy(_.name)
+   val verboseSettings: List[Setting[?]] = settingsByCategory(VerboseSetting).sortBy(_.name)
++  val proscalaSettings: List[Setting[?]] = settingsByCategory(ProscalaSetting).sortBy(_.name)
+   val settingsByAliases: Map[String, Setting[?]] = allSettings.flatMap(s => s.aliases.map(_.name -> s)).toMap
+ 
+ 
+-trait AllScalaSettings extends CommonScalaSettings, PluginSettings, VerboseSettings, OptimizerSettings, WarningSettings, XSettings, YSettings:
++trait AllScalaSettings extends CommonScalaSettings, PluginSettings, VerboseSettings, OptimizerSettings, WarningSettings, XSettings, YSettings, ZSettings:
+   self: SettingGroup =>
+ 
+   /* Path related settings */
+@@ -592,3 +595,15 @@ private sealed trait YSettings:
+   val YkindProjector: Setting[String] = ChoiceSetting(ForkSetting, "Ykind-projector", "[underscores, enable, disable]", "Allow `*` as type lambda placeholder to be compatible with kind projector. When invoked as -Ykind-projector:underscores will repurpose `_` to be a type parameter placeholder, this will disable usage of underscore as a wildcard.", List("disable", "", "underscores"), "disable", legacyArgs = true, deprecation = Deprecation.renamed("-Xkind-projector"))
+ end YSettings
+ 
++/** -Z: Proscala's optional behaviours, each a patch on upstream Scala that is
++ *  enabled by its own flag, `-Z<name>` (see `Proscala.Feature`); `-Z` alone
++ *  prints the synopsis, as `-X` and `-Y` do.
++ */
++private sealed trait ZSettings:
++  self: SettingGroup =>
++
++  val Zhelp: Setting[Boolean] = BooleanSetting(ProscalaSetting, "Z", "Print a synopsis of Proscala's optional features.")
++  val Zfeature: Map[Proscala.Feature, Setting[Boolean]] =
++    Proscala.features.map(f => f -> BooleanSetting(ProscalaSetting, "Z" + f.name, s"${f.help} (patch ${f.patch})")).toMap
++
++end ZSettings

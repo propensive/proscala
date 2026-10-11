@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 10 Jul 2026 11:54:24 +0200
+Subject: Evaluate IntegrateMap symbols in the spliced run context
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+IntegrateMap's anonymous constructor Context wins implicit resolution
+inside its body over the inherited mapCtx var. When a lazy type
+containing such a map is forced in a later run (after a compilation
+suspension), the LazyRef run-splicing in TypeMap.mapOver updates
+mapCtx, but symbol computations kept using the frozen creation-time
+context — bringing denotations backward across runs and failing
+updateValidity ('denotation ... invalid in run N. ValidFor: N+1').
+
+Shadow the stale parameter with a local given of mapCtx in apply and
+derivedSelect.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Proscala-Patch: integratemap
+---
+ compiler/src/dotty/tools/dotc/core/Types.scala | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/compiler/src/dotty/tools/dotc/core/Types.scala b/compiler/src/dotty/tools/dotc/core/Types.scala
+index 175cf076edb59c447e8603f9d7caa08e029dcdef..f82ecb8c063275e28343426b7495db559a86d99d 100644
+--- a/compiler/src/dotty/tools/dotc/core/Types.scala
++++ b/compiler/src/dotty/tools/dotc/core/Types.scala
+@@ -3878,6 +3878,13 @@ object Types extends TypeUtils {
+      */
+     private class IntegrateMap(from: List[Symbol], to: List[Type])(using Context) extends TypeMap:
+       override def apply(tp: Type) =
++        // The anonymous constructor `using Context` would otherwise win implicit
++        // resolution over the inherited `mapCtx` var: when a lazy type containing this
++        // map is forced in a later run, the run-splicing in `mapOver`'s `LazyRef` case
++        // updates `mapCtx`, and symbol computations must follow it rather than the
++        // frozen creation-time context (which would bring denotations backward and
++        // fail `updateValidity`).
++        given Context = mapCtx
+         // Same implementation as in `SubstMap`, except the `derivedSelect` in
+         // the `NamedType` case, and the default case that just calls `mapOver`.
+         tp match
+@@ -3896,6 +3903,7 @@ object Types extends TypeUtils {
+           case _ => mapOver(tp)
+ 
+       override final def derivedSelect(tp: NamedType, pre: Type): Type =
++        given Context = mapCtx  // see `apply`
+         if tp.prefix eq pre then tp
+         else
+           pre match

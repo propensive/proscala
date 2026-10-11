@@ -4,9 +4,11 @@
 # tree-detected. $(JARS) is defined by the Makefile before this file is included.
 
 VERSION            := 3.10.1-dev-propensive
-# The branch of scala/scala3 that upstream/3.10 mirrors. Authoritative: the docs
-# are checked against it, and `proscala-rebase-tree -u` fast-forwards to it.
+# The scala/scala3 commit this stream is built on (patches/3.10/series applies
+# onto it), and the scala/scala3 branch it is taken from. Authoritative: the
+# docs are checked against both. An upstream bump changes UPSTREAM_SHA.
 UPSTREAM_REF       := main
+UPSTREAM_SHA       := 403f2f663af8ad947e36a8f80f9680a9b71f7cf2
 REF_VERSION        := 3.10.0-RC3
 BASE_SCALAJS_VERSION    := 1.22.0
 COMPILER_IFACE_VER := 1.12.0

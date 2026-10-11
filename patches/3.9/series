@@ -1,0 +1,41 @@
+# Patches of the 3.9 stream, in the order they are applied onto mk/3.9.mk's
+# UPSTREAM_SHA. Each name resolves to patches/3.9/<name>.patch, else to
+# patches/common/<name>.patch. Written by bin/proscala-export; see AGENTS.md.
+
+zflags
+aliascap
+blockimport
+castbox
+ctxresult
+dependarg
+depset
+dictcaps
+givencache
+givenprefix
+iarraypure
+inertcache
+inlineupdate
+lazycycle
+literate
+nullreceiver
+permitlazy
+proxyskolem
+retainbounds
+returnavoid
+sambox
+samstateful
+searchdiag
+semdiag
+skolemcap
+smap
+splicealias
+spreadable
+staleread
+unboxedpure
+virtualdir
+wasm
+iarraypure-mutalias
+wasm-witcall
+rootclassify
+sharedunscoped
+classifiermeet
