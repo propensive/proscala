@@ -4,10 +4,12 @@
 # its GitHub release, beside the tarball.
 #
 # Usage:
-#   bin/proscala-attach-jars <tag> [<tag>...]      # e.g. 3.9.0-p16 3.10.1-dev-p16
+#   bin/proscala-attach-jars <tag> [<tag>...]      # e.g. v1.0.0, or 3.9.0-p16 3.10.1-dev-p16
 #
 # The release workflow attaches each published jar under its Maven name
-# (<artifactId>-<version>.jar) alongside proscala-<version>.tar.gz. A release
+# (<artifactId>-<version>.jar) alongside proscala-<version>.tar.gz. A Proscala
+# release (v<x.y.z>) holds one version per target, listed in its tag's
+# annotation; a release of the earlier scheme was a single version, the tag. A release
 # cut before it did so, or one whose upload step failed after the tag was made,
 # is completed with this: for each tag it takes the artefacts Maven Central
 # holds under dev.propensive at that version — the same bytes the workflow
@@ -44,11 +46,19 @@ for tag in "$@"; do
   gh release view "$tag" -R "$REPO" --json tagName >/dev/null 2>&1 \
     || die "no GitHub release for tag '$tag' in $REPO"
   dir="$tmp/$tag"; mkdir -p "$dir"
+  case "$tag" in
+    v[0-9]*)
+      git fetch --quiet --force origin "refs/tags/$tag:refs/tags/$tag" 2>/dev/null || true
+      versions="$(git tag -l --format='%(contents)' "$tag" | awk '$1 == "target" { print $4 }')"
+      [ -n "$versions" ] || die "tag $tag lists no targets" ;;
+    *) versions="$tag" ;;
+  esac
   n=0
+  for v in $versions; do
   while read -r id; do
     [ -n "$id" ] || continue
-    jar="$id-$tag.jar"
-    url="$CENTRAL/$id/$tag/$jar"
+    jar="$id-$v.jar"
+    url="$CENTRAL/$id/$v/$jar"
     curl --fail --silent --head --output /dev/null "$url" || continue
     curl --fail --silent --show-error --output "$dir/$jar" "$url"
     expected="$(curl --fail --silent --show-error "$url.sha1" | cut -d' ' -f1 | tr -d '[:space:]')"
@@ -57,7 +67,8 @@ for tag in "$@"; do
     echo "   ok: $jar"
     n=$((n + 1))
   done <<< "$artifacts"
-  [ "$n" -gt 0 ] || die "Central has no dev.propensive artefacts at version $tag"
+  done
+  [ "$n" -gt 0 ] || die "Central has no dev.propensive artefacts at the version(s) of $tag"
   echo "   uploading $n jars to the $tag release"
   gh release upload "$tag" -R "$REPO" --clobber "$dir"/*.jar
   echo "   done"

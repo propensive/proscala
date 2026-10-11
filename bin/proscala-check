@@ -16,7 +16,6 @@
 #   which patches a stream carries       ->  the bounds, evaluated at its pin
 #   which scala/scala3 commit it is on   ->  UPSTREAM_SHA in mk/<stream>.mk
 #   which scala/scala3 branch that is on ->  UPSTREAM_REF in mk/<stream>.mk
-#   the release version base             ->  VERSION in mk/<stream>.mk
 #   whether a repro exists               ->  the filesystem, doc/<patch>/repro*/
 #   which -Z name enables a patch        ->  config.Proscala, as each stream builds it
 #
@@ -138,10 +137,6 @@ for s in "${STREAMS[@]}"; do
   [ -f "mk/$s.mk" ] || continue
   [[ "$(mkvar "$s" UPSTREAM_SHA)" =~ ^[0-9a-f]{40}$ ]] || problem "mk/$s.mk has no full 40-hex UPSTREAM_SHA"
   uref="$(mkvar "$s" UPSTREAM_REF)"
-  vers="$(mkvar "$s" VERSION)"
-  [ -n "$uref" ] || { problem "mk/$s.mk has no UPSTREAM_REF"; continue; }
-  [ -n "$vers" ] || { problem "mk/$s.mk has no VERSION"; continue; }
-  relver="${vers%-propensive}-p<n>"
   for f in README.md AGENTS.md; do
     row="$(grep -n "^| *\`$s\` " "$f" | head -1)"
     if [ -z "$row" ]; then
@@ -150,8 +145,6 @@ for s in "${STREAMS[@]}"; do
     fi
     printf '%s' "$row" | grep -q -- "$uref" \
       || problem "$f stream row for $s does not name '$uref' (mk/$s.mk UPSTREAM_REF) — got: ${row#*:}"
-    printf '%s' "$row" | grep -qF -- "$relver" \
-      || problem "$f stream row for $s does not give version '$relver' (from mk/$s.mk VERSION) — got: ${row#*:}"
     pass "$f stream row $s"
   done
   # and quotes the patch count

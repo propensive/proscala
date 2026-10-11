@@ -5,7 +5,7 @@
 # Sonatype Central Portal), under the `dev.propensive` group, using the same
 # artifact names as the mainline Scala releases so the fork can stand in for
 # them — `scala3-compiler_3`, `scala-library`, `tasty-core_3` and so on — at
-# version <upstream-base>-p<n>.
+# version <scala version>-proscala-<x.y.z> (see AGENTS.md, "Releases").
 #
 # This mirrors how `consequent` publishes (same group, same portal, same
 # detached-GPG signing, same one-bundle-per-release model) but is written in
@@ -202,9 +202,9 @@ release-jars: release
 	 done
 	@echo "  jars    : $(words $(PUB_TABLE)) in $(PUB_JARS)"
 
-# Refuse to publish a development version. Plain `make` leaves VERSION at the
-# stream's `<base>-propensive`; a real publication is always driven by the
-# release workflow, which passes the computed `<base>-p<n>`.
+# Refuse to publish a development version. Plain `make` leaves VERSION ending
+# `-propensive`; a real publication is always driven by the release workflow,
+# which passes each target's `<scala version>-proscala-<x.y.z>`.
 .PHONY: publish-check-version
 publish-check-version:
 	@case '$(VERSION)' in \
@@ -351,7 +351,7 @@ publish-bundle: publish-stage
 # releases it to Maven Central with no further intervention — the same
 # `--shouldRelease true` behaviour consequent's release.sh uses. Maven Central
 # is append-only: a published version can never be replaced, only superseded by
-# the next -p<n>.
+# the next release.
 .PHONY: publish
 publish: publish-bundle
 	@set -eu; \

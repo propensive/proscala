@@ -12,19 +12,33 @@ policies and process documentation, and the per-feature documentation under
 [`doc/`](doc/README.md)) **and the build** (the `Makefile`, per-stream config,
 vendored Scala.js sources and helper scripts). A complete source tree is
 generated on demand, for any `scala/scala3` commit from the 3.9 era on — a
-release, a nightly, a branch head, or one of our pinned release streams — with
+release, a nightly, a branch head, or one of our pinned development streams — with
 the patches that apply there — see *Building* below.
 
-Streams
--------
+Versions
+--------
 
-Proscala's work is organised into **streams**. A stream corresponds to one
-major Scala 3 release line, and its name omits the minor/patch number:
+Proscala has its own version number, independent of the Scala it patches: a
+Proscala version is a set of features, each adapted to whichever Scala it is
+applied to (or left out, where that Scala already behaves as the feature
+promises). Each release is published for every Scala release from 3.9.0 on, and
+for a snapshot of upstream `main`, under versions that name both:
 
-| Stream | Tracks upstream                | Release versions   |
-| ------ | ------------------------------ | ------------------ |
-| `3.9`  | `scala/scala3` `lts-3.9`       | `3.9.1-dev-p<n>`   |
-| `3.10` | `scala/scala3` `main`          | `3.10.1-dev-p<n>`  |
+```scala
+scalaOrganization := "dev.propensive"
+scalaVersion      := "3.10.0-proscala-1.0.0"   // Proscala 1.0.0 on Scala 3.10.0
+```
+
+Version numbers follow semantic versioning, as [AGENTS.md](AGENTS.md) defines
+it for Proscala.
+
+Development happens against two **streams**, pinned upstream commits on the
+release lines:
+
+| Stream | Tracks upstream                |
+| ------ | ------------------------------ |
+| `3.9`  | `scala/scala3` `lts-3.9`       |
+| `3.10` | `scala/scala3` `main`          |
 
 The Patches
 -----------
@@ -40,8 +54,8 @@ The Patches
   lists its **versions** — the same change, adapted to different upstream code,
   each with the upstream commits it is known to apply to. For any target, the
   tools apply each patch in range, in its best-fitting version.
-- **`mk/<s>.mk`** defines a release **stream**: `UPSTREAM_SHA`, the
-  `scala/scala3` commit we release from (taken from the branch named by
+- **`mk/<s>.mk`** defines a development **stream**: `UPSTREAM_SHA`, the
+  `scala/scala3` commit we develop against (taken from the branch named by
   `UPSTREAM_REF`), and its tested build config.
 
 A patch that genuinely depends on another is named `<dependency>-<patch>` (e.g.
@@ -99,14 +113,14 @@ Releases
 
 Releases are published automatically to
 [GitHub Releases](https://github.com/propensive/proscala/releases) and Maven
-Central. A release is a tag on `main`, pushed by `bin/proscala-release <stream>`
-with the next version (`<upstream-version>-p<n>`, incrementing `<n>` from the
-stream's previous release; `-dev-p<n>` for streams that track a non-final
-upstream). The tag triggers a GitHub Actions workflow that builds the stream from
-the tagged commit and attaches `proscala-<version>.tar.gz` — a top-level `lib/` of
-everything Proscala builds plus the Scala.js / scala-wasm runtime — together with
-each published jar under its Maven name (`<artifactId>-<version>.jar`), so the
-release assets match the artefacts on Maven Central byte for byte.
+Central. A release is a tag `v<x.y.z>` on `main`, pushed by
+`bin/proscala-release <x.y.z>`, which records the exact upstream commits it is
+for. A GitHub Actions workflow then builds every target — each Scala release
+from 3.9.0 on, and upstream `main` as it was when the tag was cut — and, only
+once all have built, attaches each target's `proscala-<version>.tar.gz` (a
+top-level `lib/` of everything Proscala builds plus the Scala.js / scala-wasm
+runtime) and each published jar under its Maven name to the GitHub release, and
+publishes the same jars to Maven Central.
 
 Contributing
 ------------
