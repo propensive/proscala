@@ -180,3 +180,18 @@ tree_commits() {
 # in_series <s> <p> — whether stream <s> lists <p>. (Not `| grep -q`: under
 # pipefail an early-exiting grep can fail the pipe with SIGPIPE.)
 in_series() { [ "$(series "$1" | grep -cx -- "$2")" -gt 0 ]; }
+
+# The applied-manifest of a generated tree: for each patch the tool applied, the
+# patch-id of the file it applied. A commit whose patch-id still matches holds no
+# local work; if its file has changed since, the tree is merely out of date.
+manifest_path() { printf '%s/proscala-applied\n' "$(git -C "$1" rev-parse --absolute-git-dir)"; }
+manifest_get() { # manifest_get <dir> <p>
+  local m; m="$(manifest_path "$1")"
+  [ -f "$m" ] && awk -v p="$2" '$1 == p { id = $2 } END { if (id) print id }' "$m"
+  return 0
+}
+manifest_set() { # manifest_set <dir> <p> <id>
+  local m; m="$(manifest_path "$1")"
+  touch "$m"
+  { awk -v p="$2" '$1 != p' "$m"; printf '%s\t%s\n' "$2" "$3"; } > "$m.tmp" && mv "$m.tmp" "$m"
+}

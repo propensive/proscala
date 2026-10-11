@@ -1,16 +1,16 @@
 # AGENTS.md
 
-This file documents how the Proscala repository is organised — its branch
-model, patch rules, cross-branch tooling and release process. It describes the
-repository as a whole, but it lives **only on `main`**, alongside the
-documentation and the build.
+This file documents how the Proscala repository is organised — its layout,
+patch rules, tooling and release process.
 
-The code branches (`upstream/*`, `feature/*`, `trunk/*`, `release/*`) are pure
-upstream source, so each carries *upstream Scala 3's* own `AGENTS.md` instead —
-a different, unrelated file about building `dotc` with sbt, which knows nothing
-of streams, patches or this fork's layout. If you are working in a code-branch
-worktree, the `AGENTS.md` next to you is not this one: read this file from
-`main` (`git show main:AGENTS.md`).
+Everything lives on one branch, `main`. The Scala source is not stored here:
+each stream's tree is generated from upstream `scala/scala3` plus this
+repository's patch files, into a worktree under `worktrees/<stream>`. That tree is
+pure upstream source plus the patches, so it carries *upstream Scala 3's* own
+`AGENTS.md` — a different, unrelated file about building `dotc` with sbt, which
+knows nothing of streams, patches or this fork's layout. If you are working in a
+generated tree, the `AGENTS.md` next to you is not this one: read this file from
+`main`.
 
 **Important**: all AI-assisted contributions, including code, PR/issue descriptions, comments, and code reviews, must comply with the [LLM usage policy](LLM_POLICY.md) — state LLM usage clearly in descriptions, commit messages, etc.
 
@@ -21,157 +21,161 @@ library and language spec. It maintains a small set of patches on top of
 upstream `scala/scala3`, organised into streams (see below). We care about
 maintainability. "The tests pass" is not enough to justify that a change is good.
 
-The Scala source lives on the code branches; the `main` branch holds the
-documentation, repository-wide files **and the build itself** (the Makefile,
-per-stream config, vendored Scala.js sources and helper scripts). The build is
-overlaid onto a code branch at build time, so the code branches stay pure-source
-deviations from upstream.
+`main` holds the patches (as `git format-patch` files), the documentation, the
+repository-wide files **and the build** (the Makefile, per-stream config,
+vendored Scala.js sources and helper scripts). Nothing is ever force-pushed: an
+upstream bump, a new or changed patch and a release are each an ordinary commit
+(or tag) on `main`.
 
-## Branch Structure
+## Repository layout
 
-Proscala maintains a set of patches on top of upstream Scala 3, organised into
-**streams**. A stream corresponds to one major Scala 3 release, and its name omits
-the minor/patch number: `3.9`, `3.10`.
+Proscala's patches are organised into **streams**. A stream corresponds to one
+major Scala 3 release, and its name omits the minor/patch number: `3.9`, `3.10`.
 
-### Branch naming
+- **`mk/<stream>.mk`** — the stream's build config, including the two facts that
+  tie it to upstream: `UPSTREAM_SHA`, the `scala/scala3` commit its patches apply
+  onto, and `UPSTREAM_REF`, the `scala/scala3` branch that commit is taken from.
+- **`patches/<stream>/series`** — the stream's patches, one name per line, **in
+  the order they are applied**, with blank lines and `#` comments ignored. The
+  first is always `zflags`, the stream base (below).
+- **`patches/<stream>/<patch>.patch`** — a patch as this stream carries it.
+- **`patches/common/<patch>.patch`** — a patch shared by every stream that lists
+  it and has no copy of its own. A stream copy always wins over common.
+- **`worktrees/<stream>`** — git-ignored; the generated source tree, made by
+  `bin/proscala-tree`. It is a git worktree of this repository, detached at
+  `UPSTREAM_SHA`, with one commit per patch on top.
+- **`doc/`** — per-patch documentation (below); **`bin/`** — the tooling;
+  **`mk/scalajs-ir/`**, **`library-js-aux/`**,
+  **`project/ScalaLibraryFilesToCopy.scala`** — build inputs overlaid into a tree.
 
-- **`upstream/<stream>`** — tracks the matching branch of `scala/scala3` and is
-  fast-forwarded periodically. Everything else in the stream is rebased onto it.
-  Which branch each mirrors is recorded as `UPSTREAM_REF` in `mk/<stream>.mk`, and
-  that is the authoritative copy — the mapping below is checked against it:
-  - `upstream/3.9` → `scala/scala3` `lts-3.9`
-  - `upstream/3.10` → `scala/scala3` `main`
-- **`feature/<stream>/zflags`** — the **stream base**: a single commit on
-  `upstream/<stream>` adding the `-Z` setting and the registry of names behind
-  which the fork's opt-in behaviours are enabled (`config.Proscala`; see
-  `doc/zflags/zflags.md`). Not a patch: it is not listed in `features/<stream>`,
-  every patch is rebased onto it, and `trunk/<stream>` is built on it. It is
-  edited only to register a new gated patch's name.
-- **`feature/<stream>/<patch>`** — one branch per patch per stream, a **pure-source
-  deviation based on the stream base**. It carries only its own change —
-  no build files (those live on `main` and are overlaid at build time). `<patch>` is
-  a short alphanumeric identifier (e.g. `aliascap`, `unboxedpure`, `wasm`). A stream
-  only carries the patches it needs, so the set differs between streams.
-- **`trunk/<stream>`** — the aggregation of *all* of a stream's patches, merged onto
-  the stream base. It must always contain every patch named in
-  `features/<stream>`. (Formerly `all/<stream>`.)
-- **`scratch/<feature>`** — a throwaway branch for work in progress, usually
-  branched off a `trunk/<stream>` or `release/<stream>`. It is not part of the
-  published structure: once the work is ready it is split into a clean
-  `feature/<stream>/<patch>` branch and merged into `trunk/<stream>`, and the
-  scratch branch is discarded.
-- **`release/<stream>`** — the published release line for a stream, created from
-  `trunk/<stream>`. It is **protected** (pull-request-only): merging a PR into it
-  triggers a GitHub Actions build that tags and publishes a versioned release.
-- **`main`** — documentation, repository-wide files, **and the build**: the
-  `Makefile`, per-stream config (`mk/<stream>.mk`), the per-stream patch lists
-  (`features/<stream>`), the vendored Scala.js IR (`mk/scalajs-ir/`), the Scala.js
-  scalalib support sources (`library-js-aux/`),
-  `project/ScalaLibraryFilesToCopy.scala`, and `bin/` (the overlay and rebase
-  tooling). No Scala compiler/library source of its own.
+The upstream `scala/scala3` history is needed only for the commits named by
+`UPSTREAM_SHA`, and the tools fetch exactly those on demand (from a remote named
+`upstream` if you have one, else straight from GitHub), so a plain clone of this
+repository is enough to build any stream. Work in progress may be pushed to any
+branch for safe keeping, but nothing depends on such branches.
+
+The repository used to hold each patch as its own branch (`feature/<stream>/<patch>`,
+merged into `trunk/<stream>`, published through `release/<stream>`). Those
+branches were retired in October 2026; every one of them is kept, unchanged, as a
+tag `archive/<branch>`.
+
+### Patch files
+
+A patch file is `git format-patch` output for **exactly one commit**: its author,
+date, message and diff. The message ends with a trailer naming the patch,
+
+    Proscala-Patch: aliascap
+
+which is how `bin/proscala-export` maps a tree's commits back to files. Since
+`git am` cuts a message at a line consisting of `---`, a patch's message must not
+contain one. The files are written only by `bin/proscala-export` (below), with
+every git setting that would change their bytes pinned, so the same commit always
+produces the same file. They are meant to be read: review a change to a patch as
+the diff of its file.
 
 ### Patch rules
 
-- Every patch is a pure-source deviation on the stream base
-  (`feature/<stream>/zflags`, itself one commit on `upstream/<stream>`) — just
-  its own change, with **no build files** (the build lives on `main` and is
-  overlaid at build time). A bare id like `aliascap` means exactly that change.
+- Every patch is a pure-source change on the stream base — just its own change,
+  with **no build files** (the build lives on `main` and is overlaid at build
+  time). A bare id like `aliascap` means exactly that change.
+- **`zflags` is the stream base, not a patch**: it adds the `-Z` setting and the
+  registry of names behind which the fork's opt-in behaviours are enabled
+  (`config.Proscala`; see `doc/zflags/zflags.md`). It comes first in every
+  series, has no row in `doc/README.md`, and is edited only to register a new
+  gated patch's name.
 - **Gate a patch behind `-Z` only where its off state is a meaningful choice**:
   a change to what the compiler produces for code it already accepted, or one
   that rejects code upstream accepts. A crash, hang or spurious-error fix is
-  always on. A gated patch registers its name in `config.Proscala` on the base
+  always on. A gated patch registers its name in `config.Proscala` in `zflags`
   (one edit there, never in the patch) and tests
   `config.Proscala.enabled(config.Proscala.<Feature>)` at each site, keeping
   upstream's code as the other branch; its doc states the flag, and its row in
   `doc/README.md` carries it in the `Flag` column. Flags that change pickled
   capture sets must be documented in `doc/compatibility.md` as shared across
   module boundaries. See `doc/zflags/zflags.md`.
-- A patch is a single self-contained change (one or a few commits) on the stream base.
-- **Keep patches independent.** Do not stack a patch on another merely because they
-  were developed together. Each branch should hold only its own change on the base.
+- A patch is a single self-contained change, held as one commit. (Work on it in
+  as many commits as you like; squash them before exporting.)
+- **Keep patches independent.** Do not make a patch rely on another merely
+  because they were developed together. Two patches may touch the same file, in
+  which case the later one in the series is written against the earlier one's
+  result — that is ordering, not dependency.
 - **Genuine dependencies only.** If a patch cannot work — or cannot even make sense —
-  without another patch, build it on that patch's branch and name it
-  `<dependency>-<patch>`, hyphen-separated. Example: `wasm-witcall` — the `witcall`
-  intrinsic builds on `wasm`, which itself builds on the stream base.
+  without another patch, name it `<dependency>-<patch>`, hyphen-separated, and
+  list it after its dependency. Example: `wasm-witcall` — the `witcall` intrinsic
+  builds on `wasm`.
 - Prefer the shortest name that captures the real dependency. Long chains of many
   patch ids (`a-b-c-d-…`) are a smell — they are almost always an aggregation
-  masquerading as a dependency and should be collapsed back to independent patches
-  plus `trunk`.
+  masquerading as a dependency and should be collapsed back to independent patches.
 
-### The stream feature lists
+### The stream series
 
-Which patches a stream carries is defined on `main`, in `features/<stream>` — one
-patch id per line (the `<patch>` part of `feature/<stream>/<patch>`), with blank
-lines and `#` comments ignored and order irrelevant. The lists differ between
-streams: a patch only exists where it is needed, and some are upstreamed or become
-obsolete in a later stream.
+Which patches a stream carries, and in what order, is `patches/<stream>/series`.
+The streams differ: a patch only exists where it is needed, and some are
+upstreamed or become obsolete in a later stream.
 
-    features/3.9    36 patches   carries castbox, depset, splicealias, samstateful, staleread, virtualdir, rootclassify, sharedunscoped, classifiermeet
-    features/3.10   33 patches   adds anonspec, anykindcap, boolunapply, integratemap, macroalias, modulepath, prunecomplete, unioncaps; drops those six, and nullreceiver and permitlazy (fixed upstream)
+    patches/3.9/series    36 patches   carries castbox, depset, splicealias, samstateful, staleread, virtualdir, rootclassify, sharedunscoped, classifiermeet
+    patches/3.10/series   33 patches   adds anonspec, anykindcap, boolunapply, integratemap, macroalias, modulepath, prunecomplete, unioncaps; drops those six, and nullreceiver and permitlazy (fixed upstream)
 
-Twenty-four patches are common to both streams.
+(The counts exclude `zflags`.) Twenty-five patches are carried by both streams;
+twelve of them apply unchanged to both and are kept once, in `patches/common/`,
+and the other thirteen differ in their surrounding code (or more) and are kept
+per stream.
 
-**This list is authoritative, not descriptive.** `bin/proscala-rebase-tree`
-rebuilds `trunk/<stream>` as the merge of exactly these patches, so the list — not
-the set of branches your clone happens to hold — decides what a trunk contains.
-The script reconciles the two before it touches anything:
-
-- a listed patch with no local branch is created from `origin/feature/<s>/<patch>`;
-- a listed patch that exists neither locally nor on origin is a fatal error;
-- a `feature/<s>/*` branch that is **not** listed is a fatal error — add it to the
-  list or delete the branch.
-
-The last two matter: before the lists existed the script enumerated local branches
-only, so a clone holding a subset of a stream would rebuild its trunk from that
-subset, drop every other patch, and report success. Work in progress belongs on
-`scratch/<feature>`, which is why a stray unlisted `feature/` branch is treated as
-an error rather than silently included.
-
-Adding a patch to a stream therefore means adding its id to `features/<stream>` in
-the same change that creates the branch. Removing one means deleting the line (and
-the branch).
+**A common file must suit every stream that uses it.** `bin/proscala-export`
+writes a changed shared patch back to `patches/common/` only if every other stream
+using it still applies with the new version, and then says loudly that those
+streams' trees changed and want rebuilding and testing. If a stream can no longer
+use the shared version, its copy is forked into `patches/<stream>/` automatically.
+Promoting a stream copy to `common/` is a deliberate `git mv` (keeping one copy and
+deleting the others), which `bin/proscala-check` then verifies. Shared patches
+must appear in the same relative order in every series.
 
 ### Keeping the documentation honest
 
 The same fact is often stated in several places — a stream's patches appear in
-`features/<stream>` and in the `Streams` column of `doc/README.md`; its upstream
-branch and release version appear in `mk/<stream>.mk`, `README.md` and twice in
+`patches/<stream>/series` and in the `Streams` column of `doc/README.md`; its
+upstream branch and release version appear in `mk/<stream>.mk`, `README.md` and in
 this file. Rather than trying to remember every copy, **each fact has one source
 of truth and the copies are checked against it**:
 
 | Fact | Source of truth |
 | ---- | --------------- |
-| which patches a stream carries | `features/<stream>` |
-| which `scala/scala3` branch a stream mirrors | `UPSTREAM_REF` in `mk/<stream>.mk` |
+| which patches a stream carries, in what order | `patches/<stream>/series` |
+| which `scala/scala3` commit a stream is built on | `UPSTREAM_SHA` in `mk/<stream>.mk` |
+| which `scala/scala3` branch that commit is from | `UPSTREAM_REF` in `mk/<stream>.mk` |
 | what a stream releases as | `VERSION` in `mk/<stream>.mk` |
 | whether a patch has a reproduction | the filesystem, `doc/<patch>/repro*/` |
-| which `-Z` name enables a patch | `config.Proscala` on `feature/<stream>/zflags` |
+| which `-Z` name enables a patch | `config.Proscala`, as the stream's series builds it |
 
-    bin/proscala-check-docs        # exit 1 and list every divergence
-    bin/proscala-check-docs -v     # also show what passed
+    bin/proscala-check        # exit 1 and list every divergence
+    bin/proscala-check -v     # also show what passed
 
-It checks the feature table against the lists, the `Repro` column against the
-reproductions that actually exist, the `Flag` column against the registry on
-each stream's `zflags` branch, the stream tables in `README.md` and this file
-against `mk/<stream>.mk`, the patch counts quoted above, that no feature doc
-hard-codes a stream when its patch spans several, that every relative link
-resolves, and — when the `origin/*` refs are present — that every feature branch
-is listed and every listed patch is merged into its trunk. Run it after touching
-any of them; `.github/workflows/check-docs.yml` runs it on `main` too.
+It applies every stream's series onto its `UPSTREAM_SHA` (in a throwaway index,
+with no worktree, and without three-way merging — the definition of "the series
+applies"), and checks that every patch file holds one commit with the right
+trailer, that no file is unused and no stream copy merely duplicates
+`patches/common/`, and that shared patches keep one order. It checks the feature
+table against the series, the `Repro` column against the reproductions that
+actually exist, the `Flag` column against the registry the series builds, the
+stream tables in `README.md` and this file against `mk/<stream>.mk`, the patch
+counts quoted above, that no feature doc hard-codes a stream when its patch spans
+several, and that every relative link resolves. It notes, without failing, any
+patch that two streams carry as separate files with identical changes (a
+candidate for `patches/common/`). Run it after touching any of them;
+`.github/workflows/check.yml` runs it on every push and pull request to `main`.
 
 It checks structure, not prose: it cannot tell you that a feature doc has stopped
 describing what its patch does. That still needs reading.
 
 ### Feature documentation
 
-Every patch has a documentation directory on the **`main` branch**,
-`doc/<patch>/`, containing `doc/<patch>/<patch>.md` (the feature doc) and, for
-bug fixes, `doc/<patch>/repro/` with a minimal reproduction (standalone source
-files plus a `README.md` giving the compiler flags and expected failure, or a
-`FIXME.md` while no self-contained reproduction is known). `doc/README.md`
-indexes all features. Patch branches themselves carry **only code** — no
-documentation files. Writing the doc is part of developing a patch, not an
-afterthought — add it to `main` before the patch is merged into `trunk`.
+Every patch has a documentation directory, `doc/<patch>/`, containing
+`doc/<patch>/<patch>.md` (the feature doc) and, for bug fixes,
+`doc/<patch>/repro/` with a minimal reproduction (standalone source files plus a
+`README.md` giving the compiler flags and expected failure, or a `FIXME.md` while
+no self-contained reproduction is known). `doc/README.md` indexes all features.
+Patches themselves carry **only code** — no documentation files. Writing the doc
+is part of developing a patch, not an afterthought — commit it with the patch.
 
 Requirements for the doc file:
 
@@ -188,180 +192,177 @@ Requirements for the doc file:
   Soundness exercises the compiler in ways upstream does not.
 
 One doc covers every stream that carries the patch; where streams genuinely
-differ, the directory carries a clearly named variant file (e.g.
-a clearly named variant file).
+differ, the directory carries a clearly named variant file.
 
-### Building a distribution
+## The tools
 
-Any build is produced from a code branch — a single `feature/<stream>/<patch>`,
-or `trunk/<stream>` for the whole stream — by overlaying the build from `main` and
-running `make`. The build is a plain `make` (GNU make, plus `curl`, `javac`, `jar`
-and a JDK ≥ 17; publishing to Maven Central additionally needs `gpg` and `zip`).
-From a checkout of any code branch:
+All need bash 4+ and git; building additionally needs GNU make, `curl`, `javac`,
+`jar` and a JDK ≥ 17, and publishing to Maven Central needs `gpg` and `zip`.
 
-    git archive origin/main bin/proscala-overlay | tar -x   # bootstrap the helper
-    bin/proscala-overlay                                     # drop the build in
-    make                                                     # build every module jar
+### Building a stream: `bin/proscala-tree`
 
-`bin/proscala-overlay` copies the Makefile, the stream's config, the vendored
-Scala.js IR (choosing the stock or scala-wasm IR by whether the tree carries the
-WASM/WIT sources) and the other build inputs from `main` into the worktree as
-untracked, git-excluded files, so `git status` still shows only the branch's own
-change. `make` then downloads the reference compiler and third-party jars from Maven
-Central,
-compiles each module with that reference compiler, and lays out its artefacts
-**per branch** under `release/<branch>/`:
+    bin/proscala-tree 3.10            # make worktrees/3.10
+    cd worktrees/3.10 && make         # build every module jar
 
-- `release/<branch>/lib/`  — **the published jars**: everything we build (compiler,
+`bin/proscala-tree <stream> [<dir>]` creates a git worktree at `<dir>` (default
+`worktrees/<stream>`), detached at `UPSTREAM_SHA`, applies the series with
+`git am` — one commit per patch, so `git log` in the tree reads like the patch
+list — and overlays the build from this checkout's `HEAD` (`bin/proscala-overlay`
+copies the Makefile, the stream's config, the vendored Scala.js IR — the stock or
+scala-wasm IR, by whether the tree carries the WASM/WIT sources — and the other
+build inputs in as untracked, git-excluded files). `make` then downloads the
+reference compiler and third-party jars from Maven Central, compiles each module
+with that reference compiler, and lays out its artefacts under the tree's
+`release/<name>/`, where `<name>` is the tree's directory name:
+
+- `release/<name>/lib/`  — **the published jars**: everything we build (compiler,
   stdlib, tasty-core, repl, staging, tasty-inspector, sbt-bridge,
   presentation-compiler, our Scala.js libraries, the supplementary
   proscala-library for the JVM and Scala.js, …) plus the Scala.js / scala-wasm
   runtime jars, so a downloaded release can run Scala.js / WASM output
-- `release/<branch>/deps/` — the remaining third-party runtime jars (jline, guava,
+- `release/<name>/deps/` — the remaining third-party runtime jars (jline, guava,
   lsp4j, …), needed to run the compiler locally but not published
-- `release/<branch>/bin/`  — `scalac` / `scala` launchers whose classpath spans
+- `release/<name>/bin/`  — `scalac` / `scala` launchers whose classpath spans
   both `lib/` and `deps/`, so the local distribution runs as-is
 
-Intermediate classes go under `.build/<branch>/`; downloaded Maven jars are shared
-across branches under `.build/jars`. Both `release/` and `.build/` are git-ignored,
-so a branch's output is never committed and survives switching branches. Useful
-targets: `make deps` (fetch dependencies only), `make tarball` (build, then bundle
-the published jars into a single `release/<branch>/proscala-<version>.tar.gz`),
-`make release-jars` (copy each published jar to
-`release/<branch>/jars/<artifactId>-<version>.jar`, under its Maven name — a release
-attaches the tarball and these jars), `make clean` / `make distclean` (remove a
-branch's output).
-Override the output path with `make BRANCH=<name>`. The stream is derived from the
-branch name; from a detached checkout (e.g. CI) pass it explicitly with
-`make STREAM=3.9|3.10`.
+Intermediate classes go under `.build/<name>/`; downloaded Maven jars are shared
+under `.build/jars`. Useful targets: `make deps` (fetch dependencies only),
+`make tarball` (build, then bundle the published jars into a single
+`release/<name>/proscala-<version>.tar.gz`), `make release-jars` (copy each
+published jar to `release/<name>/jars/<artifactId>-<version>.jar`, under its Maven
+name — a release attaches the tarball and these jars), `make clean` /
+`make distclean`. The stream is read from the tree's `.proscala-stream`; override
+the output name with `make BRANCH=<name>`. The overlay comes from the *committed*
+`HEAD` of this checkout, so commit a build change before rebuilding a tree with it.
 
-### Keeping up with upstream
+Other modes: `--only <patch>` applies just `zflags` and one patch, to build it in
+isolation; `--reset` rebuilds an existing tree, but refuses if the tree holds any
+commit whose change is in no patch file (each tree records which file it applied
+for each patch, so a tree that is merely out of date is never mistaken for one
+holding work); `--continue` resumes after a patch that did not apply (below).
 
-We track `scala/scala3` closely and re-base the whole tree onto it frequently, so
-patches never drift far from the code they modify. Do this per stream with:
+### Writing patches back: `bin/proscala-export`
 
-    bin/proscala-rebase-tree <stream> <upstream-ref>
-    # e.g. bin/proscala-rebase-tree 3.9 upstream/lts-3.9
-    #      bin/proscala-rebase-tree 3.10 upstream/main
+    bin/proscala-export 3.10          # worktrees/3.10 -> patches/3.10/ (and common/)
 
-The script (bash 4+) takes the stream's patches from `features/<stream>` (see *The
-stream feature lists*), creating any listed branch this clone is missing from
-`origin` and refusing to run if the list and the branches disagree. It then fetches
-`upstream`, fast-forwards `upstream/<stream>` to the ref, rebases the stream base
-`feature/<stream>/zflags` onto it, then every patch onto its parent (in dependency
-order — `wasm` before `wasm-witcall`; a plain patch's parent is the base), and
-finally rebuilds `trunk/<stream>` as the merge of all patches. A trunk merge that
-conflicts is committed automatically when `rerere` has a recorded resolution for
-it; otherwise the script stops and names the scratch worktree to resolve it in. It works out each branch's current base as
-`merge-base(branch, parent)` so only that branch's own commits are replayed, and it
-rebases branches in place when they are checked out in a worktree so your working
-copies are left alone. (`-n`/`--dry-run` previews the whole plan — including which
-branches it would create — and changes nothing.)
-
-It needs an `upstream` remote pointing at `scala/scala3`
-(`git remote add upstream https://github.com/scala/scala3.git`) and a local
-`upstream/<stream>` mirror branch; a fresh clone has neither.
-
-A branch whose commits clash with upstream is left **unchanged** (its rebase is
-aborted) and listed at the end; branches depending on it are skipped. Resolve each
-by hand — `git rebase --onto upstream/<stream> <old-base> feature/<stream>/<patch>`,
-fix the conflict, `git rebase --continue` — then re-run the script (it is
-idempotent: already-updated branches are no-ops) to finish the tree and rebuild
-`trunk`. Review, build-test the affected branches, then push renamed history with
-`git push --force-with-lease`. Nothing is pushed by the script.
-
-### Changing the build
-
-Because the build lives on `main` and is overlaid at build time, a build change
-(the `Makefile`, `mk/<stream>.mk`, vendored sources) is a **single commit on
-`main`** — there is nothing to cascade across branches. Every subsequent build of
-any code branch picks it up automatically. An upstream update reaches a release line
-through the next `trunk/<stream> → release/<stream>` pull request; a build change on
-`main` reaches every build immediately (and a release when it is next cut).
-
-The rebase-tree script never touches `upstream/*`, `main`, or `release/*`.
-`upstream/*` are pristine mirrors and `release/*` are protected, moving only through
-pull requests.
+`bin/proscala-export <stream> [<dir>]` reads the tree's commits above
+`UPSTREAM_SHA` — each must be an ordinary commit with a `Proscala-Patch:` trailer,
+at most one per name — and rewrites the stream's patch files and `series` to
+match, in commit order. Before writing anything it proves the result: applying
+the new series onto `UPSTREAM_SHA` must reproduce the tree's content exactly. It
+also refuses to export a tree that is out of date — one still holding a patch
+exactly as it was applied whose file has changed since (for instance because
+another stream's export changed a shared file) — since that would silently undo
+the change; rebuild such a tree with `--reset`. A patch in `series` with no
+commit in the tree is an error unless removed on purpose with `--drop <patch>`,
+so a patch can never vanish by accident. Export commits nothing: review
+`git diff` on `main` and commit it.
 
 ### Everyday workflow
 
-1. **Develop.** Branch a `scratch/<feature>` off the relevant `trunk/<stream>`
-   (or `release/<stream>`) and do the work there.
-2. **Isolate.** When it's ready, split the change onto its own clean
-   `feature/<stream>/<patch>` branch — a single-purpose, source-only patch on
-   `upstream/<stream>`, following the patch rules above — **add its id to
-   `features/<stream>` on `main`**, **and** merge it into `trunk/<stream>`. Now the
-   change exists as a reusable patch, in the stream's patch list, and in the
-   aggregate. A patch missing from the list will be dropped from `trunk` by the
-   next rebase-tree run, which refuses to proceed until the two agree. Add the
-   patch's row to `doc/README.md` and run `bin/proscala-check-docs`.
-3. **Accumulate.** Repeat for further changes; `trunk/<stream>` gathers them all.
-4. **Release.** When you want to publish, open a pull request from
-   `trunk/<stream>` to `release/<stream>`. As release branches are protected, this
-   PR is the only route in.
-5. **Publish.** Merging the PR triggers the release workflow (below).
+1. **Develop.** `bin/proscala-tree <stream>` and work in `worktrees/<stream>`,
+   committing as you go. Unfinished work can be pushed to any branch as a backup.
+2. **Shape it into a patch.** Squash the work into one commit (`git rebase -i`)
+   whose message explains the change and ends with `Proscala-Patch: <patch>`. Put
+   it where it belongs in the series: after anything it genuinely depends on;
+   otherwise anywhere — the end is simplest. To change an existing patch, fold the
+   change into that patch's commit (`git commit --fixup=<commit>` then
+   `git rebase -i --autosquash`).
+3. **Export, document, check.** `bin/proscala-export <stream>`; write
+   `doc/<patch>/<patch>.md` (and a repro); add the patch's row to `doc/README.md`;
+   run `bin/proscala-check`; then commit the patch, its doc and its row together
+   on `main`.
+4. **Other streams.** To carry the patch to another stream too, apply it in that
+   stream's tree (`git am -3 patches/<stream>/<patch>.patch`, or cherry-pick from
+   the first tree), fix it up if needed, and export there. If the result applies
+   unchanged to both, move it to `patches/common/`.
+5. **Release.** `bin/proscala-release <stream>` (see *Releases*).
 
-**Release PRs after a rebase-tree run.** Rebasing the tree rewrites trunk's
-history while the release branch keeps the pre-rebase commits, so a direct
-`trunk → release` PR can show conflicts — reliably so when upstream touched the
-CI workflow files, because release branches strip the inherited scala3
-workflows (keeping only `release.yml`), and delete-vs-modify always conflicts.
-Do not resolve such a PR by hand. Instead build a deterministic resolution
-merge on a prep branch — trunk's content with release's `.github/` — and PR
-that:
+### Keeping up with upstream
 
-    git worktree add /tmp/relprep -b prep/release-<stream> trunk/<stream>
-    cd /tmp/relprep
-    git merge -s ours --no-commit origin/release/<stream>
-    git rm -rq .github && git checkout origin/release/<stream> -- .github
-    git commit
+We track `scala/scala3` closely and move each stream onto a newer upstream commit
+frequently, so patches never drift far from the code they modify. For a stream:
 
-Verify before pushing: `git diff --name-only trunk/<stream> HEAD` must list
-only `.github/` paths, and `git diff origin/release/<stream> HEAD -- .github`
-must be empty. Open the PR from `prep/release-<stream>`; delete the prep
-branch after the merge. (First needed for release/3.10, PR #12, 2026-07.)
+    git fetch upstream                          # a remote for scala/scala3
+    # 1. set UPSTREAM_SHA in mk/<stream>.mk to the new commit (e.g. upstream/main's head)
+    # 2. move the existing tree onto it, patch by patch:
+    cd worktrees/<stream>
+    git rebase --onto <new-sha> "$(cat "$(git rev-parse --absolute-git-dir)/proscala-base")"
+    #    fix any conflicts as usual (rerere remembers resolutions), then
+    cd ../.. && bin/proscala-export <stream>
+    # 3. bin/proscala-check, build and test the tree, commit mk/ and patches/ on main
 
-Keep the streams in step with upstream out-of-band with `bin/proscala-rebase-tree`
-(see *Keeping up with upstream*), which flows into the release lines via step 4.
+Rebasing the tree, rather than re-applying the files, gives git true merge bases
+for every patch, so most context drift resolves itself and conflicts are ordinary
+rebase conflicts. A patch that upstream has made redundant becomes an empty
+commit; drop it and export with `--drop <patch>`. Where a shared patch no longer
+applies to one stream, export forks it. The bump is one commit on `main`; nothing
+else moves, and nothing is force-pushed.
+
+Alternatively, `bin/proscala-tree <stream> --reset` builds a fresh tree on the
+new `UPSTREAM_SHA` by applying the files; a patch that does not apply stops it
+mid-`git am`. Resolve it (`git am --show-current-patch=diff` shows what the
+patch wanted), `git add` and `git am --continue`, then
+`bin/proscala-tree <stream> --continue` to apply the rest. `--3way` lets `git am`
+try a three-way merge first, which needs the old upstream history locally.
+
+### Changing the build
+
+The build lives only on `main` and is overlaid into a tree when it is made, so a
+build change (the `Makefile`, `mk/<stream>.mk`, vendored sources) is a **single
+commit on `main`**. Rebuild a tree's overlay to pick it up
+(`bin/proscala-overlay <stream>` from inside the tree, or
+`bin/proscala-tree <stream> --reset`).
 
 ### Releases
 
-Merging into a `release/<stream>` branch runs `.github/workflows/release.yml`,
-which:
+    bin/proscala-release 3.10 --dry-run    # check, and say what it would do
+    bin/proscala-release 3.10              # tag HEAD and push the tag
+
+A release is a **tag on `main`**. `bin/proscala-release <stream>` refuses unless
+`HEAD` is `origin/main`, nothing tracked is uncommitted and `bin/proscala-check`
+passes; it then computes the version, tags `HEAD` with it and pushes the tag.
+Pushing the tag runs `.github/workflows/release.yml`, which:
 
 0. **Checks the four publishing secrets and imports the signing key**, before
    anything irreversible happens — see *Publishing to Maven Central* below.
-1. **Overlays** the build from `main` (`bin/proscala-overlay`), so the release
-   branch — which holds only Scala source plus this workflow — can be built.
-2. **Versions** the build as `<upstream-base>-p<n>`. The base is the stream's
-   `mk/<stream>.mk` `VERSION` with the `-propensive` suffix stripped; `<n>` is one
-   greater than the highest existing `-p` tag for that base (starting at `1`). A
-   stream that tracks a non-final upstream carries a `-dev` marker in its `VERSION`,
-   so it releases as `<base>-dev-p<n>`.
-3. **Builds** everything cleanly (`make … tarball release-jars`).
-4. **Tags** the commit with the version and creates a **GitHub release**, attaching
+1. **Works out the stream** from the tag: the stream whose `mk/<stream>.mk`
+   `VERSION` base the tag carries.
+2. **Builds the tree** with `bin/proscala-tree` — the stream's series at the
+   tagged commit, on its `UPSTREAM_SHA` — and the distribution in it, cleanly
+   (`make … tarball release-jars`).
+3. **Creates a GitHub release** for the tag, attaching
    `proscala-<version>.tar.gz` — a top-level `lib/` of the jars we build plus the
    Scala.js / scala-wasm runtime; third-party dependencies are not published —
    together with each published jar under its Maven name
    (`<artifactId>-<version>.jar`), so the release assets and the Central artefacts
-   match byte for byte.
-5. **Publishes the same jars to Maven Central** (`make … publish`), under
+   match byte for byte. The notes record the upstream commit and the source
+   tree's hash, so the release's source can be regenerated exactly from the tag.
+4. **Publishes the same jars to Maven Central** (`make … publish`), under
    `dev.propensive`, at the same version.
 
-The workflow ignores pushes that touch only `.github/`, so a change to `release.yml`
-itself lands without cutting a release (which would otherwise publish a new `-p<n>`
-of identical jars, to append-only Central too); exercise it with `workflow_dispatch`
-or wait for the next real merge. A release that lacks its jars — one cut before the
-workflow attached them, or whose upload failed after the tag was made — is completed
-with `bin/proscala-attach-jars <tag>`, which takes them from Central, verifies each
-against Central's SHA-1 and uploads them beside the tarball.
+The version is `<upstream-base>-p<n>`. The base is the stream's `mk/<stream>.mk`
+`VERSION` with the `-propensive` suffix stripped; `<n>` is one greater than the
+highest existing `-p` tag of the stream (the counter runs across upstream bases,
+so `3.10.0-dev-p15` is followed by `3.10.1-dev-p16`). A stream that tracks a
+non-final upstream carries a `-dev` marker in its `VERSION`, so it releases as
+`<base>-dev-p<n>`.
+
+Run by hand from the Actions tab (`workflow_dispatch`, choosing a stream), the
+same workflow is a dry run: it builds the stream's next version from the chosen
+ref and stops before releasing or publishing anything. Only a tag releases, so
+editing `release.yml` never cuts a release. A release that lacks its jars — one
+cut before the workflow attached them, or whose upload failed after the tag was
+made — is completed with `bin/proscala-attach-jars <tag>`, which takes them from
+Central, verifies each against Central's SHA-1 and uploads them beside the
+tarball.
 
 ### Publishing to Maven Central
 
 Every release also goes to Maven Central, from the same trigger. The machinery
 is `mk/publish.mk` on `main` (overlaid with the rest of the build), so it is a
-**single commit on `main`** like any other build change — the release branches
-only carry the workflow step that invokes it.
+**single commit on `main`** like any other build change, invoked by the last
+step of `release.yml`.
 
     make VERSION=<v> publish-bundle   # build, stage, sign, zip — no upload
     make VERSION=<v> publish          # ... and upload to the Central Portal
@@ -377,7 +378,7 @@ Scala releases**: `scala-library`, `scala3-library_3`, `scala3-interfaces`,
 fork's own: `proscala-library_3` and `proscala-library_sjs1_3`, the
 **supplementary library** holding the standard-library additions
 (`scala.Literate`, `scala.Spreadable`, `scala.annotation.internal.diagnostic`)
-from `library-proscala/src` on the code branches, built into their own jar so
+from `library-proscala/src` in the tree (added by patches), built into their own jar so
 `scala-library` stays byte-identical to upstream's from the same sources.
 Consumers add it beside a `scala3-library`, and the compiler finds its classes
 by name, so nothing else depends on it. A WASM tree publishes a sixteenth,
@@ -460,13 +461,11 @@ Current streams and their release versions:
 | `3.9`  | `scala/scala3 lts-3.9`       | `3.9.1-dev-p<n>`    |
 | `3.10` | `scala/scala3 main`          | `3.10.1-dev-p<n>`   |
 
-The GitHub token needs `contents: write` (declared in the workflow). Because the
-code branches are now pure upstream, they carry the inherited scala/scala3 CI
-workflow files again; those are **disabled at the repository level** (Actions →
-each workflow → Disable). Only two workflows of ours run on the fork: `Release`,
-from `release.yml` on the `release/<stream>` branches — the one build-related file
-that must sit on a branch, so a push there triggers it — and `Check docs`, from
-`.github/workflows/check-docs.yml` on `main`, which runs `bin/proscala-check-docs`
-(see *Keeping the documentation honest*). A newly added workflow is enabled by
-default, so neither needs anything switched on; the disabling above applies only
-to the inherited scala/scala3 ones.
+
+The GitHub token needs `contents: write` (declared in the workflow). Two
+workflows run on the fork, both from `main`: `Release`
+(`.github/workflows/release.yml`, on a release tag or by hand as a dry run) and
+`Check` (`.github/workflows/check.yml`, on pushes and pull requests to `main`,
+running `bin/proscala-check`). The scala/scala3 CI workflows that the retired
+code branches inherited were disabled at the repository level; no branch carries
+them now, and a generated tree's `.github/` is never pushed.

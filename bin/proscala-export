@@ -109,55 +109,24 @@ users_of_common() {
   done
 }
 
-declare -A dest=()                # dest[p] = where the new file goes
-changed_common=()                 # p=file overrides accepted for common so far
-declare -A affected=()            # other streams whose tree a common change alters
+# A commit still exactly as the tool applied it, whose file has changed since
+# (another stream's export changed a shared file, or main moved on), is stale:
+# exporting it would silently undo that change.
+stale=()
 for i in "${!names[@]}"; do
   p="${names[$i]}"
   export_commit "$dir" "${commits[$i]}" > "$tmp/$p.patch"
-  if [ -f "$P/$stream/$p.patch" ]; then
-    dest[$p]="$P/$stream/$p.patch"
-    # collapse a stream copy that now says what common says
-    if [ -f "$P/common/$p.patch" ] && [ "$(patch_id "$tmp/$p.patch")" = "$(patch_id "$P/common/$p.patch")" ]; then
-      dest[$p]="collapse"
-    fi
-  elif [ -f "$P/common/$p.patch" ]; then
-    if cmp -s "$tmp/$p.patch" "$P/common/$p.patch"; then
-      dest[$p]="unchanged"
-      continue
-    fi
-    ok=1 users=()
-    for o in $(users_of_common "$p"); do
-      users+=("$o")
-      if apply_series "$o" ${changed_common[@]+"${changed_common[@]}"} "$p=$tmp/$p.patch" >/dev/null; then
-        rm -f "$APPLIED_INDEX"; APPLIED_INDEX=""
-      else
-        ok=0
-      fi
-    done
-    if [ "$ok" = 1 ]; then
-      dest[$p]="$P/common/$p.patch"
-      changed_common+=("$p=$tmp/$p.patch")
-      for o in ${users[@]+"${users[@]}"}; do affected[$o]="${affected[$o]:+${affected[$o]} }$p"; done
-    else
-      dest[$p]="$P/$stream/$p.patch"
-      warn "$p no longer applies to $(printf '%s ' "${users[@]}")from one shared file; forking it to patches/$stream/$p.patch"
-    fi
-  else
-    dest[$p]="$P/$stream/$p.patch"
+  m="$(manifest_get "$dir" "$p")"
+  f="$(patch_file "$stream" "$p")"
+  if [ -n "$m" ] && [ -n "$f" ] && [ "$(patch_id "$tmp/$p.patch")" = "$m" ] && [ "$(patch_id "$f")" != "$m" ]; then
+    stale+=("$p")
   fi
 done
-
-# --- prove it: the new series must rebuild the tree exactly --------------------------
-subst=()
-for p in "${names[@]}"; do
-  case "${dest[$p]}" in
-    unchanged) ;;
-    collapse)  subst+=("$p=$P/common/$p.patch") ;;
-    *)         subst+=("$p=$tmp/$p.patch") ;;
-  esac
-done
-# apply_series reads the series file, so stage the new one in place temporarily
+if [ "${#stale[@]}" -gt 0 ]; then
+  die "$dir is out of date: ${stale[*]} changed in patches/ since it was built, and exporting it would undo that.
+Rebuild it with 'bin/proscala-tree $stream --reset' (which keeps no work of yours it would lose: it refuses if there is any),
+or, to keep work in it, make a fresh tree elsewhere and cherry-pick your commits onto it."
+fi
 cp "$P/$stream/series" "$tmp/series.orig"
 {
   echo "# Patches of the $stream stream, in the order they are applied onto mk/$stream.mk's"
@@ -166,18 +135,75 @@ cp "$P/$stream/series" "$tmp/series.orig"
   echo
   printf '%s\n' "${names[@]}"
 } > "$tmp/series.new"
-cp "$tmp/series.new" "$P/$stream/series"
-if ! apply_series "$stream" ${subst[@]+"${subst[@]}"}; then
-  cp "$tmp/series.orig" "$P/$stream/series"
-  die "the exported series does not apply to UPSTREAM_SHA; nothing written"
-fi
-got="$(GIT_INDEX_FILE="$APPLIED_INDEX" git -C "$PROSCALA_ROOT" write-tree)"
-rm -f "$APPLIED_INDEX"; APPLIED_INDEX=""
-want="$(git -C "$dir" rev-parse 'HEAD^{tree}')"
-if [ "$got" != "$want" ]; then
-  # a collapse can be the cause; retry with the stream copies kept
-  cp "$tmp/series.orig" "$P/$stream/series"
-  die "applying the exported series gives tree $got, but $dir has $want; nothing written"
+
+# place <strict> — decide where each file goes, then prove that the new series
+# rebuilds the tree exactly. Unless strict, a common file whose change is the same
+# as the tree's (equal patch-id; only line numbers and `index` lines differ, as
+# they do between streams) is kept as it is, so exporting one stream does not
+# rewrite every shared file in that stream's context; likewise a stream copy that
+# now says what common says is collapsed. If the proof then fails, rerun strictly.
+declare -A dest=() affected=()
+place() {
+  local strict="$1" p o ok users subst=() changed_common=()
+  dest=() affected=()
+  for p in "${names[@]}"; do
+    if [ -f "$P/$stream/$p.patch" ]; then
+      dest[$p]="$P/$stream/$p.patch"
+      if [ "$strict" = 0 ] && [ -f "$P/common/$p.patch" ] \
+         && [ "$(patch_id "$tmp/$p.patch")" = "$(patch_id "$P/common/$p.patch")" ]; then
+        dest[$p]="collapse"
+      fi
+    elif [ -f "$P/common/$p.patch" ]; then
+      if cmp -s "$tmp/$p.patch" "$P/common/$p.patch" \
+         || { [ "$strict" = 0 ] && [ "$(patch_id "$tmp/$p.patch")" = "$(patch_id "$P/common/$p.patch")" ]; }; then
+        dest[$p]="unchanged"
+        continue
+      fi
+      ok=1 users=()
+      for o in $(users_of_common "$p"); do
+        users+=("$o")
+        if apply_series "$o" ${changed_common[@]+"${changed_common[@]}"} "$p=$tmp/$p.patch" >/dev/null; then
+          rm -f "$APPLIED_INDEX"; APPLIED_INDEX=""
+        else
+          ok=0
+        fi
+      done
+      if [ "$ok" = 1 ]; then
+        dest[$p]="$P/common/$p.patch"
+        changed_common+=("$p=$tmp/$p.patch")
+        for o in ${users[@]+"${users[@]}"}; do affected[$o]="${affected[$o]:+${affected[$o]} }$p"; done
+      else
+        dest[$p]="$P/$stream/$p.patch"
+        warn "$p no longer applies to ${users[*]} from one shared file; forking it to patches/$stream/$p.patch"
+      fi
+    else
+      dest[$p]="$P/$stream/$p.patch"
+    fi
+  done
+  for p in "${names[@]}"; do
+    case "${dest[$p]}" in
+      unchanged) ;;
+      collapse)  subst+=("$p=$P/common/$p.patch") ;;
+      *)         subst+=("$p=$tmp/$p.patch") ;;
+    esac
+  done
+  # apply_series reads the series file, so stage the new one in place meanwhile
+  cp "$tmp/series.new" "$P/$stream/series"
+  if ! apply_series "$stream" ${subst[@]+"${subst[@]}"} > "$tmp/apply.log"; then
+    cp "$tmp/series.orig" "$P/$stream/series"
+    return 1
+  fi
+  got="$(GIT_INDEX_FILE="$APPLIED_INDEX" git -C "$PROSCALA_ROOT" write-tree)"
+  rm -f "$APPLIED_INDEX"; APPLIED_INDEX=""
+  if [ "$got" != "$(git -C "$dir" rev-parse 'HEAD^{tree}')" ]; then
+    echo "   applying the exported series gives tree $got, not the tree's own" > "$tmp/apply.log"
+    cp "$tmp/series.orig" "$P/$stream/series"
+    return 1
+  fi
+}
+if ! place 0 && ! place 1; then
+  cat "$tmp/apply.log" >&2
+  die "the exported series does not rebuild $dir exactly; nothing written"
 fi
 
 # --- write ---------------------------------------------------------------------
@@ -202,6 +228,9 @@ for d in "${!dropping[@]}"; do
     rm -f "$P/common/$d.patch"
   fi
   note "dropped $d from the $stream stream"
+done
+for i in "${!names[@]}"; do
+  manifest_set "$dir" "${names[$i]}" "$(patch_id "$tmp/${names[$i]}.patch")"
 done
 note "patches/$stream: $wrote file$([ "$wrote" = 1 ] || echo s) written, ${#names[@]} patches in series"
 for o in "${!affected[@]}"; do

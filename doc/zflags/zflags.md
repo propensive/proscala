@@ -78,22 +78,20 @@ The names, one per gated patch:
 | `-Zunboxed-pure-types` | [unboxedpure](../unboxedpure/unboxedpure.md) | no boxing of pure types with vacuous capture sets |
 | `-Zunion-captures` | [unioncaps](../unioncaps/unioncaps.md) | capture information classified and preserved on unions |
 
-## The base branch
+## The stream base
 
 The registry is the one file several patches would otherwise all edit, and
-concurrent edits to one region are exactly what makes a trunk rebuild
-conflict. So `-Z` is not a patch: it is the **stream base**, branch
-`feature/<stream>/zflags`, rebased onto `upstream/<stream>`, with every
-patch rebased onto it and `trunk/<stream>` built on it.
-`bin/proscala-rebase-tree` knows the slot (it is the one the old
-`feature/<stream>/make` build branch occupied), and `zflags` is not listed in
-`features/<stream>`. Adding a gated patch means one edit to the registry on
-the base and the gate in the patch itself; a patch that needs no flag simply
+concurrent edits to one region are exactly what makes patches conflict with
+one another. So `-Z` is not a patch: it is the **stream base**, `zflags`,
+always first in `patches/<stream>/series` and so beneath every patch. It has no
+row in [the feature index](../README.md) and is not counted as one of a
+stream's patches. Adding a gated patch means one edit to the registry in
+`zflags` and the gate in the patch itself; a patch that needs no flag simply
 never mentions the base.
 
 The cost of a gate is that a patch now carries upstream's code as its
-else-branch, so when upstream edits those lines the patch's rebase conflicts
-where a one-line replacement would have merged. That is why only patches whose
+else-branch, so when upstream edits those lines the patch conflicts on an
+upstream bump where a one-line replacement would have merged. That is why only patches whose
 off state is a meaningful choice are gated; the always-on fixes are left as
 plain replacements.
 

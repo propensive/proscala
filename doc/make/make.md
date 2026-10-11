@@ -5,12 +5,12 @@ FIXME: this feature is not documented yet.
 The simplified Makefile-based build replaces upstream's sbt build. It is the
 build, not a patch: it lives on `main` (the `Makefile`, `mk/<stream>.mk`, the
 vendored Scala.js IR and the other build inputs) and `bin/proscala-overlay`
-drops it into a code-branch worktree as untracked files at build time, so no
-code branch carries it. It therefore has no `feature/<stream>/make` branch and
-no entry in the per-stream patch lists. (Earlier it *was* such a branch, the
-base of every other patch branch in the stream; that base slot is now occupied
-by [`feature/<stream>/zflags`](../zflags/zflags.md), the `-Z` flag
-infrastructure, on which every patch sits.)
+drops it into a generated tree as untracked files when `bin/proscala-tree`
+makes it, so no patch carries it. It therefore has no patch file and no entry in
+the per-stream series. (Earlier it *was* a patch, the base of every other patch
+in the stream; that base slot is now occupied by
+[`zflags`](../zflags/zflags.md), the `-Z` flag infrastructure, on which every
+patch sits.)
 
 What it builds: the modules upstream's sbt build publishes — the compiler,
 `scala-library`, `tasty-core`, the REPL, staging, tasty-inspector, sbt-bridge,

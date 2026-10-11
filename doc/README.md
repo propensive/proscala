@@ -13,14 +13,14 @@ self-contained reproduction is known yet. The same documentation applies to
 every stream that carries the feature; where streams genuinely differ, the
 directory carries a clearly named variant file (none at present).
 
-The `Streams` column is the human-readable view of the per-stream patch lists in
-`features/<stream>` on this branch; the two must agree. The build is **not** a
-patch — it lives on `main` and is overlaid onto a code branch at build time, so it
-has no `feature/<stream>/make` branch and no row below — but it is documented
-alongside the features, in [make/make.md](make/make.md). The **`-Z` setting**,
-through which the features in the `Flag` column are enabled by name, is likewise
-not a patch: it is the stream base branch `feature/<stream>/zflags`, on which
-every patch sits, documented in [zflags/zflags.md](zflags/zflags.md). A feature
+The `Streams` column is the human-readable view of the per-stream series in
+`patches/<stream>/series`; the two must agree. The build is **not** a patch — it
+lives on `main` and is overlaid into a generated tree at build time, so it has no
+patch file and no row below — but it is documented alongside the features, in
+[make/make.md](make/make.md). The **`-Z` setting**, through which the features in
+the `Flag` column are enabled by name, is likewise not a patch: it is the stream
+base, `zflags`, first in every series and beneath every patch, documented in
+[zflags/zflags.md](zflags/zflags.md). A feature
 whose `Flag` is "always on" runs unconditionally. [boundscap](boundscap/boundscap.md)
 likewise has no row: it applied only to the 3.8 stream, retired in August 2026, and
 its analysis and reproduction are kept as a record.
