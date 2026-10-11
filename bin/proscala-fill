@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+#
+# proscala-fill — close coverage gaps mechanically, where a three-way merge can.
+#
+# Usage:
+#   bin/proscala-fill [--accept-changed] <target>...
+#
+# For each target, chooses patches as bin/proscala-tree would, but lets a patch
+# that no version applies to plainly apply with a three-way merge (which needs
+# the patch's preimage blobs, i.e. scala/scala3 history). Each such patch is
+# recorded as a new version anchored at the target, with the revision of the
+# version it was merged from.
+#
+# A clean merge can still change what a patch does, if upstream touched the
+# lines around it. So by default a result is kept only if its +/- lines are
+# exactly those of the version it came from; others are listed for review.
+# --accept-changed keeps them too (read their diffs before committing).
+# Nothing is committed.
+
+set -euo pipefail
+PROSCALA_PROG=proscala-fill
+# shellcheck source=proscala-lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/proscala-lib.sh"
+
+accept=0 targets=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --accept-changed) accept=1; shift ;;
+    -h|--help) sed -n '3,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -*) die "unknown option $1" ;;
+    *) targets+=("$1"); shift ;;
+  esac
+done
+[ "${#targets[@]}" -gt 0 ] || die "which targets? (bin/proscala-coverage lists the gaps)"
+
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/proscala-fill.XXXXXX")"
+trap 'rm -rf "$tmp"; if [ -n "${SELECT_INDEX:-}" ]; then rm -f "$SELECT_INDEX"; fi' EXIT
+added=0
+for spec in "${targets[@]}"; do
+  t="$(resolve_target "$spec")"
+  SELECT_TREES=1 SELECT_3WAY=1 select_plan "$t" "$tmp/plan"; rm -f "$SELECT_INDEX"; SELECT_INDEX=""
+  while IFS=$'\t' read -r p st f _; do
+    case "$st" in
+      missing) warn "$spec: no version of $p applies, even three-way: a person must make one"; continue ;;
+      3way) ;;
+      *) continue ;;
+    esac
+    c="$(commit_from_trees "${SELECT_PRE[$p]}" "${SELECT_POST[$p]}" "$f")"
+    export_commit "$PROSCALA_ROOT" "$c" > "$tmp/new.patch"
+    if [ "$(payload_id "$tmp/new.patch")" != "$(payload_id "$f")" ] && [ "$accept" = 0 ]; then
+      warn "$spec: $p merges, but its +/- lines differ from ${f#"$PROSCALA_ROOT"/}; not recorded (review with --accept-changed)"
+      continue
+    fi
+    rev="$(variant_line "$p" "$(basename "$f")" | awk '{ print $2 }')"
+    vn="$(variant_name "$t")"
+    cp "$tmp/new.patch" "$P/$p/$vn"
+    set_variant "$p" "$vn" "$rev" "$t"
+    note "$spec: $p — recorded patches/$p/$vn (merged from $(basename "$f"), revision $rev)"
+    added=$((added + 1))
+  done < "$tmp/plan"
+done
+note "$added version$([ "$added" = 1 ] || echo s) recorded; check with bin/proscala-check, review with git diff, then commit"

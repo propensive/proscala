@@ -83,7 +83,7 @@ The names, one per gated patch:
 The registry is the one file several patches would otherwise all edit, and
 concurrent edits to one region are exactly what makes patches conflict with
 one another. So `-Z` is not a patch: it is the **stream base**, `zflags`,
-always first in `patches/<stream>/series` and so beneath every patch. It has no
+always first in `patches/series` and so beneath every patch. It has no
 row in [the feature index](../README.md) and is not counted as one of a
 stream's patches. Adding a gated patch means one edit to the registry in
 `zflags` and the gate in the patch itself; a patch that needs no flag simply

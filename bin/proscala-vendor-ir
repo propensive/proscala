@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+#
+# proscala-vendor-ir — vendor the Scala.js IR sources for one Scala.js version.
+#
+# Usage:
+#   bin/proscala-vendor-ir <scala.js version> [<output dir>]
+#
+# Writes mk/scalajs-ir/base/<version>/ (or <output dir>): the sources of
+# org.scala-js:scalajs-ir_3:<version> (or _2.13, for versions without a _3
+# build), with the package org.scalajs.ir moved to dotty.tools.sjs.ir and
+# `import scala.language.unsafeNulls` inserted after the package clauses, as
+# upstream's sbt build does (project/Shading.scala). Needed for a tree whose sbt
+# build uses a Scala.js version not yet vendored, and which does
+# not carry the `wasm` patch (that uses the scala-wasm IR in mk/scalajs-ir/wasm).
+
+set -euo pipefail
+PROSCALA_PROG=proscala-vendor-ir
+# shellcheck source=proscala-lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/proscala-lib.sh"
+
+v="${1:-}"
+[[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]] || die "usage: proscala-vendor-ir <scala.js version> [<output dir>]"
+out="${2:-$PROSCALA_ROOT/mk/scalajs-ir/base/$v}"
+[ ! -e "$out/dotty" ] || die "$out already holds vendored sources"
+
+work="$(mktemp -d "${TMPDIR:-/tmp}/proscala-ir.XXXXXX")"
+trap 'rm -rf "$work"' EXIT
+# The Scala 3 artifact where there is one; before it, the (cross-built, same
+# sources) Scala 2.13 one.
+got=""
+for suffix in 3 2.13; do
+  url="https://repo1.maven.org/maven2/org/scala-js/scalajs-ir_$suffix/$v/scalajs-ir_$suffix-$v-sources.jar"
+  if curl -fsSL -o "$work/src.jar" "$url" 2>/dev/null; then got="scalajs-ir_$suffix"; break; fi
+done
+[ -n "$got" ] || die "no scalajs-ir sources jar for $v on Maven Central"
+mkdir "$work/x"
+(cd "$work/x" && jar xf ../src.jar)
+[ -d "$work/x/org/scalajs/ir" ] || die "the sources jar has no org/scalajs/ir"
+
+mkdir -p "$out/dotty/tools/sjs"
+cp -R "$work/x/org/scalajs/ir" "$out/dotty/tools/sjs/ir"
+find "$out/dotty" -name '*.scala' -print0 | while IFS= read -r -d '' f; do
+  # Upstream's Shading.insertUnsafeNullsImport, too: the compiler is built with
+  # -Yexplicit-nulls, which older IR sources were not written for.
+  sed -e 's/org\.scalajs\.ir/dotty.tools.sjs.ir/g' "$f" \
+    | awk '{ t = $0; gsub(/^[ \t]+|[ \t]+$/, "", t)
+             if (found && !done && t != "" && t !~ /^package /) { print "import scala.language.unsafeNulls"; done = 1 }
+             if (t ~ /^package /) found = 1
+             print }' > "$f.tmp" && mv "$f.tmp" "$f"
+done
+sed -e "s/1\.22\.0/$v/g" -e "s/scalajs-ir_3:/$got:/" "$PROSCALA_ROOT/mk/scalajs-ir/base/1.22.0/README.md" > "$out/README.md"
+note "vendored Scala.js IR $v into ${out#"$PROSCALA_ROOT"/}"

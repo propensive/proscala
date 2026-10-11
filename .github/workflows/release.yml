@@ -2,8 +2,8 @@ name: Release
 
 # A release is a tag on `main`, pushed by bin/proscala-release: <base>-p<n>, where
 # <base> is a stream's VERSION in mk/<stream>.mk without -propensive. The job
-# builds that stream from the tagged commit — patches/<stream>/series applied
-# onto the scala/scala3 commit pinned as UPSTREAM_SHA — creates the GitHub
+# builds that stream from the tagged commit — the patches chosen for, and applied
+# onto, the scala/scala3 commit pinned as UPSTREAM_SHA — creates the GitHub
 # release (a proscala-<version>.tar.gz of the published jars, plus each jar
 # under its Maven name) and publishes the same jars to Maven Central under
 # `dev.propensive`.
@@ -31,6 +31,10 @@ jobs:
     steps:
       - name: Check out the tagged commit
         uses: actions/checkout@v4
+        # Full history: which patches apply is decided by ancestry between
+        # upstream commits, which a shallow checkout cannot see.
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -53,7 +57,7 @@ jobs:
             # whole base, not a prefix, so 3.1x and 3.1 can never be confused.
             for mk in mk/*.mk; do
               s="$(basename "$mk" .mk)"
-              [ -f "patches/$s/series" ] || continue
+              grep -q '^UPSTREAM_SHA' "$mk" || continue   # streams only
               base="$(sed -nE 's/^VERSION[[:space:]]*:=[[:space:]]*([^[:space:]]+).*/\1/p' "$mk" | head -1)"
               base="${base%-propensive}"
               if [[ "$version" =~ ^${base//./\\.}-p[0-9]+$ ]]; then stream="$s"; fi
@@ -145,7 +149,7 @@ jobs:
           gh release create "$v" --repo "$GITHUB_REPOSITORY" \
             --title "$v" \
             --verify-tag \
-            --notes "Proscala ${{ steps.ver.outputs.stream }} stream, built from ${GITHUB_SHA}: patches/${{ steps.ver.outputs.stream }}/series applied onto scala/scala3 ${{ steps.tree.outputs.upstream }} (source tree ${{ steps.tree.outputs.tree }}; rebuild it with \`bin/proscala-tree ${{ steps.ver.outputs.stream }}\` at this tag)." \
+            --notes "Proscala ${{ steps.ver.outputs.stream }} stream, built from ${GITHUB_SHA}: the patches applied onto scala/scala3 ${{ steps.tree.outputs.upstream }} (source tree ${{ steps.tree.outputs.tree }}; rebuild it with \`bin/proscala-tree ${{ steps.ver.outputs.stream }}\` at this tag)." \
             "release/dist/proscala-${v}.tar.gz" "${jars[@]}"
 
       # Last, because Maven Central is append-only: a published version can never

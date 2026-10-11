@@ -1,0 +1,710 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 11 Aug 2026 19:21:49 +0200
+Subject: -Zinline-source-maps: JSR-45 SMAP attributes mapping inlined code to
+ its source files
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Squashed from 4 commits, oldest first:
+
+* Add -Xjsr45: JSR-45 SMAP emission for inlined code
+
+Under -Xjsr45, trees inlined from other source files accumulate their
+chain of inline call sites as Inlined nodes are dropped at Erasure. The
+chains are resolved to synthetic line numbers past the end of the unit's
+primary source, emitted in the LineNumberTable and mapped back by a
+SourceDebugExtension (JSR-45 SMAP) attribute with two strata: 'Scala'
+(definition sites, used by JSR-45-aware debuggers for breakpoints and
+stepping) and 'ScalaDebug' (inline call sites in output numbering, so a
+consumer can recover the full inline stack of a stack frame).
+
+Developed with LLM assistance (Claude Code), reviewed by hand.
+
+* Emit a ScalaClass stratum naming each synthetic line's defining class
+
+A JSR-45 SMAP names only files and lines, but tooling that wants the
+inline method behind a synthetic line needs the TASTy of its top-level
+class, and there is no contract from a file name to a class name. The
+Inlined node's call trace references exactly that class, so each inline
+frame now records it: a fresh chain's head takes the callee class of its
+own level, and the chain's last frame - the call site, which lies in the
+enclosing expansion - is filled in when the enclosing call appends its
+frame. The registry serializes a third stratum, ScalaClass, whose
+'files' are binary class names and whose entries map each synthetic line
+to its defining class (input line always 1). Call sites in the primary
+source keep no class: the classfile itself provides that context.
+
+Also removes a stale assertion in Jsr45Test.inlineAcrossFiles that
+demanded a call-site line entry the folded expansion never emits.
+
+Developed with LLM assistance (Claude Code), reviewed by hand.
+
+* Emit only the part of a unit's SMAP each class actually uses
+
+Every class of a unit carried the whole unit's SMAP, on the assumption
+that the duplication would cost a few hundred bytes. For a unit that
+inlines heavily it costs megabytes: compiling Soundness produced 4.5 GB
+of SMAP text across 13,222 classfiles, with single classes carrying
+2.75 MB each, which exhausted downstream tools — a Scala Native link and
+a staged build both died on it.
+
+The backend now records which synthetic lines each class emitted, and
+the registry serializes only those. Because a line's call site may
+itself be a synthetic line the class never emitted (the inner call of a
+nested expansion), the entries are closed over the ScalaDebug chain, so
+following the chain still reaches a real line. Mirror classes hold only
+forwarders, which carry no line numbers, so they get no SMAP at all.
+
+The emission point already ran after the class's methods were generated,
+so the used-line set is complete when the attribute is written.
+
+Developed with LLM assistance (Claude Code), reviewed by hand.
+
+* Enable SMAP emission with -Z:inline-source-maps
+
+The -Xjsr45 setting is replaced by the inline-source-maps entry of the shared
+-Z registry; nothing else changes.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: smap
+---
+ .../tools/backend/jvm/BCodeHelpers.scala      |  20 +-
+ .../tools/backend/jvm/BCodeSkelBuilder.scala  |  27 ++-
+ .../dotty/tools/dotc/CompilationUnit.scala    |   6 +
+ compiler/src/dotty/tools/dotc/ast/Trees.scala |  15 ++
+ .../dotty/tools/dotc/inlines/Inlines.scala    |  72 +++++-
+ .../dotty/tools/dotc/util/SmapRegistry.scala  | 147 ++++++++++++
+ .../dotty/tools/backend/jvm/Jsr45Test.scala   | 222 ++++++++++++++++++
+ 7 files changed, 498 insertions(+), 11 deletions(-)
+ create mode 100644 compiler/src/dotty/tools/dotc/util/SmapRegistry.scala
+ create mode 100644 compiler/test/dotty/tools/backend/jvm/Jsr45Test.scala
+
+diff --git a/compiler/src/dotty/tools/backend/jvm/BCodeHelpers.scala b/compiler/src/dotty/tools/backend/jvm/BCodeHelpers.scala
+index 6a2c20a6670ce913628d61d18485a7f3768a1abd..4cc3bdf9c447523ea8a5e93721a44ceb1119e68c 100644
+--- a/compiler/src/dotty/tools/backend/jvm/BCodeHelpers.scala
++++ b/compiler/src/dotty/tools/backend/jvm/BCodeHelpers.scala
+@@ -57,6 +57,22 @@ trait BCodeHelpers(val bTypeLoader: BTypeLoader) extends BCodeIdiomatic {
+       cachedClassfileVersion = target.toInt + (Opcodes.V17 - 17)
+     cachedClassfileVersion.nn
+ 
++  /** The JSR-45 SourceDebugExtension (SMAP) for one class generated from the current
++   *  compilation unit, covering exactly the synthetic lines that class emitted (and the
++   *  call sites they lead back to), or null if it emitted none. Non-null only under
++   *  `-Zinline-source-maps`, when the class contains code inlined from other source files.
++   *
++   *  A unit's registry describes every inlined line in the unit, which for a unit that
++   *  inlines heavily is far more than any one of its classes uses; emitting all of it in
++   *  every class would add megabytes to a classfile.
++   */
++  protected def sourceDebugExtension(usedLines: collection.Set[Int])(using Context): String | Null =
++    if usedLines.isEmpty then null else
++      ctx.compilationUnit.smapRegistry match {
++        case null     => null
++        case registry => registry.serialize(ctx.compilationUnit.source.name, usedLines)
++      }
++
+   /*
+    * can-multi-thread
+    */
+@@ -470,7 +486,9 @@ trait BCodeHelpers(val bTypeLoader: BTypeLoader) extends BCodeIdiomatic {
+       )
+ 
+       if (emitSource) {
+-        mirrorClass.visitSource("" + ctx.compilationUnit.source.name, null /* SourceDebugExtension */)
++        // A mirror class holds only forwarders, which carry no line numbers of their own,
++        // so it never references a synthetic line and needs no SMAP.
++        mirrorClass.visitSource("" + ctx.compilationUnit.source.name, null)
+       }
+ 
+       mirrorClass.visitAttribute(createScalaJAttribute())
+diff --git a/compiler/src/dotty/tools/backend/jvm/BCodeSkelBuilder.scala b/compiler/src/dotty/tools/backend/jvm/BCodeSkelBuilder.scala
+index a7b4ba6ef772385b22ac7c15fdb7d983e1d966a0..84bf0dd14d60d270c5b5da8fb6a16cd7ef6db3be 100644
+--- a/compiler/src/dotty/tools/backend/jvm/BCodeSkelBuilder.scala
++++ b/compiler/src/dotty/tools/backend/jvm/BCodeSkelBuilder.scala
+@@ -8,7 +8,7 @@ import org.objectweb.asm
+ import org.objectweb.asm.tree.MethodNode
+ import dotty.tools.dotc.ast.tpd
+ import dotty.tools.dotc.ast.TreeTypeMap
+-import dotty.tools.dotc.ast.Trees.SyntheticUnit
++import dotty.tools.dotc.ast.Trees.{InlinedSourceLine, SyntheticUnit}
+ import dotty.tools.dotc.core.Decorators.*
+ import dotty.tools.dotc.core.Flags.*
+ import dotty.tools.dotc.core.StdNames.*
+@@ -143,6 +143,11 @@ trait BCodeSkelBuilder(val bTypes: KnownBTypes) extends BCodeHelpers {
+     protected var claszSymbol: Symbol = uninitialized
+     private var isCZStaticModule    = false
+ 
++    /** The synthetic line numbers this class's methods actually emitted, so that its
++     *  SourceDebugExtension carries only the part of the unit's SMAP it needs (-Zinline-source-maps).
++     */
++    private val usedSyntheticLines = mutable.Set.empty[Int]
++
+     // keep track of interfaces that are used in super calls, as they need to be directly inherited even if they are also indirectly inherited
+     val superCallTargets = mutable.LinkedHashSet[ClassBType]()
+ 
+@@ -171,6 +176,7 @@ trait BCodeSkelBuilder(val bTypes: KnownBTypes) extends BCodeHelpers {
+       serializableLambdas = Nil
+ 
+       cnode = new ClassNode1()
++      usedSyntheticLines.clear()
+ 
+       val cd = if (isCZStaticModule) {
+         // Move statements from the primary constructor following the superclass constructor call to
+@@ -430,7 +436,8 @@ trait BCodeSkelBuilder(val bTypes: KnownBTypes) extends BCodeHelpers {
+                   superClass, interfaceNames.toArray)
+ 
+       if (emitSource) {
+-        cnode.visitSource(ctx.compilationUnit.source.name, null /* SourceDebugExtension */)
++        // Runs after the class's methods have been emitted, so `usedSyntheticLines` is complete.
++        cnode.visitSource(ctx.compilationUnit.source.name, sourceDebugExtension(usedSyntheticLines))
+       }
+ 
+       BCodeUtils.enclosingMethodAttribute(claszSymbol, bTypeLoader.classBTypeFromSymbol(_).internalName, bTypeLoader.methodBTypeFromSymbol(_).descriptor) match {
+@@ -698,12 +705,16 @@ trait BCodeSkelBuilder(val bTypes: KnownBTypes) extends BCodeHelpers {
+       }
+ 
+       if (emitLines && tree.span.exists && !tree.hasAttachment(SyntheticUnit)) {
+-        val nr =
+-          val sourcePos = tree.sourcePos
+-          (
+-            if sourcePos.exists then sourcePos.line
+-            else ctx.source.offsetToLine(tree.span.point) // fallback
+-          ) + 1
++        val nr = tree.getAttachment(InlinedSourceLine) match
++          case Some(syntheticLine) => // inlined from another source file (-Zinline-source-maps)
++            usedSyntheticLines += syntheticLine
++            syntheticLine
++          case None =>
++            val sourcePos = tree.sourcePos
++            (
++              if sourcePos.exists then sourcePos.line
++              else ctx.source.offsetToLine(tree.span.point) // fallback
++            ) + 1
+ 
+         if (nr != lastEmittedLineNr) {
+           lastEmittedLineNr = nr
+diff --git a/compiler/src/dotty/tools/dotc/CompilationUnit.scala b/compiler/src/dotty/tools/dotc/CompilationUnit.scala
+index db34dbc88ef761a5c8ab061f51ef024bb456e2ab..9380d690c2d8ab063bcd0752a980055701c77743 100644
+--- a/compiler/src/dotty/tools/dotc/CompilationUnit.scala
++++ b/compiler/src/dotty/tools/dotc/CompilationUnit.scala
+@@ -48,6 +48,12 @@ class CompilationUnit protected (val source: SourceFile, val info: CompilationUn
+   /** Pickled TASTY binaries, indexed by class. */
+   var pickled: Map[ClassSymbol, () => Array[Byte]] = Map()
+ 
++  /** Synthetic line numbers for code inlined from other source files, emitted as a
++   *  JSR-45 SourceDebugExtension by the backend. Created on first use in
++   *  `Inlines.dropInlined` under `-Zinline-source-maps`; null if unset or nothing foreign was inlined.
++   */
++  var smapRegistry: util.SmapRegistry | Null = null
++
+   /** The fresh name creator for the current unit.
+    *  FIXME(#7661): This is not fine-grained enough to enable reproducible builds,
+    *  see https://github.com/scala/scala/commit/f50ec3c866263448d803139e119b33afb04ec2bc
+diff --git a/compiler/src/dotty/tools/dotc/ast/Trees.scala b/compiler/src/dotty/tools/dotc/ast/Trees.scala
+index 568b8ed9f80445a5337694cc818bfb6fb9b547b9..f218ef3466c49019f330d2266ede8caf765cdd65 100644
+--- a/compiler/src/dotty/tools/dotc/ast/Trees.scala
++++ b/compiler/src/dotty/tools/dotc/ast/Trees.scala
+@@ -34,6 +34,21 @@ object Trees {
+ 
+   val SyntheticUnit: Property.StickyKey[Unit] = Property.StickyKey()
+ 
++  /** Property key holding the chain of inline frames of a tree inlined from another
++   *  source file, innermost first: the head is the position the code was written at,
++   *  each subsequent frame the enclosing inline call site. Accumulated per `Inlined`
++   *  node in `Inlines.dropInlined` under `-Zinline-source-maps`, and resolved into
++   *  `InlinedSourceLine` when the outermost call is dropped.
++   */
++  val InlinedOriginChain: Property.StickyKey[List[util.SmapRegistry.Frame]] = Property.StickyKey()
++
++  /** Property key holding the synthetic output line (beyond the end of the primary
++   *  source) that a tree inlined from another source file emits in the
++   *  LineNumberTable, mapped back to its origin by the JSR-45 SourceDebugExtension
++   *  attribute (`-Zinline-source-maps`).
++   */
++  val InlinedSourceLine: Property.StickyKey[Int] = Property.StickyKey()
++
+   /** Property key for marking capture-set variables and members */
+   val CaptureVar: Property.StickyKey[Unit] = Property.StickyKey()
+ 
+diff --git a/compiler/src/dotty/tools/dotc/inlines/Inlines.scala b/compiler/src/dotty/tools/dotc/inlines/Inlines.scala
+index 9f8272aaede09a0fbdabcfbdf3e16553b514a38e..4277b090c662bb36d479dc9c5df3d40a23d1d02a 100644
+--- a/compiler/src/dotty/tools/dotc/inlines/Inlines.scala
++++ b/compiler/src/dotty/tools/dotc/inlines/Inlines.scala
+@@ -12,7 +12,7 @@ import NameKinds.BodyRetainerName
+ import SymDenotations.SymDenotation
+ import config.Printers.inlining
+ import ErrorReporting.errorTree
+-import dotty.tools.dotc.util.{SourceFile, SourcePosition, SrcPos}
++import dotty.tools.dotc.util.{SmapRegistry, SourceFile, SourcePosition, SrcPos}
+ import dotty.tools.dotc.transform.*
+ import dotty.tools.dotc.transform.MegaPhase
+ import dotty.tools.dotc.transform.MegaPhase.MiniPhase
+@@ -37,6 +37,7 @@ import dotty.tools.dotc.core.Phases.Phase
+ /** Support for querying inlineable methods and for inlining calls to such methods */
+ object Inlines:
+   import tpd.*
++  import ast.Trees.{InlinedOriginChain, InlinedSourceLine}
+ 
+   /** Method name of the transparent inline call.
+    *
+@@ -505,8 +506,75 @@ object Inlines:
+     val tree1 =
+       if inlined.bindings.isEmpty then inlined.expansion
+       else cpy.Block(inlined)(inlined.bindings, inlined.expansion)
++    if config.Proscala.enabled(config.Proscala.InlineSourceMaps) then recordInlineOrigins(inlined, tree1)
+     // Reposition in the outer most inlined call
+-    if (enclosingInlineds.nonEmpty) tree1 else reposition(tree1, inlined.span)
++    if enclosingInlineds.nonEmpty then tree1
++    else
++      if config.Proscala.enabled(config.Proscala.InlineSourceMaps) then resolveInlineOrigins(tree1)
++      reposition(tree1, inlined.span)
++
++  /** Record, on every tree of `expansion` that was inlined from a source other than
++   *  the call site's, its chain of inline frames in an `InlinedOriginChain`
++   *  attachment. `dropInlined` calls this once per `Inlined` node, innermost node
++   *  first, so an enclosing call appends its own call-site frame to the chains
++   *  recorded by the calls it contains, and a complete chain runs from the position
++   *  the code was written at out to a call site in the compilation unit's source.
++   *
++   *  Each frame also names the top-level class whose compilation unit its position
++   *  lies in, which is what lets tooling find the class's TASTy without guessing:
++   *  the `Inlined` node's call trace references exactly that class for its own
++   *  expansion, and for the chain's last frame — the call site, which lies in the
++   *  *enclosing* expansion — the class is filled in by the enclosing call when it
++   *  appends its own frame. A call site in the primary source keeps no class: the
++   *  classfile itself provides that context.
++   */
++  private def recordInlineOrigins(inlined: Inlined, expansion: Tree)(using Context): Unit =
++    val call = inlined.call
++    if !call.isEmpty && call.span.exists then
++      val callSource = call.source
++      val callPos = call.sourcePos
++      if callPos.exists && callPos.source.length > 0 then
++        val calleeClass =
++          if call.symbol.exists then
++            call.symbol.topLevelClass.fullName.stripModuleClassSuffix.mangledString
++          else ""
++        val callFrame = SmapRegistry.Frame(callPos.source, callPos.line + 1, "")
++        expansion.foreachSubTree { tree =>
++          tree.getAttachment(InlinedOriginChain) match
++            case Some(chain) =>
++              // The chain's last frame is the inner call's site, which lies in this call's
++              // expansion — so this call's callee is the class its position belongs to.
++              val last = chain.last
++              val filled = if last.cls.isEmpty then last.copy(cls = calleeClass) else last
++              tree.putAttachment(InlinedOriginChain, chain.init :+ filled :+ callFrame)
++            case None =>
++              if tree.source != callSource && tree.span.exists
++                 && tree.source.exists && tree.source.length > 0
++              then
++                val pos = tree.sourcePos
++                if pos.exists then
++                  val defFrame = SmapRegistry.Frame(pos.source, pos.line + 1, calleeClass)
++                  tree.putAttachment(InlinedOriginChain, defFrame :: callFrame :: Nil)
++        }
++
++  /** Resolve the `InlinedOriginChain` attachments below `tree` into synthetic
++   *  output lines (`InlinedSourceLine`, read by the backend), allocated from the
++   *  compilation unit's `SmapRegistry`. Called by `dropInlined` for the outermost
++   *  inlined call, when the chains are complete.
++   */
++  private def resolveInlineOrigins(tree: Tree)(using Context): Unit =
++    val unit = ctx.compilationUnit
++    if unit.source.exists && unit.source.length > 0 then
++      tree.foreachSubTree { t =>
++        for chain <- t.removeAttachment(InlinedOriginChain) do
++          val registry = unit.smapRegistry match
++            case null =>
++              val fresh = util.SmapRegistry(unit.source)
++              unit.smapRegistry = fresh
++              fresh
++            case registry => registry
++          t.putAttachment(InlinedSourceLine, registry.outputLineFor(chain))
++      }
+ 
+   def reposition(tree: Tree, callSpan: Span)(using Context): Tree =
+     // Reference test tests/run/i4947b
+diff --git a/compiler/src/dotty/tools/dotc/util/SmapRegistry.scala b/compiler/src/dotty/tools/dotc/util/SmapRegistry.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..6abde9c3c1bd0b947bb9598dfb6f800a48bd4b79
+--- /dev/null
++++ b/compiler/src/dotty/tools/dotc/util/SmapRegistry.scala
+@@ -0,0 +1,147 @@
++package dotty.tools
++package dotc
++package util
++
++import scala.collection.mutable
++
++/** Allocation of synthetic output line numbers for inlined code, serialized as a
++ *  JSR-45 SMAP (the `SourceDebugExtension` classfile attribute, enabled by `-Zinline-source-maps`).
++ *
++ *  Line numbers beyond the end of the primary source are allocated per distinct
++ *  chain of inline frames. A chain's head is the position the code was written at,
++ *  each subsequent frame is the enclosing inline call site, and a complete chain
++ *  ends at a position in the primary source. Three strata are emitted:
++ *
++ *   - `Scala` (the default stratum) maps a synthetic line to the position the
++ *     inlined code was written at, which is what JSR-45-aware debuggers use for
++ *     breakpoints and stepping;
++ *   - `ScalaDebug` maps a synthetic line to its inline call site, with the call
++ *     site's line given *in output numbering*. Since real lines are mapped to
++ *     themselves, a consumer can follow `ScalaDebug` through nested inlining,
++ *     one call site per step, until it reaches a real line of the primary file;
++ *   - `ScalaClass` maps a synthetic line to the binary name of the top-level
++ *     class whose compilation unit the inlined code was written in (the stratum's
++ *     "files" are class names, and its input lines are always 1). This is what
++ *     lets tooling find the class's TASTy — and with it the inline method's
++ *     definition — without guessing, since a source position alone names no class.
++ */
++class SmapRegistry(primarySource: SourceFile):
++  import SmapRegistry.Frame
++
++  /** 1-based number of the primary source's last line: synthetic lines start above it. */
++  private val primaryLastLine: Int = primarySource.offsetToLine(primarySource.length) + 1
++
++  private case class Entry(defFrame: Frame, call: Option[Frame], outputLine: Int)
++
++  private var nextLine: Int = primaryLastLine + 1
++  private val entries = mutable.ArrayBuffer.empty[Entry]
++  private val memo = mutable.HashMap.empty[List[Frame], Int]
++
++  /** The synthetic output line for `chain`, allocated on first use. The chain must
++   *  be non-empty; its frames hold 1-based line numbers. An incomplete chain (one
++   *  that does not end in the primary source) still gets a definition-site mapping,
++   *  but the `ScalaDebug` entry that would dangle is omitted.
++   */
++  def outputLineFor(chain: List[Frame]): Int = memo.get(chain) match
++    case Some(line) => line
++    case None =>
++      val call = chain.tail match
++        case Frame(source, line, _) :: Nil if source == primarySource =>
++          Some(Frame(source, line, "")) // a real line, mapped to itself in output numbering
++        case Nil => None
++        case rest => Some(Frame(rest.head.source, outputLineFor(rest), ""))
++      val line = nextLine
++      nextLine += 1
++      entries += Entry(chain.head, call, line)
++      memo(chain) = line
++      line
++
++  /** The SMAP text describing exactly `usedLines` — the synthetic lines that one
++   *  generated class emitted — or the empty string if none of them is a synthetic line
++   *  of this unit. A unit's registry covers every inlined line in the unit, which for a
++   *  unit that inlines heavily is far more than any one of its classes uses.
++   *
++   *  A line's call site may itself be a synthetic line the class never emitted (the
++   *  inner call of a nested expansion), so the entries are closed over the `ScalaDebug`
++   *  chain: without that, following the chain would dead-end part-way out.
++   */
++  def serialize(generatedFileName: String, usedLines: collection.Set[Int]): String =
++    val byOutputLine = entries.iterator.map(e => e.outputLine -> e).toMap
++
++    val included = mutable.TreeSet.empty[Int]
++    def include(line: Int): Unit =
++      if !included.contains(line) then
++        byOutputLine.get(line).foreach: e =>
++          included += line
++          for call <- e.call if call.line > primaryLastLine do include(call.line)
++
++    usedLines.foreach(include)
++
++    if included.isEmpty then "" else
++      val chosen = included.toArray.map(byOutputLine)
++
++      val fileIds = mutable.LinkedHashMap[SourceFile, Int](primarySource -> 1)
++      def idOf(source: SourceFile): Int = fileIds.getOrElseUpdate(source, fileIds.size + 1)
++      for e <- chosen do
++        idOf(e.defFrame.source)
++        for call <- e.call do idOf(call.source)
++
++      val classIds = mutable.LinkedHashMap[String, Int]()
++      for e <- chosen if e.defFrame.cls.nonEmpty do
++        classIds.getOrElseUpdate(e.defFrame.cls, classIds.size + 1)
++
++      val sb = StringBuilder()
++      def fileSection(): Unit =
++        sb ++= "*F\n"
++        for (source, id) <- fileIds do
++          sb ++= s"+ $id ${source.name}\n${source.path}\n"
++
++      sb ++= s"SMAP\n$generatedFileName\nScala\n"
++      sb ++= "*S Scala\n"
++      fileSection()
++      sb ++= "*L\n"
++      sb ++= s"1#1,$primaryLastLine:1\n"
++      var i = 0
++      while i < chosen.length do
++        val e = chosen(i)
++        val Frame(defSource, defLine, defCls) = e.defFrame
++        // coalesce runs where input and output lines increase in lockstep
++        var n = 1
++        while i + n < chosen.length
++              && chosen(i + n).defFrame == Frame(defSource, defLine + n, defCls)
++              && chosen(i + n).outputLine == e.outputLine + n
++        do n += 1
++        val repeat = if n == 1 then "" else s",$n"
++        sb ++= s"$defLine#${idOf(defSource)}$repeat:${e.outputLine}\n"
++        i += n
++
++      sb ++= "*S ScalaDebug\n"
++      fileSection()
++      sb ++= "*L\n"
++      for e <- chosen do
++        for call <- e.call do
++          sb ++= s"${call.line}#${idOf(call.source)}:${e.outputLine}\n"
++
++      if classIds.nonEmpty then
++        sb ++= "*S ScalaClass\n"
++        sb ++= "*F\n"
++        for (cls, id) <- classIds do sb ++= s"$id $cls\n"
++        sb ++= "*L\n"
++        for e <- chosen do
++          if e.defFrame.cls.nonEmpty then
++            sb ++= s"1#${classIds(e.defFrame.cls)}:${e.outputLine}\n"
++
++      sb ++= "*E\n"
++      sb.toString
++end SmapRegistry
++
++object SmapRegistry:
++  /** A source position in an inline chain: source file, 1-based line number, and
++   *  the binary name of the top-level class whose compilation unit the position
++   *  lies in — empty when unknown, as it is for call sites in the primary source,
++   *  which need no class (the classfile itself provides that context). In a
++   *  chain's head the line is a source line; in `Entry.call` it is a line in
++   *  output numbering (real lines are their own output lines, nested call sites
++   *  are synthetic).
++   */
++  case class Frame(source: SourceFile, line: Int, cls: String)
+diff --git a/compiler/test/dotty/tools/backend/jvm/Jsr45Test.scala b/compiler/test/dotty/tools/backend/jvm/Jsr45Test.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..b25d6c1e4bf79efeaed3b93272acd899486bb6dd
+--- /dev/null
++++ b/compiler/test/dotty/tools/backend/jvm/Jsr45Test.scala
+@@ -0,0 +1,222 @@
++package dotty.tools.backend.jvm
++
++import dotty.DottyBytecodeTest
++import dotty.tools.dotc.util.{SmapRegistry, SourceFile}
++
++import org.junit.Assert.*
++import org.junit.Test
++
++/** Tests for the JSR-45 SourceDebugExtension emitted under -Zinline-source-maps. */
++class Jsr45Test extends DottyBytecodeTest:
++  import dotty.AsmConverters.*
++
++  override def initCtx =
++    val ctx0 = super.initCtx
++    ctx0.setSetting(ctx0.settings.Zfeature(dotty.tools.dotc.config.Proscala.InlineSourceMaps), true)
++
++  /** An `*L` entry: input line, file id, repeat count, output start line. */
++  private case class LineEntry(inputLine: Int, fileId: Int, repeat: Int, outputLine: Int)
++
++  private val LineEntryPattern = """(\d+)#(\d+)(?:,(\d+))?:(\d+)""".r
++
++  /** Does `entry` (possibly a coalesced run) map input line `line` of file `fileId`? */
++  private def covers(entry: LineEntry, line: Int, fileId: Int): Boolean =
++    entry.fileId == fileId && line >= entry.inputLine && line < entry.inputLine + entry.repeat
++
++  /** The `*L` entries of the given stratum of `smap`. */
++  private def lineEntries(smap: String, stratum: String): List[LineEntry] =
++    val start = smap.indexOf(s"*S $stratum")
++    assertTrue(s"no $stratum stratum in SMAP:\n$smap", start >= 0)
++    val section = smap.substring(start).linesIterator.drop(1).takeWhile(!_.startsWith("*S")).toList
++    section.collect {
++      case LineEntryPattern(in, fid, rep, out) =>
++        LineEntry(in.nn.toInt, fid.nn.toInt, if rep == null then 1 else rep.toInt, out.nn.toInt)
++    }
++
++  @Test def inlineAcrossFiles(): Unit =
++    val util =
++      """|object Util:
++         |  inline def twice(inline x: Int): Int =
++         |    x + x
++         |""".stripMargin
++    val main =
++      """|class Main:
++         |  def run(): Int =
++         |    Util.twice(21)
++         |""".stripMargin
++
++    checkBCode(List(util, main)) { dir =>
++      val utilClass = loadClassNode(lookupClass(dir, "Util$.class"), skipDebugInfo = false)
++      assertNull("unit without foreign inlining should carry no SMAP", utilClass.sourceDebug)
++
++      val mainClass = loadClassNode(lookupClass(dir, "Main.class"), skipDebugInfo = false)
++      val smap = mainClass.sourceDebug
++      assertNotNull("Main should carry a SourceDebugExtension", smap)
++      assertTrue(smap.startsWith("SMAP\n"))
++      assertTrue(smap.endsWith("*E\n"))
++
++      val scala = lineEntries(smap, "Scala")
++      val identity = scala.head
++      assertEquals("identity mapping for the primary file", LineEntry(1, 1, identity.repeat, 1), identity)
++      val primaryLines = identity.repeat
++
++      // `x + x` on line 3 of Util maps to a synthetic line past the end of Main's source
++      val synthetic = scala.tail
++      assertTrue(s"expected a synthetic entry in:\n$smap", synthetic.nonEmpty)
++      assertTrue(synthetic.forall(_.outputLine > primaryLines))
++      assertTrue(s"expected Util line 3 in:\n$smap",
++        synthetic.exists(e => covers(e, 3, 2)))
++
++      // ScalaDebug maps the same synthetic lines back to the call site, Main line 3
++      val debug = lineEntries(smap, "ScalaDebug")
++      assertTrue(s"expected call-site entry in:\n$smap",
++        debug.exists(e => e.inputLine == 3 && e.fileId == 1 && e.outputLine > primaryLines))
++
++      // ScalaClass names the top-level class each synthetic line was inlined from
++      val classes = lineEntries(smap, "ScalaClass")
++      assertTrue(s"expected a ScalaClass entry per synthetic line in:\n$smap",
++        classes.map(_.outputLine).sorted == synthetic.flatMap(e =>
++          e.outputLine until e.outputLine + e.repeat).sorted)
++      assertTrue(classes.forall(_.inputLine == 1))
++      assertTrue(s"expected class Util in:\n$smap",
++        smap.linesIterator.exists(_.matches("\\d+ Util")))
++
++      // and the method body actually uses a synthetic line
++      val lines = instructionsFromMethod(getMethod(mainClass, "run")).collect { case ln: LineNumber => ln.line }
++      assertTrue(s"expected a synthetic line number in $lines", lines.exists(_ > primaryLines))
++    }
++
++  @Test def nestedInlineAcrossThreeFiles(): Unit =
++    // plain (non-inline) parameters, so the expansions are not constant-folded away
++    val a =
++      """|object A:
++         |  inline def core(x: Int): Int =
++         |    x * 2
++         |""".stripMargin
++    val b =
++      """|object B:
++         |  inline def outer(x: Int): Int =
++         |    A.core(x) + 1
++         |""".stripMargin
++    val main =
++      """|class Main:
++         |  def run(x: Int): Int =
++         |    B.outer(x)
++         |""".stripMargin
++
++    checkBCode(List(a, b, main)) { dir =>
++      val mainClass = loadClassNode(lookupClass(dir, "Main.class"), skipDebugInfo = false)
++      val smap = mainClass.sourceDebug
++      assertNotNull("Main should carry a SourceDebugExtension", smap)
++
++      val scala = lineEntries(smap, "Scala")
++      val primaryLines = scala.head.repeat
++      val synthetic = scala.tail
++      // both A's and B's code appear, from two distinct foreign files
++      assertTrue(s"expected two foreign files in:\n$smap", synthetic.map(_.fileId).distinct.size >= 2)
++
++      // the ScalaDebug chain: some synthetic line's call site is itself synthetic
++      // (B's call of A.core lies inside inlined code), and some call site is a real
++      // line of the primary file (Main's call of B.outer)
++      val debug = lineEntries(smap, "ScalaDebug")
++      assertTrue(s"expected a synthetic-to-synthetic hop in:\n$smap",
++        debug.exists(_.inputLine > primaryLines))
++      assertTrue(s"expected a hop to the primary file in:\n$smap",
++        debug.exists(e => e.inputLine <= primaryLines && e.fileId == 1))
++
++      // ScalaClass names both defining classes
++      assertTrue(s"expected classes A and B in:\n$smap",
++        smap.linesIterator.exists(_.matches("\\d+ A"))
++        && smap.linesIterator.exists(_.matches("\\d+ B")))
++    }
++
++  @Test def sameFileInlineNeedsNoSmap(): Unit =
++    val main =
++      """|object Main:
++         |  inline def twice(inline x: Int): Int = x + x
++         |  def run(): Int = twice(21)
++         |""".stripMargin
++
++    checkBCode(List(main)) { dir =>
++      val mainClass = loadClassNode(lookupClass(dir, "Main$.class"), skipDebugInfo = false)
++      assertNull("same-file inlining needs no SMAP", mainClass.sourceDebug)
++    }
++
++/** Direct tests of SMAP allocation and serialization. */
++class SmapRegistryTest:
++  private def source(name: String, lines: Int): SourceFile =
++    SourceFile.virtual(name, (1 to lines).map(i => s"// line $i").mkString("\n"))
++
++  import SmapRegistry.Frame
++
++  @Test def lockstepRunsCoalesce(): Unit =
++    val primary = source("Main.scala", 10)
++    val util = source("Util.scala", 5)
++    val registry = SmapRegistry(primary)
++    val first = registry.outputLineFor(List(Frame(util, 2, "Util"), Frame(primary, 7, "")))
++    val second = registry.outputLineFor(List(Frame(util, 3, "Util"), Frame(primary, 7, "")))
++    assertEquals(first + 1, second)
++    // identical chains share their output line
++    assertEquals(first, registry.outputLineFor(List(Frame(util, 2, "Util"), Frame(primary, 7, ""))))
++
++    val smap = registry.serialize("Main.scala", Set(first, second))
++    assertTrue(s"expected coalesced run in:\n$smap", smap.contains(s"2#2,2:$first\n"))
++    assertTrue(s"expected call-site entries in:\n$smap",
++      smap.contains(s"7#1:$first\n") && smap.contains(s"7#1:$second\n"))
++    assertTrue(s"expected ScalaClass entries in:\n$smap",
++      smap.contains("*S ScalaClass\n*F\n1 Util\n")
++      && smap.contains(s"1#1:$first\n") && smap.contains(s"1#1:$second\n"))
++
++  @Test def nestedChainsAllocateCallSites(): Unit =
++    val primary = source("Main.scala", 10)
++    val a = source("A.scala", 5)
++    val b = source("B.scala", 5)
++    val registry = SmapRegistry(primary)
++    val inner = registry.outputLineFor(
++      List(Frame(a, 3, "A"), Frame(b, 2, "B"), Frame(primary, 4, "")))
++    val smap = registry.serialize("Main.scala", Set(inner))
++    // the chain allocated a line for B's call site too, and the ScalaDebug entry
++    // for A's code points at it (a synthetic line, not a primary line)
++    val hop = s"#\\d+:$inner\n".r.findAllIn(smap).toList
++    assertTrue(s"expected entries for line $inner in:\n$smap", hop.nonEmpty)
++    assertTrue(s"expected synthetic call site in:\n$smap",
++      smap.linesIterator.exists(l => l.endsWith(s":$inner") && l.takeWhile(_.isDigit).toInt > 10))
++    // the suffix chain's entry names B's class; the full chain's names A's
++    assertTrue(s"expected classes A and B in ScalaClass of:\n$smap",
++      smap.linesIterator.exists(_.matches("\\d+ A"))
++      && smap.linesIterator.exists(_.matches("\\d+ B")))
++
++  @Test def onlyUsedLinesAreEmitted(): Unit =
++    val primary = source("Main.scala", 10)
++    val util = source("Util.scala", 5)
++    val other = source("Other.scala", 5)
++    val registry = SmapRegistry(primary)
++    val used = registry.outputLineFor(List(Frame(util, 2, "Util"), Frame(primary, 7, "")))
++    val unused = registry.outputLineFor(List(Frame(other, 3, "Other"), Frame(primary, 8, "")))
++
++    val smap = registry.serialize("Main.scala", Set(used))
++    assertTrue(s"expected the used line in:\n$smap", smap.contains(s":$used\n"))
++    assertTrue(s"unused line $unused should be absent from:\n$smap", !smap.contains(s":$unused\n"))
++    assertTrue(s"unused file should be absent from:\n$smap", !smap.contains("Other.scala"))
++    assertTrue(s"unused class should be absent from:\n$smap",
++      !smap.linesIterator.exists(_.matches("\\d+ Other")))
++
++    // a class which emitted no synthetic line at all needs no SMAP
++    assertEquals("", registry.serialize("Main.scala", Set(3)))
++
++  @Test def callSiteChainIsClosedOver(): Unit =
++    val primary = source("Main.scala", 10)
++    val a = source("A.scala", 5)
++    val b = source("B.scala", 5)
++    val registry = SmapRegistry(primary)
++    val inner = registry.outputLineFor(
++      List(Frame(a, 3, "A"), Frame(b, 2, "B"), Frame(primary, 4, "")))
++
++    // only the innermost line was emitted, but its call site is itself synthetic, so the
++    // entry describing that call site must come along or the chain would dead-end
++    val smap = registry.serialize("Main.scala", Set(inner))
++    val debugSection = smap.substring(smap.indexOf("*S ScalaDebug"))
++    val hop = "(\\d+)#\\d+:%d".format(inner).r.findFirstMatchIn(debugSection).map(_.group(1).nn.toInt)
++    assertTrue(s"expected a synthetic call site for $inner in:\n$smap", hop.exists(_ > 10))
++    assertTrue(s"expected that call site's own entry in:\n$smap",
++      hop.exists(line => smap.contains(s":$line\n")))

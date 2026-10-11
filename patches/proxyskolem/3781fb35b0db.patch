@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 25 Aug 2026 07:44:42 +0200
+Subject: Do not recover inline-proxy skolems in avoidance under capture
+ checking
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Upstream #26563 (3.9.0-RC5) typed the proxy for an unstable argument to a
+dependent inline method with the typer-minted SkolemType; #26872 reverted that
+to the widened argument type and instead records the skolem on the proxy
+binding so type avoidance can substitute it into the expansion's type. Under
+capture checking that substitution is still wrong: the skolem-mentioning
+expansion type cannot be avoided into a pure declared result, so derivation
+results summoned via summonFrom fail with "capability `typeclass` cannot flow
+into capture set {}". Not planting the attachment in cc-enabled units restores
+plain widening avoidance — the behaviour every cc unit had before RC5 — while
+leaving the #26153/#26031/#26810 fix active elsewhere; upstream's own
+regression tests for those still pass.
+
+Developed with LLM assistance (Claude); the capture-mode failure has a
+standalone reproduction in the feature documentation, and the need for the
+gate was established by building the full Soundness tree on this commit's
+base with and without it.
+
+Proscala-Patch: proxyskolem
+---
+ compiler/src/dotty/tools/dotc/inlines/Inliner.scala | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/compiler/src/dotty/tools/dotc/inlines/Inliner.scala b/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
+index 3f9c1bd2bf32584853e38cc243ab0fa0829b5743..61e320d2cd35ccd9114a66a8bfb6a9e72121d5d9 100644
+--- a/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
++++ b/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
+@@ -351,7 +351,12 @@ class Inliner(val call: tpd.Tree)(using Context):
+       if isByName then DefDef(boundSym, newArg)
+       else ValDef(boundSym, newArg)
+     }.withSpan(boundSym.span)
+-    if !argIsBottom then // Record typer skolem on the proxy ValDef, so the `avoidingType` can avoid proxy to skolem.
++    // Under capture checking, do not record the skolem: avoid-time recovery substitutes it
++    // into the expansion's type, where cc's Fresh roots cannot absorb it — a summoned
++    // capability-typed instance can then never flow back into a pure declared result
++    // (upstream #26563's capture-mode casualties). Plain widening avoidance, as before
++    // #26563, is what every cc unit had; non-cc units keep the #26153/#26031/#26810 fix.
++    if !argIsBottom && !config.Feature.ccEnabled then // Record typer skolem on the proxy ValDef, so the `avoidingType` can avoid proxy to skolem.
+       skolem.foreach(binding.putAttachment(TypeAssigner.InlineProxySkolem, _))
+     inlining.println(i"parameter binding: $binding, $argIsBottom")
+     buf += binding

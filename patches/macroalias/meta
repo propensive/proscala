@@ -1,0 +1,2 @@
+variant 403f2f663af8.patch 1 403f2f663af8ad947e36a8f80f9680a9b71f7cf2
+needed-from   f3355d6979f274b1e38269b16f31b24feaf06017   # upstream #25756 (Check macro expansion type) introduced the conformance check

@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+#
+# proscala-coverage — which patches apply to which scala/scala3 versions.
+#
+# Usage:
+#   bin/proscala-coverage [--3way] [<target>...]
+#
+# For each target (default: the streams, every release tag from 3.9.0-RC1 on, and
+# the heads of main, lts-3.9 and the release branches) chooses patches exactly as
+# bin/proscala-tree would and prints one line: how many applied, how many the
+# bounds exclude, and which in-range patches have no version that applies. Those
+# are the gaps to fill (bin/proscala-fill, or by hand: AGENTS.md, 'Covering a new
+# target'). With --3way, also says which gaps a three-way merge would close.
+# Exits 1 if any target has a gap.
+
+set -euo pipefail
+PROSCALA_PROG=proscala-coverage
+# shellcheck source=proscala-lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/proscala-lib.sh"
+
+three=0 targets=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --3way) three=1; shift ;;
+    -h|--help) sed -n '3,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -*) die "unknown option $1" ;;
+    *) targets+=("$1"); shift ;;
+  esac
+done
+[ "${#targets[@]}" -gt 0 ] || mapfile -t targets < <(default_targets)
+
+plan="$(mktemp)"; trap 'rm -f "$plan"; if [ -n "${SELECT_INDEX:-}" ]; then rm -f "$SELECT_INDEX"; fi' EXIT
+gaps=0
+printf '%-22s %-21s %5s %4s  %s\n' target commit apply out missing
+for spec in "${targets[@]}"; do
+  if ! t="$(resolve_target "$spec" 2>/dev/null)"; then printf '%-22s (cannot resolve)\n' "$spec"; continue; fi
+  SELECT_3WAY="$three" select_plan "$t" "$plan"; rm -f "$SELECT_INDEX"; SELECT_INDEX=""
+  applied=$(( $(plan_count "$plan" plain) + $(plan_count "$plan" 3way) ))
+  miss="$(plan_names "$plan" missing)"
+  [ -z "$miss" ] || gaps=$((gaps + 1))
+  three_names="$(plan_names "$plan" 3way)"
+  printf '%-22s %-21s %5s %4s  %s%s\n' "$spec" "$(g log -1 --format='%h %ad' --date=short "$t")" "$applied" \
+    "$(plan_count "$plan" out)" "${miss:--}" "${three_names:+  [3-way: $three_names]}"
+done
+[ "$gaps" = 0 ]

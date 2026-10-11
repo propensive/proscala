@@ -8,7 +8,7 @@
 #   bin/proscala-release <stream> --next-version  # print the next version only
 #
 # A release is the tag: pushing it runs .github/workflows/release.yml, which
-# builds the stream from this commit's patches/<stream>/series on UPSTREAM_SHA,
+# builds the stream from this commit's patches, chosen for its UPSTREAM_SHA,
 # creates the GitHub release and publishes to Maven Central. Maven Central is
 # append-only, so the tag is the point of no return.
 #
@@ -62,7 +62,7 @@ note "checking"
 bin/proscala-check >/dev/null || { bin/proscala-check | tail -20; die "bin/proscala-check fails; fix that first"; }
 
 sha="$(upstream_sha "$stream")"
-msg="Proscala $version: stream $stream, patches/$stream/series onto scala/scala3 $sha"
+msg="Proscala $version: stream $stream, the patches onto scala/scala3 $sha"
 if [ "$mode" = dry ]; then
   note "would tag $(git rev-parse --short HEAD) as $version and push it ($msg)"
   exit 0

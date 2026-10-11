@@ -10,9 +10,10 @@ This repository does not store the Scala compiler's source. It holds Proscala's
 with the documentation (this README, the licence and attribution notices, the
 policies and process documentation, and the per-feature documentation under
 [`doc/`](doc/README.md)) **and the build** (the `Makefile`, per-stream config,
-vendored Scala.js sources and helper scripts). A stream's complete source tree is
-generated on demand: upstream `scala/scala3` at a pinned commit, with the
-stream's patches applied — see *Building* below.
+vendored Scala.js sources and helper scripts). A complete source tree is
+generated on demand, for any `scala/scala3` commit from the 3.9 era on — a
+release, a nightly, a branch head, or one of our pinned release streams — with
+the patches that apply there — see *Building* below.
 
 Streams
 -------
@@ -28,23 +29,27 @@ major Scala 3 release line, and its name omits the minor/patch number:
 The Patches
 -----------
 
-For a given stream `<s>`:
-
-- **`mk/<s>.mk`** pins `UPSTREAM_SHA`, the `scala/scala3` commit the stream is
-  built on (taken from the branch named by `UPSTREAM_REF`).
-- **`patches/<s>/series`** lists the stream's patches in the order they are
-  applied. The first, `zflags`, is the **stream base**: it adds the `-Z` setting
-  through which the fork's opt-in behaviours are enabled by name
+- **`patches/series`** lists every patch in the order they are applied. The
+  first, `zflags`, is the **stream base**: it adds the `-Z` setting through which
+  the fork's opt-in behaviours are enabled by name
   ([`doc/zflags/`](doc/zflags/zflags.md)).
-- **`patches/<s>/<patch>.patch`** holds a patch as that stream carries it, and
-  **`patches/common/<patch>.patch`** one that applies unchanged to every stream
-  listing it. Each is a single, self-contained change (e.g. `aliascap`,
-  `unboxedpure`, `wasm`), documented under [`doc/<patch>/`](doc/README.md). A
-  patch that genuinely depends on another is named `<dependency>-<patch>` (e.g.
-  `wasm-witcall`) and follows it in the series.
+- **`patches/<patch>/`** holds a patch: each is a single, self-contained change
+  (e.g. `aliascap`, `unboxedpure`, `wasm`), documented under
+  [`doc/<patch>/`](doc/README.md). Its `meta` file says where upstream needs it
+  (from the commit that introduced a problem, until the one that fixed it), and
+  lists its **versions** — the same change, adapted to different upstream code,
+  each with the upstream commits it is known to apply to. For any target, the
+  tools apply each patch in range, in its best-fitting version.
+- **`mk/<s>.mk`** defines a release **stream**: `UPSTREAM_SHA`, the
+  `scala/scala3` commit we release from (taken from the branch named by
+  `UPSTREAM_REF`), and its tested build config.
 
-Everything is on the one `main` branch, and nothing is ever force-pushed: an
-upstream bump, a changed patch and a release are each an ordinary commit or tag.
+A patch that genuinely depends on another is named `<dependency>-<patch>` (e.g.
+`wasm-witcall`) and follows it in the series.
+
+Everything is on the one `main` branch, and nothing is ever force-pushed: a
+changed patch, a newly supported upstream and a release are each an ordinary
+commit or tag.
 The patch rules, the tooling and the release process are documented in
 [AGENTS.md](AGENTS.md). (Until October 2026 each patch was a branch; those
 branches are kept as `archive/*` tags.)
@@ -56,13 +61,18 @@ Proscala builds with a plain `Makefile` — a simplified, non-bootstrapped build
 that compiles every module with a downloaded reference compiler. You need GNU
 `make`, a JDK (17 or newer), and `curl`, `javac` and `jar` on your `PATH`.
 
-Generate a stream's source tree, then build it:
+Generate a source tree, then build it:
 
 ```
-bin/proscala-tree 3.10        # upstream at UPSTREAM_SHA + patches/3.10/series -> worktrees/3.10
+bin/proscala-tree 3.10        # the 3.10 stream -> worktrees/3.10
 cd worktrees/3.10
 make
 ```
+
+The target can equally be a `scala/scala3` release tag (`3.10.0`), a branch
+(`main`, `lts-3.9`), a nightly version or a commit id; `bin/proscala-tree
+<target> --plan` shows which patch versions it would apply, and
+`bin/proscala-coverage` which upstreams lack a version of some patch.
 
 `bin/proscala-tree` fetches the one `scala/scala3` commit it needs (so a plain
 clone of this repository is enough), applies the patches as one commit each, and

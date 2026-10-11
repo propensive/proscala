@@ -1,0 +1,2 @@
+variant 403f2f663af8.patch 1 403f2f663af8ad947e36a8f80f9680a9b71f7cf2
+needed-from   29497c036206d8cf4882b9b8374b2375c031adbc   # the fix it restores was removed from main after 3.9 branched (exact commit not recorded)
