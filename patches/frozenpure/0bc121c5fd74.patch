@@ -1,0 +1,181 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Mon, 12 Oct 2026 11:57:14 +0200
+Subject: Classify a frozen type as pure under capture checking
+
+Under `-Zfrozen-pure`, a stateful type with an explicit, constant, empty
+capture set -- a frozen `Array[T]^{}`, or an opaque alias over one -- derives
+from no capability class. Without this, an opaque alias over a frozen array
+dealiases to a capability inside its own scope and Setup stamps `^{any.rd}`
+on every field and result written with it, forcing every holder to extend
+`Capability`; Soundness backed twelve immutable-array opaques with the
+stdlib's `IArray` for this reason alone.
+
+Purity for classification is not permission to write: `Mutability.exclusivity`
+now classifies through the empty set, so an `update` through `Array[T]^{}`,
+through an in-scope alias over it, or through `C^{}` of a `Mutable` class is
+still rejected as read-only, and widening `^{}` to `^` is still refused.
+
+Proscala-Patch: frozenpure
+---
+ .../src/dotty/tools/dotc/cc/CaptureOps.scala  | 38 +++++++++++++---
+ .../src/dotty/tools/dotc/cc/Mutability.scala  |  5 ++-
+ .../captures/frozen-write.scala               | 17 +++++++
+ .../captures/frozen-pure.scala                | 44 +++++++++++++++++++
+ 4 files changed, 96 insertions(+), 8 deletions(-)
+ create mode 100644 tests/neg-custom-args/captures/frozen-write.scala
+ create mode 100644 tests/pos-custom-args/captures/frozen-pure.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala b/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala
+index 7c071998fa88345819583938c1e87266fa914f55..7bb0b83c13ebc9d5e839c85074f075f73414f378 100644
+--- a/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala
++++ b/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala
+@@ -405,28 +405,52 @@ extension (tp: Type)
+    */
+   def derivesFromCapTrait(cls: ClassSymbol)(using Context): Boolean =
+     (tp.typeSymbol != defn.IArrayAlias || !config.Proscala.enabled(config.Proscala.PureIArrays))
+-    && derivesFromCapTraitDealiased(cls)
++    && derivesFromCapTraitDealiased(cls, frozenIsPure = true)
+ 
+-  private def derivesFromCapTraitDealiased(cls: ClassSymbol)(using Context): Boolean =
++  /** Like `derivesFromCapTrait`, but a frozen `T^{}` classifies as `T` itself does:
++   *  "could a value of this class be mutated through *some* reference". Used only
++   *  where the empty set must be *found* non-exclusive rather than taken as a
++   *  reason to skip the exclusivity check (`Mutability.exclusivity`).
++   */
++  def derivesFromCapTraitUnfrozen(cls: ClassSymbol)(using Context): Boolean =
++    (tp.typeSymbol != defn.IArrayAlias || !config.Proscala.enabled(config.Proscala.PureIArrays))
++    && derivesFromCapTraitDealiased(cls, frozenIsPure = false)
++
++  /** Under `-Zfrozen-pure`, a stateful type with an explicit, constant, empty capture set
++   *  -- a frozen `Array[T]^{}`, or an opaque alias over one -- derives from no capability
++   *  class: with no capability reachable through it no `update` is, so it is immutable
++   *  from the type alone, as a `freeze` result is. Classifying it by its head symbol
++   *  alone re-mints a fresh `^{any.rd}` wherever the frozen type is reached through an
++   *  alias (Setup's implied-capability set), which is what this stops.
++   */
++  private def derivesFromCapTraitDealiased(cls: ClassSymbol, frozenIsPure: Boolean)(using Context): Boolean =
++    def recur(tp: Type): Boolean = tp.derivesFromCapTraitDealiased(cls, frozenIsPure)
+     tp.dealiasKeepAnnots match
++    case tp @ CapturingOrRetainsType(parent, refs)
++    if frozenIsPure && refs.isAlwaysEmpty
++        && config.Proscala.enabled(config.Proscala.FrozenPure)
++        && parent.derivesFromCapTraitDealiased(defn.Caps_Stateful, frozenIsPure = false) =>
++      false
+     case tp: (TypeRef | AppliedType) =>
+       val sym = tp.typeSymbol
+       if sym.isClass
+       then (if sym.isArrayUnderStrictMut then defn.Caps_Mutable else sym).derivesFrom(cls)
+       else if sym.isOpaqueAlias && !(sym eq defn.IArrayAlias)
+           && config.Proscala.enabled(config.Proscala.OpaqueMutability)
+-      then tp.translucentSuperType.derivesFromCapTrait(cls)
+-      else tp.superType.derivesFromCapTrait(cls)
++      then recur(tp.translucentSuperType)
++      else recur(tp.superType)
+     case tp: (TypeProxy & ValueType) =>
+-      tp.superType.derivesFromCapTrait(cls)
++      recur(tp.superType)
+     case tp: AndType =>
+-      tp.tp1.derivesFromCapTrait(cls) || tp.tp2.derivesFromCapTrait(cls)
++      recur(tp.tp1) || recur(tp.tp2)
+     case tp: OrType =>
+-      tp.tp1.derivesFromCapTrait(cls) && tp.tp2.derivesFromCapTrait(cls)
++      recur(tp.tp1) && recur(tp.tp2)
+     case _ =>
+       false
+ 
+   def derivesFromStateful(using Context): Boolean = derivesFromCapTrait(defn.Caps_Stateful)
++  def derivesFromStatefulUnfrozen(using Context): Boolean =
++    derivesFromCapTraitUnfrozen(defn.Caps_Stateful)
+   def derivesFromCapability(using Context): Boolean = derivesFromCapTrait(defn.Caps_Capability)
+   def derivesFromCapSet(using Context) = tp.derivesFrom(defn.Caps_CapSet)
+ 
+diff --git a/compiler/src/dotty/tools/dotc/cc/Mutability.scala b/compiler/src/dotty/tools/dotc/cc/Mutability.scala
+index 93c84528cd43fb352e76425ef3193677010a428d..9682b8dede235345b219f49dee49bfe8cc909081 100644
+--- a/compiler/src/dotty/tools/dotc/cc/Mutability.scala
++++ b/compiler/src/dotty/tools/dotc/cc/Mutability.scala
+@@ -89,7 +89,10 @@ object Mutability:
+      *                   status of some capture set variable from Ignored to Writer.
+      */
+     private def exclusivity(required: Boolean)(using Context): Exclusivity =
+-      if tp.derivesFromStateful then
++      // Classified through a frozen `^{}`: a frozen array is pure for capture purposes,
++      // but its `update` is still a member, and the empty set is exactly what must be
++      // reported as non-exclusive here.
++      if tp.derivesFromStatefulUnfrozen then
+         tp match
+           case tp: Capability if tp.isExclusive(required) => Exclusivity.OK
+           case _ =>
+diff --git a/tests/neg-custom-args/captures/frozen-write.scala b/tests/neg-custom-args/captures/frozen-write.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..336192afd0a7c424a1011997c84c6e0862494cfd
+--- /dev/null
++++ b/tests/neg-custom-args/captures/frozen-write.scala
+@@ -0,0 +1,17 @@
++//> using options -Zfrozen-pure -Zopaque-mutability
++import language.experimental.captureChecking
++import caps.*
++
++// `-Zfrozen-pure` makes a frozen array pure for classification, but never writable: the
++// exclusivity check still looks through the empty set, so every write below is rejected.
++object FrozenWrite:
++  opaque type Buf = Array[Int]^{}
++  def write1(a: Array[Int]^{}): Unit = a(0) = 1        // error
++  def write2(b: Buf): Unit = b(0) = 1                   // error
++  def widen(a: Array[Int]^{}): Unit =
++    val c: Array[Int]^ = a                              // error
++    c(0) = 1
++  class Cell extends Mutable:
++    var x: Int = 0
++    update def set(v: Int): Unit = x = v
++  def write3(c: Cell^{}): Unit = c.set(1)               // error
+diff --git a/tests/pos-custom-args/captures/frozen-pure.scala b/tests/pos-custom-args/captures/frozen-pure.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..5c86b516ef22bac23d64befd79046686a42a1ae1
+--- /dev/null
++++ b/tests/pos-custom-args/captures/frozen-pure.scala
+@@ -0,0 +1,44 @@
++//> using options -Zfrozen-pure -Zopaque-mutability
++import language.experimental.captureChecking
++import caps.*
++
++// Under `-Zfrozen-pure` a stateful type with an explicit empty capture set -- a frozen
++// `Array[T]^{}`, or an opaque alias over one -- is pure: no capability is reachable through
++// it, so no `update` is. Each of these previously stamped a fresh `^{any.rd}` on the alias
++// (Setup's implied-capability set), making every holder a capability.
++object FrozenPure:
++  def frozen[T](consume a: Array[T]^): Array[T]^{} = freeze(a)
++  val literal: Array[Int]^{} = frozen(Array(1, 2, 3))
++
++  // 1. An opaque alias over a frozen array, in its defining scope and outside it.
++  object Impl:
++    opaque type Digits = Array[Int]^{}
++    object Digits:
++      def apply(xs: Int*): Digits = frozen(xs.toArray)
++      val zero: Digits = Digits(0, 0)          // was `Digits^{any.rd}`
++      extension (d: Digits) def first: Int = d(0)
++  import Impl.*
++  class PureHolder(d: Digits):
++    val digits: Digits = d
++    val backup: Digits = Digits.zero
++
++  // 2. A frozen field inside a Mutable class, whose `this` stays exclusive.
++  final class Reader(data: Array[Byte]^{}, start: Int) extends Mutable:
++    private var pos: Int = start
++    def peek: Byte = data(pos)
++    update def advance(): Unit = pos += 1
++  def useReader(d: Array[Byte]^{}): Byte =
++    val r = Reader(d, 0)
++    r.advance()
++    r.peek
++
++  // 3. Frozen arrays in type-argument and tuple positions.
++  class Ref[T](var x: T) extends Mutable
++  val cell: Ref[Array[Byte]^{}] = Ref(frozen(new Array[Byte](2)))
++  val pair: (Int, Array[Long]^{}) = (1, frozen(new Array[Long](1)))
++  val opt: Option[Array[Byte]^{}] = Some(frozen(new Array[Byte](1)))
++
++  // 4. An inferred local, stored in a pure field.
++  class Keep(parts: List[Int]):
++    val y = frozen(parts.toArray)
++    val data: Array[Int]^{} = y

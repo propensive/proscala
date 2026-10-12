@@ -97,7 +97,7 @@ content for the better, not their nature.
 
 ## The `-Z` flags
 
-Thirteen features are enabled by name with `-Z<name>` (`-Zunion-captures`, say; a bare `-Z` lists them)
+Fourteen features are enabled by name with `-Z<name>` (`-Zunion-captures`, say; a bare `-Z` lists them)
 ([zflags](zflags/zflags.md) has the mechanism and the full table); with a
 name absent, the compiler runs upstream's code at every site the feature
 touches. What matters for compatibility is the *scope* of each flag's effect,
@@ -120,8 +120,8 @@ expansion site, so what a consumer expands is what the defining module
 compiled.
 
 **Shared with every module that reads the TASTy.** Under capture checking,
-`pure-iarrays`, `opaque-mutability`, `union-captures`, `unboxed-pure-types`,
-`alias-captures`, `retains-bounds` and `retains-skolems` change the capture
+`pure-iarrays`, `opaque-mutability`, `frozen-pure`, `union-captures`,
+`unboxed-pure-types`, `alias-captures`, `retains-bounds` and `retains-skolems` change the capture
 sets the checker *infers* and pickles — and a capture-checked consumer does
 not take those sets on trust: it re-derives capture information for the
 types it reads, applying its own rules. A consumer with `union-captures` off
@@ -129,10 +129,10 @@ reading a module compiled with it on sees `Unset | Array[Byte]` classified
 differently from the annotations the producer wrote against it, and reports
 errors the producer never saw; the converse combination lets the consumer
 accept what the producer would have rejected. The rule is therefore: **enable
-these seven identically in every capture-checked module that shares TASTy**,
+these eight identically in every capture-checked module that shares TASTy**,
 and treat changing them like changing the compiler version — recompile the
 whole dependency chain. A module compiled without capture checking is
-unaffected in both directions, since none of the seven does anything there.
+unaffected in both directions, since none of the eight does anything there.
 
 ## New library types
 
@@ -223,7 +223,7 @@ satisfy the rule above. The compilers agree on TASTy version, so neither
 rejects the other's files on version grounds.
 
 **Mixing flags in one build.** Vary the confined and module-complete `-Z`
-flags per module as you like; keep the seven capture-set flags identical
+flags per module as you like; keep the eight capture-set flags identical
 across every capture-checked module that shares TASTy (see "The `-Z`
 flags").
 

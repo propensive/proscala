@@ -66,6 +66,7 @@ The names, one per gated patch:
 | --- | --- | --- |
 | `-Zalias-captures` | [aliascap](../aliascap/aliascap.md) | root capabilities stay global in type alias infos |
 | `-Zdiagnostic-givens` | [searchdiag](../searchdiag/searchdiag.md) | an `@internal.diagnostic` given's errors become the search-failure message |
+| `-Zfrozen-pure` | [frozenpure](../frozenpure/frozenpure.md) | a stateful type with an explicit empty capture set classified as pure |
 | `-Zgiven-prefixes` | [givenprefix](../givenprefix/givenprefix.md) | package-object prefixes sealed on implicit candidates |
 | `-Zinline-source-maps` | [smap](../smap/smap.md) | JSR-45 SMAP attributes for inlined code |
 | `-Zliterate-literals` | [literate](../literate/literate.md) | literals re-typed through `Literate` instances |
