@@ -391,3 +391,52 @@ default_targets() {
     | { grep -E '^(3\.(9|[1-9][0-9])\.[0-9]+(-RC[0-9]+)?|main|lts-3\.(9|[1-9][0-9])|release-3\.(9|[1-9][0-9])\.[0-9]+)$' || true; } \
     | sort -V
 }
+
+# --- releases ----------------------------------------------------------------------
+# A Proscala release (tag v<x.y.z>) is built for every scala/scala3 final release
+# 3.<y>.<z> with y >= 9, and for a snapshot of scala/scala3 main. Each build's
+# version is <scala version>-proscala-<x.y.z>: the upstream it patches first, so
+# sbt's scalaVersion still reads as a Scala version.
+
+# sbt_val <name> <text> — the value of `val <name> = …` in sbt build sources: a
+# string ("3.10.0"), an interpolation (s"$developedVersion-RC1") or a bare
+# reference to another val (developedVersion), resolved
+sbt_val() {
+  local line v=""
+  line="$(printf '%s\n' "$2" | { grep -E "val $1 *= *" || true; } | head -1)"
+  if [[ "$line" =~ =\ *s?\"([^\"]*)\" ]]; then v="${BASH_REMATCH[1]}"
+  elif [[ "$line" =~ =\ *([A-Za-z][A-Za-z0-9]*)\ *$ ]]; then v="$(sbt_val "${BASH_REMATCH[1]}" "$2")"
+  fi
+  while [[ "$v" =~ \$\{?([A-Za-z]+)\}? ]]; do v="${v/${BASH_REMATCH[0]}/$(sbt_val "${BASH_REMATCH[1]}" "$2")}"; done
+  printf '%s' "$v"
+}
+
+# upstream_version <commit> — the Scala version a scala/scala3 commit builds as
+upstream_version() {
+  local v
+  v="$(sbt_val baseVersion "$(g grep -h -E 'val [A-Za-z]+ *=' "$1" -- project/ 2>/dev/null || true)")"
+  [ -n "$v" ] || die "cannot read the Scala version of scala/scala3 $1"
+  printf '%s\n' "$v"
+}
+
+# release_targets — "<spec> <commit> <scala version>" for every target a release is
+# built for: each final release tag 3.<y>.<z>, y >= 9, then the head of main
+release_targets() {
+  local tag sha main
+  while read -r tag; do
+    sha="$(resolve_target "$tag")"
+    echo "$tag $sha $tag"
+  done < <(git ls-remote --tags --refs "$PROSCALA_SCALA3_URL" 2>/dev/null | awk '{ print $2 }' \
+             | sed 's#refs/tags/##' | { grep -E '^3\.(9|[1-9][0-9])\.[0-9]+$' || true; } | sort -V)
+  main="$(resolve_target main)"
+  echo "main $main $(upstream_version "$main")-bin-$(g rev-parse --short=7 "$main")"
+}
+
+# artifact_version <scala version> <proscala version>
+artifact_version() { printf '%s-proscala-%s\n' "$1" "$2"; }
+
+# release_tag_targets <tag> — the targets a release tag was cut for, from its
+# annotation: "<spec> <commit> <artifact version>" lines
+release_tag_targets() {
+  g tag -l --format='%(contents)' "$1" | awk '$1 == "target" { print $2, $3, $4 }'
+}

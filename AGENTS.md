@@ -22,13 +22,16 @@ upstream `scala/scala3`. We care about maintainability. "The tests pass" is not
 enough to justify that a change is good.
 
 The patches can be applied to **any** `scala/scala3` commit from the 3.9 era on —
-a release, a release candidate, a nightly, the head of a branch — not just to the
-commits we release from. Each patch is kept in as many **versions** as upstream's
+a release, a release candidate, a nightly, the head of a branch. Each patch is kept in as many **versions** as upstream's
 changes have made necessary, and records **where it applies**; the tools pick, for
 any target, the right patches in the right versions, mechanically. That makes it
 possible to build the fork on the exact upstream a bug report names, to bisect
 upstream for the commit that makes a patch unnecessary, and to try a nightly
 before moving a release line onto it.
+
+Proscala has **its own version number**, independent of the Scala it patches
+(see *Proscala version numbers*), and each release is published for every Scala
+release from 3.9.0 on and for a snapshot of upstream `main`.
 
 `main` holds the patches, the documentation, the repository-wide files **and the
 build** (the Makefile, per-stream config, vendored Scala.js sources and helper
@@ -43,9 +46,9 @@ support and a release are each an ordinary commit (or tag) on `main`.
 - **`patches/<patch>/meta`** — where the patch applies, and its versions (below).
 - **`patches/<patch>/<anchor>.patch`** — one version of the patch, named after
   the first 12 hex digits of the upstream commit it was made on.
-- **`mk/<stream>.mk`** — a **stream**: a named upstream commit we release from,
-  with its hand-tested build config. `UPSTREAM_SHA` is the `scala/scala3` commit
-  and `UPSTREAM_REF` the branch it is taken from; `VERSION` is what it releases as.
+- **`mk/<stream>.mk`** — a **stream**: a named upstream commit we develop
+  against, with its hand-tested build config. `UPSTREAM_SHA` is the `scala/scala3` commit
+  and `UPSTREAM_REF` the branch it is taken from.
   The streams are `3.9` (on `lts-3.9`) and `3.10` (on `main`). A stream carries
   no patch list of its own: it carries whatever the patches' bounds say applies
   at its commit.
@@ -183,8 +186,8 @@ The bounds give the streams different patch sets:
 ### Keeping the documentation honest
 
 The same fact is often stated in several places — the patches a stream carries
-appear in the `Streams` column of `doc/README.md`; its upstream branch and
-release version appear in `mk/<stream>.mk`, `README.md` and in this file. Rather
+appear in the `Streams` column of `doc/README.md`; its upstream branch appears
+in `mk/<stream>.mk`, `README.md` and in this file. Rather
 than trying to remember every copy, **each fact has one source of truth and the
 copies are checked against it**:
 
@@ -195,7 +198,7 @@ copies are checked against it**:
 | which patches a stream carries | the bounds, at the stream's `UPSTREAM_SHA` |
 | which `scala/scala3` commit a stream is built on | `UPSTREAM_SHA` in `mk/<stream>.mk` |
 | which `scala/scala3` branch that commit is from | `UPSTREAM_REF` in `mk/<stream>.mk` |
-| what a stream releases as | `VERSION` in `mk/<stream>.mk` |
+| what a release is built for | the release tag's annotation (from `bin/proscala-release`) |
 | whether a patch has a reproduction | the filesystem, `doc/<patch>/repro*/` |
 | which `-Z` name enables a patch | `config.Proscala`, as each stream builds it |
 
@@ -253,7 +256,7 @@ differ, the directory carries a clearly named variant file.
 ## The tools
 
 All need bash 4+ and git; building additionally needs GNU make, `curl`, `javac`,
-`jar` and a JDK ≥ 17, and publishing to Maven Central needs `gpg` and `zip`.
+`jar` and a JDK ≥ 17, and the release artefacts `zip`.
 
 ### Building any upstream: `bin/proscala-tree`
 
@@ -408,7 +411,8 @@ To support an upstream commit that has gaps (say a new release candidate):
 4. **Other upstreams.** A new patch at first has one version, so other targets
    may report it missing: run `bin/proscala-coverage`, and cover the targets that
    matter (above), at least the other stream.
-5. **Release.** `bin/proscala-release <stream>` (see *Releases*).
+5. **Release.** `bin/proscala-release <x.y.z>` (see *Proscala version numbers*
+   for which number, and *Releases*).
 
 ### Keeping up with upstream
 
@@ -434,61 +438,114 @@ build change (the `Makefile`, `mk/<stream>.mk`, vendored sources) is a **single
 commit on `main`**. Rebuild a tree's overlay to pick it up
 (`bin/proscala-tree <target> --reset`).
 
+### Proscala version numbers
+
+Proscala has its own version, independent of the Scala it patches. A Proscala
+version names a **set of features** — the patches, each with the guarantee its
+doc states — and each release is built for many upstreams, on each of which every
+feature is *the same feature*, adapted: a different version of the patch, or no
+patch at all where upstream already provides the guarantee. Versions follow
+[semantic versioning](https://semver.org), with the public interface being what
+users of Proscala on a given upstream can rely on beyond that upstream: the
+features and their documented guarantees, the `-Z` flag names, the
+`proscala-library` API, machine-readable output (`semdiag`'s XML), and which flags
+change what is pickled (`doc/compatibility.md`).
+
+| Change | Increment |
+| ------ | --------- |
+| a new version or bound of a feature (more upstreams covered) | patch |
+| a patch dropped where upstream now meets its guarantee | patch |
+| a fix making a feature meet its documented guarantee | patch |
+| a new always-on crash, hang or spurious-error fix (it only turns rejected programs into accepted ones) | patch |
+| a new `-Z` feature, new `proscala-library` API, an additive XML change | minor |
+| a feature removed, a flag renamed, a guarantee weakened | major |
+| a gated feature made always-on (code that never opted in changes) | major |
+| flagged code pickling differently, so it no longer links with the previous version's | major |
+| an incompatible XML change, or `proscala-library` API removed | major |
+
+Two consequences follow. A `-Z` flag whose feature upstream has made redundant
+stays registered on that upstream, accepted and doing nothing, since dropping it
+would break builds that pass it (under `-Werror`, fatally); removing it is a major
+change. And covering a newly released upstream, which needs new versions of
+patches, is a patch release: 1.0.1 is 1.0.0's features on more Scala versions.
+
 ### Releases
 
-    bin/proscala-release 3.10 --dry-run    # check, and say what it would do
-    bin/proscala-release 3.10              # tag HEAD and push the tag
+    bin/proscala-release 1.0.0 --targets    # what it would be built for
+    bin/proscala-release 1.0.0 --dry-run    # check everything, and say what it would do
+    bin/proscala-release 1.0.0              # tag HEAD v1.0.0 and push the tag
 
-A release is a **tag on `main`**. `bin/proscala-release <stream>` refuses unless
-`HEAD` is `origin/main`, nothing tracked is uncommitted and `bin/proscala-check`
-passes; it then computes the version, tags `HEAD` with it and pushes the tag.
-Pushing the tag runs `.github/workflows/release.yml`, which:
+A release is a **tag `v<x.y.z>` on `main`**, built for every `scala/scala3`
+final release `3.<y>.<z>` with `y` ≥ 9 (today 3.9.0 and 3.10.0), and for a
+**snapshot** of `scala/scala3` `main` as it is when the release is cut. Each
+build's version puts the upstream first, so that sbt's `scalaVersion` still reads
+as a Scala version:
 
-0. **Checks the four publishing secrets and imports the signing key**, before
-   anything irreversible happens — see *Publishing to Maven Central* below.
-1. **Works out the stream** from the tag: the stream whose `mk/<stream>.mk`
-   `VERSION` base the tag carries.
-2. **Builds the tree** with `bin/proscala-tree` — the patches at the tagged
-   commit, chosen for the stream's `UPSTREAM_SHA` — and the distribution in it, cleanly
-   (`make … tarball release-jars`).
-3. **Creates a GitHub release** for the tag, attaching
-   `proscala-<version>.tar.gz` — a top-level `lib/` of the jars we build plus the
-   Scala.js / scala-wasm runtime; third-party dependencies are not published —
-   together with each published jar under its Maven name
-   (`<artifactId>-<version>.jar`), so the release assets and the Central artefacts
-   match byte for byte. The notes record the upstream commit and the source
-   tree's hash, so the release's source can be regenerated exactly from the tag.
-4. **Publishes the same jars to Maven Central** (`make … publish`), under
-   `dev.propensive`, at the same version.
+| Upstream | Version |
+| -------- | ------- |
+| a release, e.g. 3.10.0 | `3.10.0-proscala-1.0.0` |
+| `main` at `88be2f5`, which builds as 3.10.2-RC1 | `3.10.2-RC1-bin-88be2f5-proscala-1.0.0` |
 
-The version is `<upstream-base>-p<n>`. The base is the stream's `mk/<stream>.mk`
-`VERSION` with the `-propensive` suffix stripped; `<n>` is one greater than the
-highest existing `-p` tag of the stream (the counter runs across upstream bases,
-so `3.10.0-dev-p15` is followed by `3.10.1-dev-p16`). A stream that tracks a
-non-final upstream carries a `-dev` marker in its `VERSION`, so it releases as
-`<base>-dev-p<n>`.
+so a project uses Proscala 1.0.0 on Scala 3.10.0 with
+`scalaOrganization := "dev.propensive"` and
+`scalaVersion := "3.10.0-proscala-1.0.0"`.
 
-Run by hand from the Actions tab (`workflow_dispatch`, choosing a stream), the
-same workflow is a dry run: it builds the stream's next version from the chosen
-ref and stops before releasing or publishing anything. Only a tag releases, so
-editing `release.yml` never cuts a release. A release that lacks its jars — one
-cut before the workflow attached them, or whose upload failed after the tag was
-made — is completed with `bin/proscala-attach-jars <tag>`, which takes them from
-Central, verifies each against Central's SHA-1 and uploads them beside the
-tarball.
+`bin/proscala-release <x.y.z>` refuses unless `HEAD` is `origin/main`, nothing
+tracked is uncommitted, `bin/proscala-check` passes, the version is greater than
+every earlier release, and every target gets every patch it should (no gaps:
+`bin/proscala-coverage`). It writes the exact upstream commit of every target
+into the tag's annotation (`target <spec> <commit> <version>` lines), so the
+release builds what was checked even after `main` has moved on, then pushes the
+tag. That runs `.github/workflows/release.yml`:
 
-### Publishing to Maven Central
+1. **plan** reads the targets from the tag.
+2. **build**, for every target in parallel: builds the tree for the target's
+   commit with `bin/proscala-tree`, and the release artefacts in it, cleanly
+   (`make … tarball release-jars maven-repo`; see *What a release contains*).
+   Nothing leaves the runner yet.
+3. **publish**, only once every target has built: creates the GitHub release
+   `v<x.y.z>`, with every target's tarball, jars and Maven repository, and notes
+   listing each target's upstream commit and `scalaVersion` and how to use them.
 
-Every release also goes to Maven Central, from the same trigger. The machinery
-is `mk/publish.mk` on `main` (overlaid with the rest of the build), so it is a
-**single commit on `main`** like any other build change, invoked by the last
-step of `release.yml`.
+So a release publishes for all its targets or for none. Run by hand from the
+Actions tab (`workflow_dispatch`, giving a version), the same workflow is a dry
+run: it plans and builds every target and publishes nothing. Only a tag releases,
+so editing `release.yml` never cuts a release.
 
-    make VERSION=<v> publish-bundle   # build, stage, sign, zip — no upload
-    make VERSION=<v> publish          # ... and upload to the Central Portal
+The streams (`mk/<stream>.mk`) no longer release: they are development pins,
+with hand-tested build configs. Releases before 1.0.0 were made per stream, as
+`<upstream base>-p<n>` (the last were `3.9.1-dev-p20` and `3.10.1-dev-p17`).
 
-Fifteen artifacts are published, under the group `dev.propensive`, at
-`<upstream-base>-p<n>`. Thirteen carry **the same artifact names as the mainline
+### What a release contains
+
+Releases go to **GitHub Releases only**; nothing is published to Maven Central.
+For each target, a release attaches three kinds of asset, built by the
+release-artefact targets in `mk/publish.mk` (overlaid with the rest of the
+build, so a change to them is a single commit on `main`):
+
+    make VERSION=<v> tarball        # proscala-<v>.tar.gz: lib/ of the jars we build, plus the Scala.js runtime
+    make VERSION=<v> release-jars   # each published jar, under its Maven name
+    make VERSION=<v> maven-repo     # proscala-<v>-maven.zip: a Maven repository of them
+
+The Maven repository is what makes the fork usable as a drop-in replacement:
+unzip each target's into one directory, name it as a resolver, and sbt's
+`scalaOrganization := "dev.propensive"` swaps the fork in wholesale. sbt also
+fetches `scaladoc_3` from that organisation, which Proscala does not build, and
+the compiler bridge from `org.scala-lang` regardless, so two more settings are
+needed (tested with sbt 1.11):
+
+```scala
+val proscala = file("/path/to/proscala-repo")   // the unzipped proscala-<version>-maven.zip
+resolvers         += "proscala" at proscala.toURI.toString
+scalaOrganization := "dev.propensive"
+scalaVersion      := "3.10.0-proscala-1.0.0"
+// sbt also wants these two, which Proscala does not provide as it expects:
+excludeDependencies += "dev.propensive" % "scaladoc_3"   // no scaladoc is built
+scalaCompilerBridgeBinaryJar := Some(proscala / s"dev/propensive/scala3-sbt-bridge/${scalaVersion.value}/scala3-sbt-bridge-${scalaVersion.value}.jar")
+```
+
+Fifteen artifacts are in each repository, under the group `dev.propensive`, at
+the target's version (`<scala version>-proscala-<x.y.z>`). Thirteen carry **the same artifact names as the mainline
 Scala releases**: `scala-library`, `scala3-library_3`, `scala3-interfaces`,
 `tasty-core_3`, `scala3-compiler_3`, `scala3-directives-parser_3`,
 `scala3-staging_3`, `scala3-tasty-inspector_3`, `scala3-repl_3`,
@@ -501,15 +558,13 @@ fork's own: `proscala-library_3` and `proscala-library_sjs1_3`, the
 from `library-proscala/src` in the tree (added by patches), built into their own jar so
 `scala-library` stays byte-identical to upstream's from the same sources.
 Consumers add it beside a `scala3-library`, and the compiler finds its classes
-by name, so nothing else depends on it. A WASM tree publishes a sixteenth,
-`scalajs-library_2.13` — see below. Both release streams carry the `wasm` patch,
-so a real release publishes sixteen.
+by name, so nothing else depends on it. A WASM tree adds a sixteenth,
+`scalajs-library_2.13` — see below. Every release target from Scala.js 1.22.0
+on carries the `wasm` patch, so a release has sixteen for each.
 
-Each gets a POM, a sources jar and an (empty) javadoc jar, all GPG-signed with
-md5/sha1 checksums, bundled into one zip and uploaded to the Central Portal with
-`publishingType=AUTOMATIC` — so a release goes live unattended. **Maven Central
-is append-only**: a published version can never be replaced, only superseded by
-the next `-p<n>`.
+Each artifact gets a POM and a sources jar, with md5/sha1 checksums. A GitHub
+release can be edited or deleted, but its tag should not be reused: a version,
+once released, means those bytes.
 
 The POM dependency graph is derived from the same `mk/<stream>.mk` variables the
 compile classpaths use, so a version bump moves the POMs with it and there is no
@@ -527,7 +582,7 @@ in two jars as a duplicate definition and refuses it.
 Scala 2.13 Scala.js stdlib. Upstream publishes *its* Scala 3 stdlib to that
 **same coordinate** at the Scala version, so version-conflict resolution evicts
 the 2.13 one; that is why a Scala 3 artifact carries a `_2.13` suffix at all.
-Publishing under `dev.propensive` is a different coordinate, so nothing is
+Our `dev.propensive` artifact is a different coordinate, so nothing is
 evicted. On a **stock tree** our `scala3-library_sjs1_3` POM therefore carries an
 explicit `<exclusion>` on the dependency that drags the 2.13 one in, with the
 excluded group following the tree (`org.scala-js`, or `io.github.scala-wasm` on
@@ -544,7 +599,7 @@ a silent miscompilation, not an error.
 
 Neither half can be shipped as an extra jar beside the stock library: the wit
 package would be a duplicate class rather than an addition, and nothing can
-remove entries from someone else's jar. So a WASM tree publishes the patched
+remove entries from someone else's jar. So a WASM tree ships the patched
 library as `dev.propensive:scalajs-library_2.13`, at the Scala version, and
 consumers resolve that instead — the same substitution Soundness makes locally in
 its `build.mill` `repo` task. Its POM records the provenance and the Apache-2.0
@@ -554,35 +609,16 @@ A pleasant consequence: with library *and* scalalib both under `dev.propensive`,
 no stock Scala.js artifact enters our graph at all, so on a WASM tree the
 `<exclusion>` above is unnecessary and is not emitted.
 
-Four repository secrets are required (Settings → Secrets and variables →
-Actions); the workflow fails fast if any is missing:
+The development streams:
 
-| Secret | What it is |
-| ------ | ---------- |
-| `SONATYPE_USERNAME` | Central **user token** name (not portal login) |
-| `SONATYPE_PASSWORD` | Central user token secret |
-| `GPG_PRIVATE_KEY`   | ASCII-armoured private key (`gpg --armor --export-secret-keys <id>`) |
-| `GPG_PASSPHRASE`    | that key's passphrase |
-
-Locally the same target reads `SONATYPE_USERNAME` / `SONATYPE_PASSWORD` from the
-environment, and leaves `gpg-agent` in charge when `PROSCALA_GPG_PASSPHRASE` is
-unset — so it prompts through pinentry exactly as `consequent`'s `etc/ci/release.sh`
-does. Sourcing the credentials from the macOS keychain, as consequent documents:
-
-    export SONATYPE_USERNAME=$(security find-generic-password -a proscala-release \
-      -s proscala.sonatype.username -w)
-    export SONATYPE_PASSWORD=$(security find-generic-password -a proscala-release \
-      -s proscala.sonatype.password -w)
-
-Current streams and their release versions:
-
-| Stream | Tracks | Version |
-| ------ | --------------------------- | ------------------- |
-| `3.9`  | `scala/scala3 lts-3.9`       | `3.9.1-dev-p<n>`    |
-| `3.10` | `scala/scala3 main`          | `3.10.1-dev-p<n>`   |
+| Stream | Tracks |
+| ------ | --------------------------- |
+| `3.9`  | `scala/scala3 lts-3.9`       |
+| `3.10` | `scala/scala3 main`          |
 
 
-The GitHub token needs `contents: write` (declared in the workflow). Three
+The release workflow needs no secrets: its GitHub token has `contents: write`
+(declared in the workflow). Three
 workflows run on the fork, all from `main`: `Release`
 (`.github/workflows/release.yml`, on a release tag or by hand as a dry run),
 `Check` (`.github/workflows/check.yml`, on pushes and pull requests to `main`,

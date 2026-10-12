@@ -30,14 +30,8 @@ dir="${1:-}"
 [ -n "$dir" ] && [ -d "$dir/project" ] || die "usage: proscala-buildconf <scala3 tree>"
 cd "$dir"
 
-scalaval() { # scalaval <name> — a `val <name> = "…"` from the sbt build, with $vars expanded
-  local v
-  v="$(grep -h -E "val $1 *= *s?\"" project/*.scala 2>/dev/null | head -1 | sed -E 's/.*= *s?"([^"]*)".*/\1/')"
-  while [[ "$v" =~ \$\{?([A-Za-z]+)\}? ]]; do
-    v="${v/${BASH_REMATCH[0]}/$(scalaval "${BASH_REMATCH[1]}")}"
-  done
-  printf '%s' "$v"
-}
+sources="$(cat project/*.scala 2>/dev/null)"
+scalaval() { sbt_val "$1" "$sources"; }
 
 base=3.9; [ -d directives-parser/src/main/scala ] && base=3.10
 ref="$(scalaval referenceVersion)";  [ -n "$ref" ] || die "no referenceVersion in $dir/project"
