@@ -44,12 +44,13 @@ git rev-parse --verify --quiet "$MAIN_REF:mk/$stream.mk" >/dev/null 2>&1 \
 if [ -f library-js/src/scala/scalajs/wit/package.scala ]; then
   ir="wasm"; flavour="scala-wasm"
 else
-  base="$(git show "$MAIN_REF:mk/$stream.mk" | sed -nE 's/^BASE_SCALAJS_VERSION[[:space:]]*:=[[:space:]]*([^[:space:]]+).*/\1/p' | head -1)"
+  # A tree that is not a stream's says which Scala.js it is built against.
+  base="${PROSCALA_SCALAJS_VERSION:-$(git show "$MAIN_REF:mk/$stream.mk" | sed -nE 's/^BASE_SCALAJS_VERSION[[:space:]]*:=[[:space:]]*([^[:space:]]+).*/\1/p' | head -1)}"
   [ -n "$base" ] || die "could not read BASE_SCALAJS_VERSION from mk/$stream.mk"
   ir="base/$base"; flavour="Scala.js $base"
 fi
 git rev-parse --verify --quiet "$MAIN_REF:mk/scalajs-ir/$ir" >/dev/null 2>&1 \
-  || die "no vendored IR at mk/scalajs-ir/$ir on $MAIN_REF"
+  || die "no vendored Scala.js IR at mk/scalajs-ir/$ir on $MAIN_REF (bin/proscala-vendor-ir ${base:-<version>} adds it)"
 
 echo ">> overlaying build files from $MAIN_REF (stream $stream, $flavour IR)"
 
@@ -61,7 +62,9 @@ git archive "$MAIN_REF" Makefile "${mkfiles[@]}" \
 # Selected vendored IR -> compiler/src-scalajs-ir.
 rm -rf compiler/src-scalajs-ir
 mkdir -p compiler/src-scalajs-ir
-git archive "$MAIN_REF" "mk/scalajs-ir/$ir" | tar -x --strip-components=3 -C compiler/src-scalajs-ir
+# strip every directory of mk/scalajs-ir/<ir>/ (base/<version> is one deeper than wasm)
+depth=$(( $(printf '%s' "mk/scalajs-ir/$ir" | tr -cd / | wc -c) + 1 ))
+git archive "$MAIN_REF" "mk/scalajs-ir/$ir" | tar -x --strip-components="$depth" -C compiler/src-scalajs-ir
 
 # Keep the tree clean: hide the overlaid files and the build output from
 # `git status`, scoped to THIS worktree only. We must not touch the shared

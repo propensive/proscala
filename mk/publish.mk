@@ -1,35 +1,25 @@
 # ==============================================================================
-# Maven Central publication
+# Release artefacts
 #
-# Publishes the jars built into release/<branch>/lib to Maven Central (the
-# Sonatype Central Portal), under the `dev.propensive` group, using the same
-# artifact names as the mainline Scala releases so the fork can stand in for
-# them — `scala3-compiler_3`, `scala-library`, `tasty-core_3` and so on — at
-# version <upstream-base>-p<n>.
+# What a release attaches to its GitHub release, besides the tarball: each jar
+# we build under its Maven name, and a Maven-layout repository of them (jar,
+# POM and sources jar per artifact, with checksums), under the `dev.propensive`
+# group with the same artifact names as the mainline Scala releases —
+# `scala3-compiler_3`, `scala-library`, `tasty-core_3` and so on — at version
+# <scala version>-proscala-<x.y.z> (see AGENTS.md, "Releases"). Unpacked and
+# named as a resolver, that repository lets sbt's
+# `scalaOrganization := "dev.propensive"` swap the fork in wholesale.
 #
-# This mirrors how `consequent` publishes (same group, same portal, same
-# detached-GPG signing, same one-bundle-per-release model) but is written in
-# plain make + curl rather than Mill, so the build keeps to the toolchain
-# AGENTS.md advertises: GNU make, curl, javac, jar and a JDK.
+#   make VERSION=<v> release-jars   # each jar as release/<branch>/jars/<id>-<v>.jar
+#   make VERSION=<v> maven-repo     # release/<branch>/proscala-<v>-maven.zip
+#
+# Nothing is uploaded anywhere: releases go to GitHub Releases only.
 #
 # Included by the top-level Makefile after mk/<stream>.mk, so every per-stream
 # version variable is already set and the dependency lists below are derived
 # from the very same variables the compile classpaths use. That is deliberate:
 # a version bump in mk/<stream>.mk moves the POMs with it, and there is no
 # second copy of the dependency graph to drift.
-#
-#   make VERSION=<v> publish-bundle   # build, stage, sign, zip — no upload
-#   make VERSION=<v> publish          # ... and upload to the Central Portal
-#   make VERSION=<v> release-jars     # copy each published jar to release/<branch>/jars/<id>-<v>.jar
-#
-# Credentials, all from the environment:
-#   SONATYPE_USERNAME / SONATYPE_PASSWORD   a Central *user token*, not portal
-#                                           login credentials
-#   PROSCALA_GPG_PASSPHRASE                 optional; when set, gpg runs
-#                                           non-interactively (CI). When unset,
-#                                           gpg-agent stays in charge and may
-#                                           prompt, as consequent's release.sh
-#                                           does on a developer machine.
 # ==============================================================================
 
 PUB_GROUP  := dev.propensive
@@ -37,9 +27,7 @@ PUB_URL    := https://github.com/propensive/proscala
 PUB_SCM    := scm:git:https://github.com/propensive/proscala.git
 PUB_STAGE  := $(BUILD)/publish
 PUB_REPO   := $(PUB_STAGE)/repo
-PUB_BUNDLE := $(RELEASE)/proscala-$(VERSION)-bundle.zip
-PUB_API    := https://central.sonatype.com/api/v1/publisher/upload
-PUB_NAME   := $(PUB_GROUP)-proscala:$(VERSION)
+PUB_ZIP    := $(RELEASE)/proscala-$(VERSION)-maven.zip
 PUB_DESC   := A module of Proscala, the Propensive fork of Scala 3
 
 # md5sum/sha1sum on Linux; md5/shasum on macOS. Both forms print the digest
@@ -183,12 +171,11 @@ PUB_TABLE := \
 # ==============================================================================
 
 # Copy each published jar to release/<branch>/jars/<artifactId>-<version>.jar:
-# the loose jars a GitHub release attaches beside the tarball, named as on Maven
-# Central so the two sets of artefacts match byte for byte. Driven by PUB_TABLE,
-# so the set can never drift from what goes to Central; the Scala.js runtime
-# jars that ride in the tarball's lib/ are third-party and not published, so
-# they are not copied either. No version guard: nothing is uploaded, so a
-# development `-propensive` version is fine here.
+# the loose jars a GitHub release attaches beside the tarball, under their Maven
+# names, byte for byte the jars in the Maven repository. Driven by PUB_TABLE, so
+# the set can never drift from the repository's; the Scala.js runtime jars that
+# ride in the tarball's lib/ are third-party and not published, so they are not
+# copied either.
 PUB_JARS := $(RELEASE)/jars
 .PHONY: release-jars
 release-jars: release
@@ -202,30 +189,12 @@ release-jars: release
 	 done
 	@echo "  jars    : $(words $(PUB_TABLE)) in $(PUB_JARS)"
 
-# Refuse to publish a development version. Plain `make` leaves VERSION at the
-# stream's `<base>-propensive`; a real publication is always driven by the
-# release workflow, which passes the computed `<base>-p<n>`.
-.PHONY: publish-check-version
-publish-check-version:
-	@case '$(VERSION)' in \
-	  *-propensive) \
-	    echo "publish: refusing to publish development version '$(VERSION)'" >&2; \
-	    echo "         pass a release version, e.g. make VERSION=3.10.0-dev-p1 publish" >&2; \
-	    exit 1 ;; \
-	esac
-	@echo ">> publishing $(words $(PUB_TABLE)) $(PUB_GROUP) artefacts at version $(VERSION)"
-
-# Stage a Maven repository layout — jar, POM, sources jar and javadoc jar per
-# artifact — then sign and checksum every file in it. Done in a single shell
-# pass: re-entering make per artifact would re-parse the Makefile (and re-run
-# its parse-time `find`s over compiler/src) dozens of times.
-#
-# `release` is built through a sub-make rather than named as a prerequisite so
-# the version guard runs *before* the build, not concurrently with it. In CI
-# the tarball step has already built everything, so this is a no-op.
-.PHONY: publish-stage
-publish-stage: publish-check-version
-	@$(MAKE) release
+# Stage a Maven repository layout — jar, POM and sources jar per artifact, with
+# md5/sha1 checksums — and zip it. Done in a single shell pass: re-entering make
+# per artifact would re-parse the Makefile (and re-run its parse-time `find`s
+# over compiler/src) dozens of times.
+.PHONY: maven-repo
+maven-repo: release
 	@rm -rf '$(PUB_STAGE)' && mkdir -p '$(PUB_REPO)'
 	@set -eu; \
 	 group_path=$$(printf '%s' '$(PUB_GROUP)' | tr . /); \
@@ -295,12 +264,6 @@ publish-stage: publish-check-version
 	   fi; \
 	   ( cd "$$stage" && jar cf "$$out" . ); \
 	 }; \
-	 emit_docjar() { \
-	   out="$$1"; stage='$(PUB_STAGE)/doc'; \
-	   rm -rf "$$stage"; mkdir -p "$$stage"; \
-	   printf 'This artefact carries no API documentation.\n' > "$$stage/README"; \
-	   ( cd "$$stage" && jar cf "$$out" . ); \
-	 }; \
 	 for record in $(foreach r,$(PUB_TABLE),'$(r)'); do \
 	   id=$$(printf  '%s' "$$record" | cut -d'|' -f1); \
 	   jar=$$(printf '%s' "$$record" | cut -d'|' -f2); \
@@ -309,58 +272,18 @@ publish-stage: publish-check-version
 	   dir="$(PUB_REPO)/$$group_path/$$id/$(VERSION)"; \
 	   base="$$dir/$$id-$(VERSION)"; \
 	   mkdir -p "$$dir"; \
-	   [ -f '$(LIB)'/"$$jar" ] || { echo "publish: missing $(LIB)/$$jar" >&2; exit 1; }; \
+	   [ -f '$(LIB)'/"$$jar" ] || { echo "maven-repo: missing $(LIB)/$$jar" >&2; exit 1; }; \
 	   cp '$(LIB)'/"$$jar" "$$base.jar"; \
 	   emit_pom    "$$id" "$$dep" "$$base.pom"; \
 	   emit_srcjar "$$src"        "$$base-sources.jar"; \
-	   emit_docjar                "$$base-javadoc.jar"; \
 	   echo "   staged $$id"; \
 	 done; \
-	 rm -rf '$(PUB_STAGE)/src' '$(PUB_STAGE)/doc'
-	@$(MAKE) --no-print-directory publish-sign
-
-# Detached ASCII-armoured signature plus md5/sha1 for every staged file. With
-# PROSCALA_GPG_PASSPHRASE set, gpg is fully non-interactive (loopback pinentry)
-# for CI; without it gpg-agent stays in charge and may prompt, which is how a
-# developer runs this locally.
-.PHONY: publish-sign
-publish-sign:
+	 rm -rf '$(PUB_STAGE)/src'
 	@set -eu; \
-	 find '$(PUB_REPO)' -type f ! -name '*.asc' ! -name '*.md5' ! -name '*.sha1' \
-	 | while read -r f; do \
-	     if [ -n "$${PROSCALA_GPG_PASSPHRASE:-}" ]; then \
-	       printf '%s' "$$PROSCALA_GPG_PASSPHRASE" | gpg --batch --yes \
-	         --pinentry-mode loopback --passphrase-fd 0 \
-	         --armor --detach-sign --output "$$f.asc" "$$f"; \
-	     else \
-	       gpg --batch --yes --armor --detach-sign --output "$$f.asc" "$$f"; \
-	     fi; \
-	     $(MD5CMD)  "$$f" | cut -d' ' -f1 | tr -d '\n' > "$$f.md5"; \
-	     $(SHA1CMD) "$$f" | cut -d' ' -f1 | tr -d '\n' > "$$f.sha1"; \
-	   done; \
-	 echo ">> signed $$(find '$(PUB_REPO)' -name '*.asc' | wc -l | tr -d ' ') files"
-
-.PHONY: publish-bundle
-publish-bundle: publish-stage
-	@rm -f '$(PUB_BUNDLE)'
-	@mkdir -p '$(RELEASE)'
-	@cd '$(PUB_REPO)' && zip -qr '$(PUB_BUNDLE)' .
-	@echo ">> bundle: $(PUB_BUNDLE)"
-
-# publishingType=AUTOMATIC: the Portal validates the bundle and, if it passes,
-# releases it to Maven Central with no further intervention — the same
-# `--shouldRelease true` behaviour consequent's release.sh uses. Maven Central
-# is append-only: a published version can never be replaced, only superseded by
-# the next -p<n>.
-.PHONY: publish
-publish: publish-bundle
-	@set -eu; \
-	 : "$${SONATYPE_USERNAME:?publish: SONATYPE_USERNAME is not set}"; \
-	 : "$${SONATYPE_PASSWORD:?publish: SONATYPE_PASSWORD is not set}"; \
-	 token=$$(printf '%s:%s' "$$SONATYPE_USERNAME" "$$SONATYPE_PASSWORD" | base64 | tr -d '\n'); \
-	 echo ">> uploading $(PUB_NAME) to the Central Portal"; \
-	 id=$$(curl --fail-with-body --silent --show-error -X POST \
-	        -H "Authorization: Bearer $$token" \
-	        -F "bundle=@$(PUB_BUNDLE)" \
-	        '$(PUB_API)?name=$(PUB_NAME)&publishingType=AUTOMATIC'); \
-	 echo ">> deployment $$id submitted; Central will validate and release it"
+	 find '$(PUB_REPO)' -type f ! -name '*.md5' ! -name '*.sha1' | while read -r f; do \
+	   $(MD5CMD)  "$$f" | cut -d' ' -f1 | tr -d '\n' > "$$f.md5"; \
+	   $(SHA1CMD) "$$f" | cut -d' ' -f1 | tr -d '\n' > "$$f.sha1"; \
+	 done
+	@rm -f '$(PUB_ZIP)' && mkdir -p '$(RELEASE)'
+	@cd '$(PUB_REPO)' && zip -qr '$(PUB_ZIP)' .
+	@echo "  repo    : $(words $(PUB_TABLE)) artefacts in $(PUB_ZIP)"

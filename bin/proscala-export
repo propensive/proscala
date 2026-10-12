@@ -1,238 +1,269 @@
 #!/usr/bin/env bash
 #
-# proscala-export — write a stream's tree back out as patch files.
+# proscala-export — write a tree's patches back to patches/.
 #
 # Usage:
-#   bin/proscala-export <stream> [<dir>] [--drop <patch>]...
+#   bin/proscala-export [<dir>|<target>] [--adapt | --revise] [--obsolete <patch>]... [--remove <patch>]...
 #
-# Reads the commits above UPSTREAM_SHA in <dir> (default worktrees/<stream>), one
-# per patch, each carrying a `Proscala-Patch: <name>` trailer, and makes
-# patches/<stream>/ match them: one file per commit, and `series` in commit order.
-# Then it proves the result: applying the new series onto UPSTREAM_SHA must give
-# exactly the tree's content, or nothing is written.
+# Reads the commits above the tree's upstream base (one per patch, each with a
+# `Proscala-Patch: <name>` trailer) in <dir>, or in worktrees/<target>, and
+# records every patch whose commit differs from the version that was applied, as
+# a version anchored at the tree's base. What that means depends on the change:
 #
-# Where a file goes:
-#   - patches/<stream>/<p>.patch exists         -> it is rewritten;
-#   - else patches/common/<p>.patch exists      -> common is rewritten if every
-#     other stream using it still applies with the new version (and they are named,
-#     since their trees change); otherwise the patch is forked to patches/<stream>/;
-#   - else (a new patch)                         -> patches/<stream>/<p>.patch.
-#   A stream copy that has become identical in effect to common is removed.
+#   only context      (the patch's own +/- lines are unchanged: the tree was
+#                      rebased, or a three-way merge placed it): recorded at once
+#   a new patch       recorded at once, and added to patches/series
+#   anything else     you must say which it is:
+#     --adapt         this upstream needed the patch done differently; other
+#                     versions stay as they are
+#     --revise        the patch itself changed (a fix, a feature): the new
+#                     version gets the next revision, and every older version
+#                     is brought up to it by a three-way merge where that
+#                     succeeds; those it cannot update are listed, and stay in
+#                     use (behind) until someone updates them
 #
-# A patch that was in `series` but has no commit is an error unless named with
-# --drop, so a patch can never disappear by accident (e.g. after `git am --skip`).
-# Nothing is committed: review `git diff` on main and commit it yourself.
+#   --obsolete <p>    the tree no longer carries <p> because upstream has made it
+#                     unnecessary: <p> gets `obsolete-from <base>`
+#   --remove <p>      delete <p> and all its versions
+#
+# A patch the target should carry but the tree lacks is an error unless named in
+# --obsolete or --remove. Before writing anything, the result is proved: choosing
+# patches for the base anew must rebuild the tree exactly. Nothing is committed.
 
 set -euo pipefail
 PROSCALA_PROG=proscala-export
 # shellcheck source=proscala-lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/proscala-lib.sh"
 
-stream="" dir="" drops=()
+arg="" mode="" obsolete=() remove=()
 while [ $# -gt 0 ]; do
   case "$1" in
-    --drop)    [ -n "${2:-}" ] || die "--drop needs a patch name"; drops+=("$2"); shift 2 ;;
-    -h|--help) sed -n '3,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --adapt)    mode=adapt; shift ;;
+    --revise)   mode=revise; shift ;;
+    --obsolete) [ -n "${2:-}" ] || die "--obsolete needs a patch name"; obsolete+=("$2"); shift 2 ;;
+    --remove)   [ -n "${2:-}" ] || die "--remove needs a patch name"; remove+=("$2"); shift 2 ;;
+    -h|--help)  sed -n '3,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*) die "unknown option $1" ;;
-    *)  if [ -z "$stream" ]; then stream="$1"
-        elif [ -z "$dir" ]; then dir="$1"
-        else die "too many arguments"; fi
-        shift ;;
+    *)  [ -z "$arg" ] || die "too many arguments"; arg="$1"; shift ;;
   esac
 done
-require_stream "$stream"
-sha="$(upstream_sha "$stream")"
-dir="${dir:-$PROSCALA_ROOT/worktrees/$stream}"
-case "$dir" in /*) ;; *) dir="$PWD/$dir" ;; esac
-P="$PROSCALA_ROOT/patches"
-
-[ -d "$dir" ] || die "$dir does not exist (bin/proscala-tree $stream creates it)"
-ts="$(stream_file "$dir" || true)"
-[ -z "$ts" ] || [ "$ts" = "$stream" ] || die "$dir was built for stream $ts, not $stream"
+[ -n "$arg" ] || die "which tree? give its directory or its target"
+if [ -d "$arg" ]; then dir="$(cd "$arg" && pwd)"; else dir="$PROSCALA_ROOT/worktrees/$(printf '%s' "$arg" | tr '/:' '__')"; fi
+[ -d "$dir" ] || die "no tree at $dir (bin/proscala-tree makes one)"
 op="$(in_progress "$dir")"
 [ -z "$op" ] || die "$dir is mid-operation ($op); finish it first"
 [ -z "$(git -C "$dir" status --porcelain --untracked-files=no)" ] \
   || die "$dir has uncommitted changes; commit them (with a Proscala-Patch trailer) first"
-git -C "$dir" merge-base --is-ancestor "$sha" HEAD \
-  || die "$dir is not built on mk/$stream.mk's UPSTREAM_SHA $sha. After changing UPSTREAM_SHA, rebase the tree: cd $dir && git rebase --onto $sha \$(cat \$(git rev-parse --absolute-git-dir)/proscala-base)"
+
+t="$(tree_base "$dir")"
+recorded="$(tree_target "$dir")"
+if [ -n "$recorded" ] && [ "$recorded" != "$t" ]; then
+  note "the tree has moved from scala/scala3 $(g rev-parse --short "$recorded") to $(g rev-parse --short "$t")"
+fi
+profile="$(tree_profile "$dir")"
+if is_stream "$profile" && [ "$(upstream_sha "$profile")" != "$t" ]; then
+  warn "the tree is the $profile stream, but mk/$profile.mk pins $(upstream_sha "$profile" | cut -c1-10), not $(g rev-parse --short "$t"): update UPSTREAM_SHA too"
+fi
+
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/proscala-export.XXXXXX")"
+trap 'rm -rf "$tmp"; if [ -n "${SELECT_INDEX:-}" ]; then rm -f "$SELECT_INDEX"; fi' EXIT
 
 # --- read the tree -------------------------------------------------------------
 names=() commits=()
-declare -A seen=()
+declare -A seen=() dropping=()
+for p in ${obsolete[@]+"${obsolete[@]}"} ${remove[@]+"${remove[@]}"}; do dropping[$p]=1; done
 while IFS= read -r c; do
   short="$(git -C "$dir" rev-parse --short "$c")"
   [ "$(git -C "$dir" rev-list --parents -n1 "$c" | wc -w)" -eq 2 ] \
     || die "commit $short is a merge; a patch must be a single ordinary commit"
   p="$(commit_patch_name "$dir" "$c")"
-  [ -n "$p" ] || die "commit $short ($(git -C "$dir" log -1 --format=%s "$c")) has no 'Proscala-Patch: <name>' trailer"
   [[ "$p" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] || die "commit $short: '$p' is not a valid patch name (lower-case letters and digits, hyphen-separated)"
-  [ "$p" != common ] && [ "$p" != series ] || die "commit $short: '$p' is a reserved name"
+  [ "$p" != series ] || die "commit $short: 'series' is a reserved name"
   [ -z "${seen[$p]:-}" ] || die "two commits are both patch '$p' ($short and ${seen[$p]}); squash them into one"
+  [ -z "${dropping[$p]:-}" ] || die "the tree still has a commit for '$p', which you asked to drop"
   [ "$(git -C "$dir" log -1 --format=%B "$c" | grep -cx -- '---')" -eq 0 ] \
     || die "commit $short ($p): its message has a line that is just '---', which 'git am' would cut the message at"
   seen[$p]="$short"
   names+=("$p"); commits+=("$c")
-done < <(git -C "$dir" rev-list --reverse "$sha..HEAD")
-[ "${#names[@]}" -gt 0 ] || die "$dir has no patch commits above $sha"
-[ "${names[0]}" = zflags ] || die "the first patch must be zflags (the stream base), not ${names[0]}"
+done < <(git -C "$dir" rev-list --reverse "$t..HEAD")
+[ "${#names[@]}" -gt 0 ] || die "$dir has no patch commits above $t"
 
-mapfile -t old < <(series "$stream")
-declare -A inold=()
-for p in "${old[@]}"; do inold[$p]=1; done
-declare -A dropping=()
-for d in ${drops[@]+"${drops[@]}"}; do
-  [ -n "${inold[$d]:-}" ] || die "--drop $d: '$d' is not in patches/$stream/series"
-  [ -z "${seen[$d]:-}" ] || die "--drop $d: the tree still has a commit for '$d'"
-  dropping[$d]=1
-done
-for p in "${old[@]}"; do
-  [ -n "${seen[$p]:-}" ] || [ -n "${dropping[$p]:-}" ] \
-    || die "patches/$stream/series has '$p' but the tree has no commit for it (pass --drop $p to remove it on purpose)"
-done
-# A deliberate reorder (rebase -i) is fine, but say so.
-kept_old="$(for p in "${old[@]}"; do if [ -n "${seen[$p]:-}" ]; then echo "$p"; fi; done)"
-kept_new="$(for p in "${names[@]}"; do if [ -n "${inold[$p]:-}" ]; then echo "$p"; fi; done)"
-[ "$kept_old" = "$kept_new" ] || note "the order of the series has changed"
-
-# --- generate and place ----------------------------------------------------------
-tmp="$(mktemp -d "${TMPDIR:-/tmp}/proscala-export.XXXXXX")"
-trap 'rm -rf "$tmp"; if [ -n "${APPLIED_INDEX:-}" ]; then rm -f "$APPLIED_INDEX"; fi' EXIT
-
-# users_of_common <p> — the other streams whose series takes <p> from common
-users_of_common() {
-  local o
-  for o in $(streams); do
-    [ "$o" = "$stream" ] && continue
-    in_series "$o" "$1" || continue
-    [ -f "$P/$o/$1.patch" ] && continue
-    echo "$o"
+# The tree's order must agree with patches/series; new patches slot in where they are.
+known=() ; for p in "${names[@]}"; do if in_series "$p"; then known+=("$p"); fi; done
+want="$(for p in $(series); do if [ -n "${seen[$p]:-}" ]; then echo "$p"; fi; done)"
+[ "$want" = "$(printf '%s\n' ${known[@]+"${known[@]}"})" ] \
+  || die "the tree applies patches in a different order from patches/series; reorder patches/series by hand (it is shared by every target) or the tree"
+declare -A removing=()
+for p in ${remove[@]+"${remove[@]}"}; do removing[$p]=1; done
+# newafter <p> — the tree's new patches that follow <p>, up to the next known one
+newafter() {
+  local i started=0
+  for i in "${!names[@]}"; do
+    if [ "$started" = 1 ]; then
+      if in_series "${names[$i]}"; then break; fi
+      echo "${names[$i]}"
+    elif [ "${names[$i]}" = "$1" ]; then started=1; fi
   done
+  return 0
 }
+{
+  awk 'NR == 1, /^$/' "$P/series"          # the header comment
+  for p in $(series); do
+    if [ -n "${removing[$p]:-}" ]; then continue; fi
+    echo "$p"
+    newafter "$p"
+  done
+} > "$tmp/series"
+for p in "${names[@]}"; do grep -qx -- "$p" "$tmp/series" || die "cannot place new patch '$p' in the series (put a known patch before it in the tree)"; done
 
-# A commit still exactly as the tool applied it, whose file has changed since
-# (another stream's export changed a shared file, or main moved on), is stale:
-# exporting it would silently undo that change.
-stale=()
+# --- what the target should carry ------------------------------------------------
+select_plan "$t" "$tmp/expect"; rm -f "$SELECT_INDEX"; SELECT_INDEX=""
+while IFS=$'\t' read -r p st _ detail; do
+  case "$st" in
+    plain|3way|missing)
+      [ -n "${seen[$p]:-}" ] || [ -n "${dropping[$p]:-}" ] \
+        || die "the target should carry '$p' but the tree has no commit for it (--obsolete $p if upstream made it unnecessary, --remove $p to delete it)" ;;
+    out)
+      [ -z "${seen[$p]:-}" ] || die "the tree carries '$p', but its bounds exclude this target ($detail); change patches/$p/meta first" ;;
+  esac
+done < "$tmp/expect"
+
+# --- decide ----------------------------------------------------------------------
+declare -A dest=() kind=() srcfile=()
+stale=() unmarked=()
 for i in "${!names[@]}"; do
-  p="${names[$i]}"
-  export_commit "$dir" "${commits[$i]}" > "$tmp/$p.patch"
-  m="$(manifest_get "$dir" "$p")"
-  f="$(patch_file "$stream" "$p")"
-  if [ -n "$m" ] && [ -n "$f" ] && [ "$(patch_id "$tmp/$p.patch")" = "$m" ] && [ "$(patch_id "$f")" != "$m" ]; then
-    stale+=("$p")
+  p="${names[$i]}"; f="$tmp/$p.patch"
+  export_commit "$dir" "${commits[$i]}" > "$f"
+  nid="$(patch_id "$f")"
+  mid="$(manifest_field "$dir" "$p" 2)"
+  mfile="$(manifest_field "$dir" "$p" 3)"; [ -z "$mfile" ] || mfile="$PROSCALA_ROOT/$mfile"
+  srcfile[$p]="$mfile"
+  if [ -n "$mid" ] && [ "$nid" = "$mid" ]; then
+    kind[$p]=keep
+    if [ -n "$mfile" ] && { [ ! -f "$mfile" ] || [ "$(patch_id "$mfile")" != "$mid" ]; }; then stale+=("$p"); fi
+    continue
+  fi
+  if ! in_series "$p"; then kind[$p]=new
+  elif [ -n "$mfile" ] && [ -f "$mfile" ] && [ "$(payload_id "$f")" = "$(payload_id "$mfile")" ]; then kind[$p]=context
+  else
+    case "$mode" in
+      adapt|revise) kind[$p]="$mode" ;;
+      *) unmarked+=("$p") ;;
+    esac
   fi
 done
 if [ "${#stale[@]}" -gt 0 ]; then
-  die "$dir is out of date: ${stale[*]} changed in patches/ since it was built, and exporting it would undo that.
-Rebuild it with 'bin/proscala-tree $stream --reset' (which keeps no work of yours it would lose: it refuses if there is any),
-or, to keep work in it, make a fresh tree elsewhere and cherry-pick your commits onto it."
+  die "$dir is out of date: ${stale[*]} changed in patches/ since it was built, and exporting it would undo that. Rebuild it (bin/proscala-tree <target> --reset refuses if it holds unexported work)."
 fi
-cp "$P/$stream/series" "$tmp/series.orig"
-{
-  echo "# Patches of the $stream stream, in the order they are applied onto mk/$stream.mk's"
-  echo "# UPSTREAM_SHA. Each name resolves to patches/$stream/<name>.patch, else to"
-  echo "# patches/common/<name>.patch. Written by bin/proscala-export; see AGENTS.md."
-  echo
-  printf '%s\n' "${names[@]}"
-} > "$tmp/series.new"
-
-# place <strict> — decide where each file goes, then prove that the new series
-# rebuilds the tree exactly. Unless strict, a common file whose change is the same
-# as the tree's (equal patch-id; only line numbers and `index` lines differ, as
-# they do between streams) is kept as it is, so exporting one stream does not
-# rewrite every shared file in that stream's context; likewise a stream copy that
-# now says what common says is collapsed. If the proof then fails, rerun strictly.
-declare -A dest=() affected=()
-place() {
-  local strict="$1" p o ok users subst=() changed_common=()
-  dest=() affected=()
-  for p in "${names[@]}"; do
-    if [ -f "$P/$stream/$p.patch" ]; then
-      dest[$p]="$P/$stream/$p.patch"
-      if [ "$strict" = 0 ] && [ -f "$P/common/$p.patch" ] \
-         && [ "$(patch_id "$tmp/$p.patch")" = "$(patch_id "$P/common/$p.patch")" ]; then
-        dest[$p]="collapse"
-      fi
-    elif [ -f "$P/common/$p.patch" ]; then
-      if cmp -s "$tmp/$p.patch" "$P/common/$p.patch" \
-         || { [ "$strict" = 0 ] && [ "$(patch_id "$tmp/$p.patch")" = "$(patch_id "$P/common/$p.patch")" ]; }; then
-        dest[$p]="unchanged"
-        continue
-      fi
-      ok=1 users=()
-      for o in $(users_of_common "$p"); do
-        users+=("$o")
-        if apply_series "$o" ${changed_common[@]+"${changed_common[@]}"} "$p=$tmp/$p.patch" >/dev/null; then
-          rm -f "$APPLIED_INDEX"; APPLIED_INDEX=""
-        else
-          ok=0
-        fi
-      done
-      if [ "$ok" = 1 ]; then
-        dest[$p]="$P/common/$p.patch"
-        changed_common+=("$p=$tmp/$p.patch")
-        for o in ${users[@]+"${users[@]}"}; do affected[$o]="${affected[$o]:+${affected[$o]} }$p"; done
-      else
-        dest[$p]="$P/$stream/$p.patch"
-        warn "$p no longer applies to ${users[*]} from one shared file; forking it to patches/$stream/$p.patch"
-      fi
-    else
-      dest[$p]="$P/$stream/$p.patch"
-    fi
-  done
-  for p in "${names[@]}"; do
-    case "${dest[$p]}" in
-      unchanged) ;;
-      collapse)  subst+=("$p=$P/common/$p.patch") ;;
-      *)         subst+=("$p=$tmp/$p.patch") ;;
-    esac
-  done
-  # apply_series reads the series file, so stage the new one in place meanwhile
-  cp "$tmp/series.new" "$P/$stream/series"
-  if ! apply_series "$stream" ${subst[@]+"${subst[@]}"} > "$tmp/apply.log"; then
-    cp "$tmp/series.orig" "$P/$stream/series"
-    return 1
-  fi
-  got="$(GIT_INDEX_FILE="$APPLIED_INDEX" git -C "$PROSCALA_ROOT" write-tree)"
-  rm -f "$APPLIED_INDEX"; APPLIED_INDEX=""
-  if [ "$got" != "$(git -C "$dir" rev-parse 'HEAD^{tree}')" ]; then
-    echo "   applying the exported series gives tree $got, not the tree's own" > "$tmp/apply.log"
-    cp "$tmp/series.orig" "$P/$stream/series"
-    return 1
-  fi
-}
-if ! place 0 && ! place 1; then
-  cat "$tmp/apply.log" >&2
-  die "the exported series does not rebuild $dir exactly; nothing written"
+if [ "${#unmarked[@]}" -gt 0 ]; then
+  die "the change to ${unmarked[*]} is more than context. Export again with --adapt (this upstream needs the patch done differently) or --revise (the patch itself changed)."
 fi
 
-# --- write ---------------------------------------------------------------------
-wrote=0
+# where each changed patch goes: an identical existing version gains this anchor;
+# otherwise the version anchored here is (re)written
+vname="$(variant_name "$t")"
 for p in "${names[@]}"; do
-  case "${dest[$p]}" in
-    unchanged) ;;
-    collapse)
-      rm -f "$P/$stream/$p.patch"
-      note "$p: the $stream copy now matches patches/common/$p.patch, so it was removed"
-      wrote=$((wrote + 1)) ;;
-    *)
-      if ! cmp -s "$tmp/$p.patch" "${dest[$p]}"; then
-        cp "$tmp/$p.patch" "${dest[$p]}"
-        wrote=$((wrote + 1))
-      fi ;;
-  esac
+  case "${kind[$p]}" in keep) continue ;; esac
+  dest[$p]="$P/$p/$vname"
+  for v in "$P/$p"/*.patch; do
+    if [ -f "$v" ] && cmp -s "$v" "$tmp/$p.patch"; then dest[$p]="$v"; break; fi
+  done
 done
-for d in "${!dropping[@]}"; do
-  rm -f "$P/$stream/$d.patch"
-  if [ -f "$P/common/$d.patch" ] && [ -z "$(users_of_common "$d")" ]; then
-    rm -f "$P/common/$d.patch"
-  fi
-  note "dropped $d from the $stream stream"
+
+# --- prove it ------------------------------------------------------------------------
+force=()
+for p in "${names[@]}"; do
+  if [ "${kind[$p]}" != keep ]; then force+=("$p=$tmp/$p.patch"); fi
 done
+PROSCALA_SERIES="$tmp/series" select_plan "$t" "$tmp/proof" ${force[@]+"${force[@]}"}
+got="$(GIT_INDEX_FILE="$SELECT_INDEX" g write-tree)"; rm -f "$SELECT_INDEX"; SELECT_INDEX=""
+if [ "$got" != "$(git -C "$dir" rev-parse 'HEAD^{tree}')" ]; then
+  awk -F'\t' '$2 != "out" { print "   " $1 "\t" $2 }' "$tmp/proof" >&2
+  die "choosing patches for $(g rev-parse --short "$t") anew would not rebuild the tree exactly (an unchanged patch now selects a different version?); nothing written"
+fi
+
+# --- write -----------------------------------------------------------------------------
+wrote=0
+cp "$tmp/series" "$P/series"
 for i in "${!names[@]}"; do
-  manifest_set "$dir" "${names[$i]}" "$(patch_id "$tmp/${names[$i]}.patch")"
+  p="${names[$i]}"
+  case "${kind[$p]}" in keep) continue ;; esac
+  src="${srcfile[$p]}"
+  srcrev="$(if [ -n "$src" ]; then variant_line "$p" "$(basename "$src")" | awk '{ print $2 }'; fi)"
+  case "${kind[$p]}" in
+    new)      rev=1 ;;
+    context)  rev="${srcrev:-1}" ;;
+    adapt)    rev="${srcrev:-$(max_revision "$p")}" ;;
+    revise)   rev="$(( $(max_revision "$p") + 1 ))" ;;
+  esac
+  [ "$rev" -ge 1 ] 2>/dev/null || rev=1
+  d="${dest[$p]}"; dn="$(basename "$d")"
+  mkdir -p "$P/$p"
+  if [ -f "$d" ] && cmp -s "$d" "$tmp/$p.patch"; then
+    # an identical version exists: it now also applies here
+    line="$(variant_line "$p" "$dn")"
+    set_variant "$p" "$dn" "$(echo "$line" | awk '{ print $2 }')" $(echo "$line" | cut -d' ' -f3-) "$t"
+    note "$p: the existing version $dn also applies at $(g rev-parse --short "$t")"
+  else
+    # Rewriting a version anchored elsewhere too: it keeps each other anchor where
+    # the new content still applies; where it does not, the old content stays, as
+    # a version of its own.
+    keep=() orphan=()
+    if [ -f "$d" ]; then
+      oldline="$(variant_line "$p" "$dn")"
+      for a in $(echo "$oldline" | cut -d' ' -f3-); do
+        [ "$a" = "$t" ] && continue
+        select_plan "$a" "$tmp/other" "$p=$tmp/$p.patch"; rm -f "$SELECT_INDEX"; SELECT_INDEX=""
+        if [ "$(awk -F'\t' -v p="$p" '$1 == p { print $2 }' "$tmp/other")" = plain ]; then keep+=("$a"); else orphan+=("$a"); fi
+      done
+      if [ "${#orphan[@]}" -gt 0 ]; then
+        on="$(variant_name "${orphan[0]}")"
+        [ "$on" != "$dn" ] && [ ! -e "$P/$p/$on" ] || die "$p: cannot keep the old version for ${orphan[*]}: $on is taken"
+        cp "$d" "$P/$p/$on"
+        set_variant "$p" "$on" "$(echo "$oldline" | awk '{ print $2 }')" "${orphan[@]}"
+        note "$p: the old content stays as $on for $(for a in "${orphan[@]}"; do g rev-parse --short "$a"; done | tr '\n' ' ')"
+      fi
+    fi
+    cp "$tmp/$p.patch" "$d"
+    set_variant "$p" "$dn" "$rev" "$t" ${keep[@]+"${keep[@]}"}
+    note "$p: ${kind[$p]} — wrote ${d#"$PROSCALA_ROOT"/} (revision $rev)"
+  fi
+  manifest_set "$dir" "$p" "$(patch_id "$d")" "$d"
+  wrote=$((wrote + 1))
 done
-note "patches/$stream: $wrote file$([ "$wrote" = 1 ] || echo s) written, ${#names[@]} patches in series"
-for o in "${!affected[@]}"; do
-  warn "shared patch(es) ${affected[$o]} changed in patches/common/: the $o stream's tree changes too — rebuild and test it (bin/proscala-tree $o --reset)"
+for p in ${obsolete[@]+"${obsolete[@]}"}; do
+  add_bound "$p" obsolete-from "$t" "dropped at $(g rev-parse --short "$t") by proscala-export: upstream made it unnecessary"
+  note "$p: obsolete from $(g rev-parse --short "$t") on"
 done
+for p in ${remove[@]+"${remove[@]}"}; do
+  [[ "$p" =~ ^[a-z0-9-]+$ ]] || die "bad patch name '$p'"
+  g rm -rq --ignore-unmatch -- "patches/$p"
+  note "$p: removed"
+done
+
+# --- carry a revision to the other versions ------------------------------------------------
+for p in "${names[@]}"; do
+  [ "${kind[$p]}" = revise ] || continue
+  newrev="$(max_revision "$p")"; newfile="${dest[$p]}"
+  behind=()
+  while read -r vf vrev vanchors; do
+    [ "$vrev" -lt "$newrev" ] || continue
+    a="${vanchors%% *}"
+    SELECT_TREES=1 SELECT_3WAY=1 select_plan "$a" "$tmp/carry" "$p=$newfile"
+    rm -f "$SELECT_INDEX"; SELECT_INDEX=""
+    st="$(awk -F'\t' -v p="$p" '$1 == p { print $2 }' "$tmp/carry")"
+    if [ "$st" = plain ] || [ "$st" = 3way ]; then
+      c="$(commit_from_trees "${SELECT_PRE[$p]}" "${SELECT_POST[$p]}" "$newfile")"
+      export_commit "$PROSCALA_ROOT" "$c" > "$P/$p/$vf"
+      set_variant "$p" "$vf" "$newrev" "$a"
+      note "$p: brought $vf (at $(g rev-parse --short "$a")) up to revision $newrev"
+    else
+      behind+=("$vf@$(g rev-parse --short "$a")")
+    fi
+  done < <(variants "$p")
+  if [ "${#behind[@]}" -gt 0 ]; then
+    warn "$p: ${behind[*]} could not be brought up to revision $newrev mechanically, and still carry the old change; update them by hand (bin/proscala-tree <anchor>, then export --revise)"
+  fi
+done
+
+note "$wrote patch file$([ "$wrote" = 1 ] || echo s) written for scala/scala3 $(g rev-parse --short "$t"); review with git diff, then commit"

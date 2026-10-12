@@ -1,0 +1,65 @@
+name: Coverage
+
+# How far the patches reach across upstream: which scala/scala3 releases, release
+# candidates and branch heads get every patch they should (bin/proscala-coverage),
+# and whether the heads of main and lts-3.9 — what the next nightlies will be —
+# still build with them. Weekly, and on demand. Gaps are reported in the job
+# summary; covering them is described in AGENTS.md ("Covering a new target").
+on:
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: 'Targets to report on (blank: the default set)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        # Full history: which patches apply is decided by ancestry between
+        # upstream commits, which a shallow checkout cannot see.
+        with:
+          fetch-depth: 0
+      - name: Report coverage
+        run: |
+          set -uo pipefail
+          bin/proscala-coverage ${{ inputs.targets }} | tee coverage.txt
+          status=${PIPESTATUS[0]}
+          {
+            echo '### Patch coverage'
+            echo
+            if [ "$status" = 0 ]; then echo 'Every target gets every patch it should.'; else echo 'Some targets lack a version of a patch (the `missing` column).'; fi
+            echo
+            echo '```'
+            cat coverage.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [main, lts-3.9]
+    steps:
+      - uses: actions/checkout@v4
+        # Full history: which patches apply is decided by ancestry between
+        # upstream commits, which a shallow checkout cannot see.
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Build the tree
+        run: bin/proscala-tree "${{ matrix.target }}" worktrees/head
+      - name: Build the compiler
+        working-directory: worktrees/head
+        run: make

@@ -1,0 +1,1169 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Wed, 22 Jul 2026 20:33:57 +0200
+Subject: -Zsemantic-diagnostics: XML error output with TASTy-encoded types
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Squashed from 3 commits, oldest first:
+
+* reporting: semantic XML diagnostics with TASTy types (-Xsemantic-diagnostics)
+
+Adds a flag under which diagnostics are emitted as a stream of XML elements
+that preserve the semantic identity of message fragments, instead of the plain
+console rendering. Without the flag, output is byte-for-byte unchanged.
+
+While a Message is forced under the flag (a context property set in
+`inMessageContext`, so ordinary `i""` logging is unaffected), the string
+interpolators wrap the shown form of each interpolated argument in private-use
+markers (DiagnosticMarkup) recording its kind: type, symbol, name or code.
+Types additionally carry their TASTy serialization, Base64-encoded, pickled
+with the same TastyPickler/TreePickler recipe as quotes. Because diagnostic
+types routinely mention symbols defined in the failing sources, error types,
+type variables and skolems — which no consumer could ever resolve — a
+sanitizing TypeMap (DiagnosticTypePickler) first replaces each maximal subtree
+headed by such a part with a string literal type "⟨scala-diag:<n>⟩", described
+out-of-band by a placeholder record (kind, name, arity, definition position,
+printed form). Pickling failures are absorbed: the type is then marked up
+without a TASTy payload.
+
+XmlReporter, installed by Driver.setup under the flag, parses the markers into
+one top-level <diagnostic> element per diagnostic, with <type>/<sym>/<name>/
+<code> mixed content in <message> and <explanation>, position and error-id
+attributes, and the compiler and TASTy versions (TASTy payloads are
+version-locked). Every other consumer strips markers: the interface accessor
+Diagnostic.message and the console MessageRendering paths go through
+DiagnosticMarkup.plain, so a stray flag cannot corrupt zinc or console output.
+
+TypeMismatch.msg now interpolates the found/required types directly when
+markup is active instead of pre-rendering them through Formatting.typeDiff,
+whose colored string diff would defeat the markup.
+
+Verified manually on this branch's build: default output identical with the
+flag off; with it on, a local-class mismatch produces placeholders with
+definedAt/printed metadata, and both TASTy payloads round-trip on the consumer
+side through scala3-staging's QuoteUnpickler into a TypeRepr (a TypeRef for a
+classpath type; the placeholder ConstantType for a local one).
+
+Developed with LLM assistance (Claude Code); design and verification reviewed
+by the committer per LLM_POLICY.md.
+
+* reporting: mark up container elements, styled projections; nested markers
+
+Extends semantic diagnostics (-Xsemantic-diagnostics) to cover the message
+fragments that previously pre-stringified their entities:
+
+- Container elements. The shown-container Show instances (Seq, Option, Map,
+  tuples) flattened each element to a String before the formatter could mark
+  it. Marking now happens in a shared Formatting.showValue, called both from
+  StringFormatter.showArg and from ShownDef.Shown.toStr, so the types in a
+  shown Seq[Type] are marked individually.
+
+- Styled projections. A new carrier, Formatting.Styled(value, style)(text),
+  renders an entity with a non-default style (showDcl, showLocated,
+  showFullName, or an hl-highlighted form) while preserving its identity;
+  the marker gains a style attribute. Styled evaluates its text EAGERLY at
+  the argument position: the Seen disambiguation machinery assigns
+  superscripts and where: clauses by recording order, so deferring the show
+  into the formatter reorders it after eagerly-evaluated sibling arguments
+  and changes rendered output (caught by the golden-output check below on
+  tests/neg/byname-implicits-16.scala).
+
+- Nested markers. DiagnosticMarkup markers now nest: parse builds a tree,
+  wrap accepts balanced markers in the wrapped text, and XmlReporter renders
+  nested elements. This is the format support needed for composite-phrase
+  helpers (err.refStr and friends) to be converted incrementally later.
+
+- messages.scala sweep: ~45 sites converted from pre-rendered strings to
+  direct or Styled interpolation. Left alone: synthetic example construction,
+  identifier-suggestion concatenation, sort/comparison keys.
+
+Verified by a golden-output check: baseline and patched compilers run over
+every 4th file of tests/neg (448 files) with the flag off; 444 outputs are
+byte-identical, and the 4 differing files are recursion-limit stack-trace
+tests that differ between two runs of the *same* compiler (JIT-dependent
+overflow depth). Flag-on markup for sequences (per-element code markers) and
+styled symbols verified manually.
+
+Developed with LLM assistance (Claude Code); design and verification reviewed
+by the committer per LLM_POLICY.md.
+
+* Enable semantic diagnostics with -Z:semantic-diagnostics
+
+The -Xsemantic-diagnostics setting is replaced by the semantic-diagnostics
+entry of the shared -Z registry; nothing else changes.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: semdiag
+---
+ compiler/src/dotty/tools/dotc/Driver.scala    |   2 +
+ .../tools/dotc/printing/Formatting.scala      |  68 +++++-
+ .../tools/dotc/reporting/Diagnostic.scala     |   2 +-
+ .../dotc/reporting/DiagnosticMarkup.scala     | 193 ++++++++++++++++++
+ .../reporting/DiagnosticTypePickler.scala     | 130 ++++++++++++
+ .../dotty/tools/dotc/reporting/Message.scala  |   2 +
+ .../dotc/reporting/MessageRendering.scala     |   8 +-
+ .../tools/dotc/reporting/XmlReporter.scala    | 102 +++++++++
+ .../dotty/tools/dotc/reporting/messages.scala | 140 +++++++------
+ 9 files changed, 573 insertions(+), 74 deletions(-)
+ create mode 100644 compiler/src/dotty/tools/dotc/reporting/DiagnosticMarkup.scala
+ create mode 100644 compiler/src/dotty/tools/dotc/reporting/DiagnosticTypePickler.scala
+ create mode 100644 compiler/src/dotty/tools/dotc/reporting/XmlReporter.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/Driver.scala b/compiler/src/dotty/tools/dotc/Driver.scala
+index b457ae8c734dc8d0594d202d541038bc051f6f26..5de118ad6cf1a631386aa9be150bde0a65445cf0 100644
+--- a/compiler/src/dotty/tools/dotc/Driver.scala
++++ b/compiler/src/dotty/tools/dotc/Driver.scala
+@@ -105,6 +105,8 @@ class Driver {
+                 report.error(em"Not a reporter: ${ctx.settings.Yreporter.value}")
+           catch case e: ReflectiveOperationException =>
+             report.error(em"Could not create reporter ${ctx.settings.Yreporter.value}: $e")
++        else if config.Proscala.enabled(config.Proscala.SemanticDiagnostics) then
++          ictx.setReporter(new XmlReporter)
+         val files = fileNames.flatMap(ctx.getFile)
+         (files, fromTastySetup(files))
+       )
+diff --git a/compiler/src/dotty/tools/dotc/printing/Formatting.scala b/compiler/src/dotty/tools/dotc/printing/Formatting.scala
+index 6c9d079f66bf8048464549b54970cf7390740ce4..cff0b8cabea3349cdc518aa8537bfcdfc22b7377 100644
+--- a/compiler/src/dotty/tools/dotc/printing/Formatting.scala
++++ b/compiler/src/dotty/tools/dotc/printing/Formatting.scala
+@@ -38,7 +38,7 @@ object Formatting {
+ 
+       def toStr(x: Shown)(using Context): String = x match
+         case seq: Seq[?] => seq.map(toStr).mkString("[", ", ", "]")
+-        case res         => res.tryToShow
++        case res         => showValue(res)
+ 
+     import Shown.runCtxShow
+ 
+@@ -131,6 +131,7 @@ object Formatting {
+       given Show[ast.untpd.Mod] with
+         def show(x: ast.untpd.Mod) = CtxShow(s"Mod(${toStr(x.flags)})")
+ 
++      given Show[Styled]                              = ShowAny
+       given Show[Showable]                            = ShowAny
+       given Show[Shown]                               = ShowAny
+       given Show[Int]                                 = ShowAny
+@@ -167,8 +168,71 @@ object Formatting {
+    *     of the string context *before* inserting the arguments. That way, we guard
+    *     against accidentally treating an interpolated value as a margin.
+    */
++  /** A value rendered with a non-default style (a declaration, a location, a
++   *  full name, a composite phrase), which still carries the value itself so
++   *  that semantic markup can record its identity. The text is evaluated
++   *  eagerly, at the argument position: printing order relative to the other
++   *  interpolated arguments must not change, because the `Seen` disambiguation
++   *  machinery assigns superscripts and `where:` clauses by recording order.
++   */
++  final class Styled(val value: Any, val style: String, val text: String)
++
++  object Styled:
++    def apply(value: Any, style: String)(text: String): Styled =
++      new Styled(value, style, text)
++
++  def dclOf(sym: Symbol)(using Context): Styled      = Styled(sym, "dcl")(sym.showDcl)
++  def dclOf(d: Denotations.SingleDenotation)(using Context): Styled = Styled(d.symbol, "dcl")(d.showDcl)
++  def locatedOf(sym: Symbol)(using Context): Styled  = Styled(sym, "located")(sym.showLocated)
++  def fullNameOf(sym: Symbol)(using Context): Styled = Styled(sym, "full")(sym.showFullName)
++
++  /** The string form of an interpolated value, marked up with its semantic
++   *  identity when `-Zsemantic-diagnostics` is active. Used both for direct
++   *  arguments (`StringFormatter.showArg`) and for the elements of shown
++   *  containers (`ShownDef.Shown.toStr`), so that the types in a shown
++   *  `Seq[Type]` are marked individually.
++   */
++  def showValue(arg: Any)(using Context): String = arg match
++    case st: Styled =>
++      val text = st.text
++      if reporting.DiagnosticMarkup.active then
++        try markValue(st.value, text, st.style)
++        catch case scala.util.control.NonFatal(_) => text
++      else text
++    case _ =>
++      val shown = arg.tryToShow
++      if reporting.DiagnosticMarkup.active then
++        try markValue(arg, shown, "")
++        catch case scala.util.control.NonFatal(_) => shown
++      else shown
++
++  /** Record what kind of entity produced the shown text, so that `XmlReporter`
++   *  can mark it up; types additionally carry their TASTy serialization.
++   */
++  private def markValue(arg: Any, shown: String, style: String)(using Context): String =
++    import reporting.{DiagnosticMarkup, DiagnosticTypePickler}
++    def styleAttrs = if style.isEmpty then Nil else List(("style", style))
++    arg match
++      case tp: Type =>
++        val attrs = DiagnosticTypePickler.pickle(tp) match
++          case Some(pickled) =>
++            ("tasty", pickled.tasty)
++              :: pickled.placeholders.map(p => ("p", DiagnosticMarkup.encodePlaceholder(p)))
++          case None => Nil
++        DiagnosticMarkup.wrap("type", attrs ::: styleAttrs, shown)
++      case sym: Symbol =>
++        DiagnosticMarkup.wrap("sym",
++          ("name", sym.name.show) :: ("full", sym.showFullName) :: styleAttrs, shown)
++      case name: Names.Name =>
++        DiagnosticMarkup.wrap("name", ("isType", name.isTypeName.toString) :: styleAttrs, shown)
++      case _: ast.Trees.Tree[?] =>
++        DiagnosticMarkup.wrap("code", styleAttrs, shown)
++      case _ =>
++        if style.isEmpty then shown
++        else DiagnosticMarkup.wrap("span", styleAttrs, shown)
++
+   class StringFormatter(protected val sc: StringContext) {
+-    protected def showArg(arg: Any)(using Context): String = arg.tryToShow
++    protected def showArg(arg: Any)(using Context): String = showValue(arg)
+ 
+     private def treatArg(arg: Shown, suffix: String)(using Context): (String, String) = arg.runCtxShow match {
+       case arg: Seq[?] if suffix.indexOf('%') == 0 && suffix.indexOf('%', 1) != -1 =>
+diff --git a/compiler/src/dotty/tools/dotc/reporting/Diagnostic.scala b/compiler/src/dotty/tools/dotc/reporting/Diagnostic.scala
+index 71d8ae6578345fadbc583eb5b85163208fa1c343..630dcfaa8b66b03270d16a0e7313f1d6221c8231 100644
+--- a/compiler/src/dotty/tools/dotc/reporting/Diagnostic.scala
++++ b/compiler/src/dotty/tools/dotc/reporting/Diagnostic.scala
+@@ -154,7 +154,7 @@ class Diagnostic(
+   override def position: Optional[interfaces.SourcePosition] =
+     if (pos.exists && pos.source.exists) Optional.of(pos) else Optional.empty()
+   override def message: String =
+-    msg.message.replaceAll("\u001B\\[[;\\d]*m", "")
++    DiagnosticMarkup.plain(msg.message).replaceAll("\u001B\\[[;\\d]*m", "")
+   /** Structured related information for this diagnostic (scalameta/metals#3214). Currently the
+    *  chain of inline call-sites surrounding the reported position: the filtering mirrors
+    *  `MessageRendering.messageAndPos`, so the list matches the rendered "Inline stack trace" and
+diff --git a/compiler/src/dotty/tools/dotc/reporting/DiagnosticMarkup.scala b/compiler/src/dotty/tools/dotc/reporting/DiagnosticMarkup.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..095e1aff08cac6d0a752054b91a05aa5c1139a0a
+--- /dev/null
++++ b/compiler/src/dotty/tools/dotc/reporting/DiagnosticMarkup.scala
+@@ -0,0 +1,193 @@
++package dotty.tools
++package dotc
++package reporting
++
++import scala.collection.mutable
++
++import core.Contexts.*
++import util.Property
++
++/** In-band markup for semantic diagnostics, enabled by `-Zsemantic-diagnostics`.
++ *
++ *  While a `Message` is forced under the flag, the `i`/`em` string interpolators
++ *  wrap the shown form of each interpolated argument in markers from the Unicode
++ *  private use area, recording what kind of entity produced the text (a type, a
++ *  symbol, a name, a tree) together with attributes such as the TASTy
++ *  serialization of a type. `XmlReporter` parses the markers back into structure;
++ *  every other consumer sees them stripped by `plain`.
++ *
++ *  A marker has the form
++ *
++ *      Start kind AttrsSep key=value (AttrSep key=value)* TextSep text End
++ *
++ *  where the marked text never itself contains markers. Attribute values are
++ *  percent-encoded (`%hhhh`, four hex digits) so that they cannot contain the
++ *  marker characters or the attribute separator.
++ */
++object DiagnosticMarkup:
++
++  /** Present on the context while a message is forced with markup enabled. */
++  val Active: Property.Key[Unit] = new Property.Key
++
++  def active(using Context): Boolean = ctx.property(Active).isDefined
++
++  private final val Start    = '\uE000'
++  private final val End      = '\uE001'
++  private final val AttrsSep = '\uE002'
++  private final val TextSep  = '\uE003'
++  private final val AttrSep  = '\u001F'
++
++  private def isReserved(c: Char): Boolean =
++    c == '%' || (c >= Start && c <= TextSep) || c < ' '
++
++  private def encode(s: String): String =
++    if !s.exists(isReserved) then s
++    else
++      val b = new StringBuilder
++      for c <- s do
++        if isReserved(c) then b.append(f"%%${c.toInt}%04x") else b.append(c)
++      b.toString
++
++  private def decode(s: String): String =
++    if !s.contains('%') then s
++    else
++      val b = new StringBuilder
++      var i = 0
++      while i < s.length do
++        val c = s.charAt(i)
++        if c == '%' && i + 4 < s.length then
++          try
++            b.append(Integer.parseInt(s.substring(i + 1, i + 5), 16).toChar)
++            i += 5
++          catch case _: NumberFormatException =>
++            b.append(c)
++            i += 1
++        else
++          b.append(c)
++          i += 1
++      b.toString
++
++  /** Wrap the marked-up form of an interpolated argument in a marker. `text`
++   *  may itself contain (balanced) markers: markers nest, so that a composite
++   *  phrase such as "method foo" can be marked as a reference while "foo"
++   *  stays marked as the symbol. Unbalanced markers in `text` — which cannot
++   *  arise from this object's own output — are stripped.
++   */
++  def wrap(kind: String, attrs: List[(String, String)], text: String): String =
++    val attrStr = attrs.map((k, v) => s"$k=${encode(v)}").mkString(AttrSep.toString)
++    s"$Start$kind$AttrsSep$attrStr$TextSep${if balanced(text) then text else plain(text)}$End"
++
++  private def balanced(s: String): Boolean =
++    var depth = 0
++    var i = 0
++    while i < s.length && depth >= 0 do
++      s.charAt(i) match
++        case Start => depth += 1
++        case End   => depth -= 1
++        case _     =>
++      i += 1
++    depth == 0
++
++  enum Node:
++    case Text(text: String)
++    case Marked(kind: String, attrs: List[(String, String)], children: List[Node])
++
++  /** Parse a marked-up string into a tree. Robust against truncated or stray
++   *  marker characters: anything that does not form a complete marker is
++   *  dropped and the surrounding content treated as plain text; the children
++   *  of an unterminated marker are spliced into its parent.
++   */
++  def parse(s: String): List[Node] =
++    final class Frame(val kind: String, val attrs: List[(String, String)]):
++      val children = mutable.ListBuffer[Node]()
++      val text = new StringBuilder
++      def flush(): Unit =
++        if text.nonEmpty then
++          children += Node.Text(text.toString)
++          text.clear()
++    val root = Frame("", Nil)
++    var stack = List(root)
++    var i = 0
++    while i < s.length do
++      val c = s.charAt(i)
++      if c == Start then
++        val kindEnd = s.indexOf(AttrsSep, i + 1)
++        val attrsEnd = if kindEnd < 0 then -1 else s.indexOf(TextSep, kindEnd + 1)
++        val headerOk = kindEnd > 0 && attrsEnd > 0
++          && !s.substring(i + 1, attrsEnd).exists(c => c == Start || c == End)
++        if !headerOk then i += 1
++        else
++          stack.head.flush()
++          val attrs = s.substring(kindEnd + 1, attrsEnd) match
++            case "" => Nil
++            case as =>
++              as.split(AttrSep).toList.map: kv =>
++                kv.split("=", 2) match
++                  case Array(k, v) => (k, decode(v))
++                  case _           => (kv, "")
++          stack ::= Frame(s.substring(i + 1, kindEnd), attrs)
++          i = attrsEnd + 1
++      else if c == End then
++        stack match
++          case top :: (rest @ (parent :: _)) =>
++            top.flush()
++            parent.children += Node.Marked(top.kind, top.attrs, top.children.toList)
++            stack = rest
++          case _ => // stray End at top level
++        i += 1
++      else if c == AttrsSep || c == TextSep then
++        i += 1
++      else
++        stack.head.text.append(c)
++        i += 1
++    // splice the children of any unterminated markers into their parents
++    while stack.tail.nonEmpty do
++      val top :: (parent :: _) = stack: @unchecked
++      top.flush()
++      parent.children ++= top.children
++      stack = stack.tail
++    root.flush()
++    root.children.toList
++
++  /** The string with all markers removed, keeping only the visible text. */
++  def plain(s: String): String =
++    if !s.exists(c => c >= Start && c <= TextSep) then s
++    else
++      def collect(nodes: List[Node]): String = nodes.map {
++        case Node.Text(text)             => text
++        case Node.Marked(_, _, children) => collect(children)
++      }.mkString
++      collect(parse(s))
++
++  /** A subtree of a diagnostic type that was replaced by a string-literal
++   *  placeholder before pickling, so that the pickled type resolves against the
++   *  classpath alone. `definedAt` points at the source definition of the local
++   *  symbol, when there is one; `printed` is the display form of the replaced
++   *  subtree.
++   */
++  final case class Placeholder(
++    id: Int, kind: String, name: String, arity: Int, definedAt: String, printed: String)
++
++  /** The reserved prefix of placeholder literal types. A genuine string literal
++   *  type starting with this prefix is escaped with `escapedLiteral`.
++   */
++  final val PlaceholderPrefix = "⟨scala-diag:"
++
++  def placeholderText(id: Int): String = s"$PlaceholderPrefix$id⟩"
++
++  def escapedLiteral(s: String): String = s"${PlaceholderPrefix}esc:$s⟩"
++
++  private def encodeField(s: String): String = encode(s).replace("|", "%007c")
++
++  def encodePlaceholder(p: Placeholder): String =
++    List(p.id.toString, p.kind, p.name, p.arity.toString, p.definedAt, p.printed)
++      .map(encodeField).mkString("|")
++
++  def decodePlaceholder(s: String): Option[Placeholder] =
++    s.split("\\|", -1) match
++      case Array(id, kind, name, arity, definedAt, printed) =>
++        try Some(Placeholder(
++          decode(id).toInt, decode(kind), decode(name), decode(arity).toInt,
++          decode(definedAt), decode(printed)))
++        catch case _: NumberFormatException => None
++      case _ => None
+diff --git a/compiler/src/dotty/tools/dotc/reporting/DiagnosticTypePickler.scala b/compiler/src/dotty/tools/dotc/reporting/DiagnosticTypePickler.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..74f0d65aa3f94fd3779b067b4687f3053bd181aa
+--- /dev/null
++++ b/compiler/src/dotty/tools/dotc/reporting/DiagnosticTypePickler.scala
+@@ -0,0 +1,130 @@
++package dotty.tools
++package dotc
++package reporting
++
++import scala.collection.mutable
++import scala.util.control.NonFatal
++
++import ast.tpd
++import core.*
++import Annotations.Annotation
++import Constants.Constant
++import Contexts.*
++import Decorators.*
++import Symbols.*
++import Types.*
++import core.tasty.{Attributes, TastyPickler, TreePickler}
++
++/** Pickles the types appearing in diagnostic messages to standalone TASTy, for
++ *  embedding in `-Zsemantic-diagnostics` output.
++ *
++ *  A diagnostic type may mention things that no consumer can resolve: symbols
++ *  defined in the (possibly failing) sources being compiled, error types,
++ *  uninstantiated type variables, skolems. Each maximal subtree headed by such a
++ *  part is replaced by a string literal type `"⟨scala-diag:<n>⟩"` before
++ *  pickling and described out-of-band by a [[DiagnosticMarkup.Placeholder]], so
++ *  that the pickled type always resolves against the classpath alone. Whole
++ *  subtrees are replaced — not just the offending reference — because a literal
++ *  type cannot stand in a type-constructor or prefix position.
++ */
++object DiagnosticTypePickler:
++
++  final case class Pickled(tasty: String, placeholders: List[DiagnosticMarkup.Placeholder])
++
++  /** The sanitized, pickled, Base64-encoded form of `tp`, or None if the type
++   *  cannot be pickled. Never throws: a diagnostic must not become a crash.
++   */
++  def pickle(tp: Type)(using Context): Option[Pickled] =
++    try
++      val cleaner = Cleaner()
++      val cleaned = cleaner(tp)
++      val pickler = new TastyPickler(defn.RootClass, isBestEffortTasty = false)
++      val treePkl = new TreePickler(pickler, Attributes.empty)
++      treePkl.pickle(tpd.TypeTree(cleaned) :: Nil)
++      treePkl.compactify()
++      val bytes = pickler.assembleParts()
++      Some(Pickled(java.util.Base64.getEncoder.encodeToString(bytes), cleaner.placeholders.toList))
++    catch case NonFatal(_) => None
++
++  private class Cleaner(using Context) extends TypeMap:
++    val placeholders = mutable.ListBuffer[DiagnosticMarkup.Placeholder]()
++
++    /** Can no consumer resolve a reference to `sym` against the classpath? */
++    private def unresolvable(sym: Symbol): Boolean =
++      !sym.exists || sym.isDefinedInCurrentRun
++
++    /** Is `tp`, in head or prefix position, a part that cannot survive
++     *  pickling? Conservative: the final safety net is the try/catch around
++     *  the pickler.
++     */
++    private def unpickleableHead(tp: Type): Boolean = tp match
++      case tp: NamedType   => unresolvable(tp.symbol) || unpickleableHead(tp.prefix)
++      case tp: ThisType    => unpickleableHead(tp.tref)
++      case tp: SuperType   => unpickleableHead(tp.thistpe)
++      case tp: AppliedType => unpickleableHead(tp.tycon)
++      case _: SkolemType   => true
++      case _: ErrorType    => true
++      case tp: TypeVar     =>
++        val inst = tp.instanceOpt
++        !inst.exists || unpickleableHead(inst)
++      case _               => false
++
++    def apply(tp: Type): Type = tp match
++      case tp: TypeVar =>
++        val inst = tp.instanceOpt
++        if inst.exists then apply(inst) else placeholder(tp, "typevar")
++      case tp: SkolemType => placeholder(tp, "skolem")
++      case tp: ErrorType  => placeholder(tp, "error")
++      case tp: NamedType =>
++        if unpickleableHead(tp) then
++          placeholder(tp, if tp.isType then "local-type" else "local-term")
++        else mapOver(tp)
++      case tp: AppliedType =>
++        if unpickleableHead(tp.tycon) then placeholder(tp, "local-type")
++        else mapOver(tp)
++      case tp @ AnnotatedType(parent, annot) =>
++        if annotOk(annot) then mapOver(tp) else apply(parent)
++      case tp: ConstantType =>
++        tp.value.value match
++          case s: String if s.startsWith(DiagnosticMarkup.PlaceholderPrefix) =>
++            ConstantType(Constant(DiagnosticMarkup.escapedLiteral(s)))
++          case _ => tp
++      case _ => mapOver(tp)
++
++    /** Does the annotation reference only classpath-resolvable symbols?
++     *  Unresolvable annotations are dropped rather than replaced: an
++     *  annotation is not a type position a placeholder could occupy.
++     */
++    private def annotOk(annot: Annotation): Boolean =
++      !unresolvable(annot.symbol) && {
++        val hasBad = new tpd.TreeAccumulator[Boolean]:
++          def apply(bad: Boolean, tree: tpd.Tree)(using Context): Boolean =
++            bad
++            || tree.hasType && tree.tpe.existsPart({
++                 case t: NamedType => unresolvable(t.symbol)
++                 case _: ErrorType => true
++                 case _            => false
++               })
++            || foldOver(bad, tree)
++        !hasBad(false, annot.tree)
++      }
++
++    private def placeholder(tp: Type, kind: String): Type =
++      val id = placeholders.length
++      val sym = tp match
++        case tp: NamedType   => tp.symbol
++        case tp: AppliedType => tp.tycon.typeSymbol
++        case _               => NoSymbol
++      val arity = tp match
++        case tp: AppliedType => tp.args.length
++        case _               => 0
++      val definedAt =
++        try
++          if sym.exists && sym.span.exists && sym.source.exists
++          then s"${sym.source.path}:${sym.sourcePos.line + 1}"
++          else ""
++        catch case NonFatal(_) => ""
++      val printed = try tp.show catch case NonFatal(_) => ""
++      placeholders += DiagnosticMarkup.Placeholder(
++        id, kind, if sym.exists then sym.name.show else "", arity, definedAt, printed)
++      ConstantType(Constant(DiagnosticMarkup.placeholderText(id)))
+diff --git a/compiler/src/dotty/tools/dotc/reporting/Message.scala b/compiler/src/dotty/tools/dotc/reporting/Message.scala
+index c9cfc3f41d7b0a97a3cb2c4d15f9725155bf81b6..dd0ba3ae0352e612e90c256c676d6af57528d18f 100644
+--- a/compiler/src/dotty/tools/dotc/reporting/Message.scala
++++ b/compiler/src/dotty/tools/dotc/reporting/Message.scala
+@@ -434,6 +434,8 @@ abstract class Message(val errorId: ErrorMessageID)(using Context) { self =>
+           val ctx1 = ctx.fresh.setPrinterFn(Message.Printer(seen, this, _))
+           if !ctx1.property(MessageLimiter).isDefined then
+             ctx1.setProperty(MessageLimiter, ErrorMessageLimiter())
++          if config.Proscala.enabled(config.Proscala.SemanticDiagnostics)(using ctx1) then
++            ctx1.setProperty(DiagnosticMarkup.Active, ())
+           ctx1
+       op(using msgContext)
+ 
+diff --git a/compiler/src/dotty/tools/dotc/reporting/MessageRendering.scala b/compiler/src/dotty/tools/dotc/reporting/MessageRendering.scala
+index 4313eccb8380f94afcd63fac2cb6f636684be9a5..24caae927389b989ddbef3796a30c172fc0194c1 100644
+--- a/compiler/src/dotty/tools/dotc/reporting/MessageRendering.scala
++++ b/compiler/src/dotty/tools/dotc/reporting/MessageRendering.scala
+@@ -219,7 +219,7 @@ trait MessageRendering {
+           |${Blue("Explanation").show}
+           |${Blue("===========").show}""".stripMargin
+     )
+-    sb.append(EOL).append(m.explanation)
++    sb.append(EOL).append(DiagnosticMarkup.plain(m.explanation))
+     if (!m.explanation.endsWith(EOL)) sb.append(EOL)
+     sb.toString
+   }
+@@ -296,7 +296,7 @@ trait MessageRendering {
+     if pos.exists && pos1.exists && pos1.source.file != null && pos1.source.file.exists then
+       val (srcBefore, srcAfter, offset) = sourceLines(pos1)
+       val marker = positionMarker(pos1)
+-      val err = errorMsg(pos1, msg.message, srcAfter.nonEmpty)
++      val err = errorMsg(pos1, DiagnosticMarkup.plain(msg.message), srcAfter.nonEmpty)
+       sb.append((srcBefore ::: marker :: err :: srcAfter).mkString(EOL))
+ 
+       if inlineStack.nonEmpty then
+@@ -311,7 +311,7 @@ trait MessageRendering {
+             sb.append(EOL).append((srcBefore ::: marker :: srcAfter).mkString(EOL))
+         sb.append(EOL).append(endBox)
+       end if
+-    else sb.append(msg.message)
++    else sb.append(DiagnosticMarkup.plain(msg.message))
+     if dia.isVerbose then
+       appendFilterHelp(dia, sb)
+ 
+@@ -319,7 +319,7 @@ trait MessageRendering {
+       sb.append(EOL).append(newBox())
+       sb.append(EOL).append(offsetBox).append(" Explanation (enabled by `-explain`)")
+       sb.append(EOL).append(newBox(soft = true))
+-      dia.msg.explanation.split(raw"\R").foreach: line =>
++      DiagnosticMarkup.plain(dia.msg.explanation).split(raw"\R").foreach: line =>
+         sb.append(EOL).append(offsetBox).append(if line.isEmpty then "" else " ").append(line)
+       sb.append(EOL).append(endBox)
+     else if dia.msg.canExplain then
+diff --git a/compiler/src/dotty/tools/dotc/reporting/XmlReporter.scala b/compiler/src/dotty/tools/dotc/reporting/XmlReporter.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..b4e48be87f12dac50d814ee55caa9f5a02700e11
+--- /dev/null
++++ b/compiler/src/dotty/tools/dotc/reporting/XmlReporter.scala
+@@ -0,0 +1,102 @@
++package dotty.tools
++package dotc
++package reporting
++
++import java.io.PrintWriter
++
++import core.Contexts.*
++import interfaces.Diagnostic.{ERROR, WARNING}
++
++/** A reporter that emits diagnostics as a stream of top-level XML `<diagnostic>`
++ *  elements, with semantic markup for the fragments of each message that were
++ *  interpolated from types, symbols, names or trees, as recorded by
++ *  [[DiagnosticMarkup]]. Installed by `-Zsemantic-diagnostics`.
++ *
++ *  The output is a sequence of XML fragments, not a single document: consumers
++ *  should parse each top-level element independently. Types carry their
++ *  sanitized TASTy serialization, Base64-encoded, in a `tasty` attribute, and
++ *  describe each placeholder that the sanitizer introduced in a nested
++ *  `<placeholder>` element.
++ */
++class XmlReporter(writer: PrintWriter = new PrintWriter(Console.err, true))
++extends Reporter with UniqueMessagePositions with HideNonSensicalMessages:
++
++  import DiagnosticMarkup.Node
++
++  private def escape(s: String): String =
++    val b = new StringBuilder
++    for c <- s do c match
++      case '<'  => b.append("&lt;")
++      case '>'  => b.append("&gt;")
++      case '&'  => b.append("&amp;")
++      case '"'  => b.append("&quot;")
++      case c if c < ' ' && c != '\n' && c != '\t' => // illegal in XML 1.0
++      case c    => b.append(c)
++    b.toString
++
++  private def stripAnsi(s: String): String = s.replaceAll("\u001B\\[[;\\d]*m", "")
++
++  private def attr(name: String, value: String): String = s""" $name="${escape(value)}""""
++
++  private def severity(level: Int): String =
++    if level >= ERROR then "error"
++    else if level >= WARNING then "warning"
++    else "info"
++
++  /** Marked-up message text as XML mixed content. Markers nest, so a marked
++   *  composite phrase renders as an element containing further elements.
++   */
++  private def content(marked: String): String =
++    render(DiagnosticMarkup.parse(stripAnsi(marked)))
++
++  private def render(nodes: List[Node]): String =
++    nodes.map {
++      case Node.Text(text) => escape(text)
++      case Node.Marked(kind, attrs0, children) =>
++        val elem = kind match
++          case "type" | "sym" | "name" | "code" | "span" => kind
++          case _ => "span"
++        val placeholders =
++          attrs0.collect { case ("p", v) => v }.flatMap(DiagnosticMarkup.decodePlaceholder)
++        val attrs = attrs0.collect { case (k, v) if k != "p" => attr(k, v) }.mkString
++        val body = render(children) + placeholders.map { p =>
++          "<placeholder"
++            + attr("id", p.id.toString)
++            + attr("kind", p.kind)
++            + (if p.name.nonEmpty then attr("name", p.name) else "")
++            + (if p.arity != 0 then attr("arity", p.arity.toString) else "")
++            + (if p.definedAt.nonEmpty then attr("definedAt", p.definedAt) else "")
++            + attr("printed", p.printed)
++            + "/>"
++        }.mkString
++        s"<$elem$attrs>$body</$elem>"
++    }.mkString
++
++  override def doReport(dia: Diagnostic)(using Context): Unit =
++    val msg = dia.msg
++    val sb = new StringBuilder
++    sb.append("<diagnostic")
++    sb.append(attr("severity", severity(dia.level)))
++    sb.append(attr("kind", msg.kind.toString))
++    if msg.errorId.errorNumber >= 0 then
++      sb.append(attr("errorId", msg.errorId.toString))
++      sb.append(attr("errorNumber", msg.errorId.errorNumber.toString))
++    sb.append(attr("compilerVersion", config.Properties.versionNumberString))
++    sb.append(attr("tastyVersion",
++      s"${dotty.tools.tasty.TastyFormat.MajorVersion}.${dotty.tools.tasty.TastyFormat.MinorVersion}"
++        + s"-${dotty.tools.tasty.TastyFormat.ExperimentalVersion}"))
++    val pos = dia.pos
++    if pos.exists && pos.source.exists then
++      sb.append(attr("file", pos.source.path))
++      sb.append(attr("line", (pos.line + 1).toString))
++      sb.append(attr("column", (pos.column + 1).toString))
++      sb.append(attr("endLine", (pos.endLine + 1).toString))
++      sb.append(attr("endColumn", (pos.endColumn + 1).toString))
++      sb.append(attr("start", pos.start.toString))
++      sb.append(attr("end", pos.end.toString))
++    sb.append(">")
++    sb.append("<message>").append(content(msg.message)).append("</message>")
++    if msg.canExplain then
++      sb.append("<explanation>").append(content(msg.explanation)).append("</explanation>")
++    sb.append("</diagnostic>")
++    writer.println(sb.toString)
+diff --git a/compiler/src/dotty/tools/dotc/reporting/messages.scala b/compiler/src/dotty/tools/dotc/reporting/messages.scala
+index a7654631402107f2347d3c76fc3bdebaace0b19b..434163f615e64be40caa7e974db55da9132f070d 100644
+--- a/compiler/src/dotty/tools/dotc/reporting/messages.scala
++++ b/compiler/src/dotty/tools/dotc/reporting/messages.scala
+@@ -25,7 +25,7 @@ import typer.ProtoTypes.{ViewProto, FunProto}
+ import typer.Implicits.*
+ import typer.Inferencing
+ import StdNames.nme
+-import Formatting.{hl, delay}
++import Formatting.{hl, delay, Styled, dclOf, locatedOf, fullNameOf}
+ import scala.util.matching.Regex
+ import java.util.regex.Matcher.quoteReplacement
+ import cc.CaptureSet
+@@ -358,9 +358,15 @@ class TypeMismatch(val found: Type, expected: Type, val inTree: Option[untpd.Tre
+     val (found2, expected2) =
+       if (found1 frozen_<:< expected1) || reported.fbounded then (found, expected)
+       else (found1, expected1)
+-    val (foundStr, expectedStr) = Formatting.typeDiff(found2.normalized, expected2.normalized)
+-    i"""|${preface}Found:    $foundStr
+-        |Required: $expectedStr${reported.notes}"""
++    if DiagnosticMarkup.active then
++      // interpolate the types themselves so that they are marked up; a colored
++      // diff of pre-rendered strings is useless to a structured consumer
++      i"""|${preface}Found:    ${found2.normalized}
++          |Required: ${expected2.normalized}${reported.notes}"""
++    else
++      val (foundStr, expectedStr) = Formatting.typeDiff(found2.normalized, expected2.normalized)
++      i"""|${preface}Found:    $foundStr
++          |Required: $expectedStr${reported.notes}"""
+   end msg
+ 
+   override def msgPostscript(using Context): String =
+@@ -370,7 +376,7 @@ class TypeMismatch(val found: Type, expected: Type, val inTree: Option[untpd.Tre
+     notes.filter(!_.showAsPrefix).map(_.render).mkString ++ super.msgPostscript ++ importSuggestions
+ 
+   override def explain(using Context) =
+-    val treeStr = inTree.map(x => s"\nTree:\n\n${x.show}\n").getOrElse("")
++    val treeStr = inTree.map(x => i"\nTree:\n\n$x\n").getOrElse("")
+     treeStr + "\n" + super.explain
+ 
+   override def actions(using Context) =
+@@ -550,7 +556,7 @@ extends SyntaxMsg(ObjectMayNotHaveSelfTypeID) {
+         |  - Create a trait or a class instead of an object
+         |  - Let the object extend a trait containing the self type:
+         |
+-        |    object $name extends ${selfTpt.show}"""
++        |    object $name extends $selfTpt"""
+   }
+ }
+ 
+@@ -783,15 +789,13 @@ extends SyntaxMsg(WrongNumberOfTypeArgsID) {
+   private val msgPrefix = if (actualCount > expectedCount) "Too many" else "Not enough"
+ 
+   def msg(using Context) =
+-    val expectedArgString = expectedArgs
+-      .map(_.paramName.unexpandedName.show)
+-      .mkString("[", ", ", "]")
+-    val actualArgString = actual.map(_.show).mkString("[", ", ", "]")
++    val expectedArgString = i"${expectedArgs.map(_.paramName.unexpandedName)}"
++    val actualArgString = i"$actual"
+     val prettyName =
+       try fntpe.termSymbol match
+-        case NoSymbol => fntpe.show
+-        case symbol   => symbol.showFullName
+-      catch case ex: Exception => fntpe.show
++        case NoSymbol => Styled(fntpe, "")(fntpe.show)
++        case symbol   => fullNameOf(symbol)
++      catch case ex: Exception => Styled(fntpe, "")(fntpe.show)
+     i"""|$msgPrefix type arguments for $prettyName$expectedArgString
+         |expected: $expectedArgString
+         |actual:   $actualArgString"""
+@@ -1191,11 +1195,11 @@ extends DeclarationMsg(OverridesNothingButNameExistsID) {
+       else "signature"
+     i"""${member} has a different $what than the overridden declaration"""
+   def explain(using Context) =
+-    val existingDecl: String = existing.map(_.showDcl).mkString("  \n")
++    val existingDecl: String = i"${existing.map(dclOf)}%  \n%"
+     i"""|There must be a non-final field or method with the name ${member.name} and the
+         |same parameter list in a super class of ${member.owner} to override it.
+         |
+-        |  ${member.showDcl}
++        |  ${dclOf(member)}
+         |
+         |The super classes of ${member.owner} contain the following members
+         |named ${member.name}:
+@@ -1389,12 +1393,12 @@ class SuperQualMustBeParent(qual: untpd.Ident, cls: ClassSymbol)(using Context)
+ extends ReferenceMsg(SuperQualMustBeParentID) {
+   def msg(using Context) = i"""|$qual does not name a parent of $cls"""
+   def explain(using Context) =
+-    val parents: Seq[String] = (cls.info.parents map (_.typeSymbol.name.show)).sorted
++    val parents = cls.info.parents.map(_.typeSymbol.name).sortBy(_.show)
+     i"""|When a qualifier ${hl("T")} is used in a ${hl("super")} prefix of the form ${hl("C.super[T]")},
+         |${hl("T")} must be a parent type of ${hl("C")}.
+         |
+         |In this case, the parents of $cls are:
+-        |${parents.mkString("  - ", "\n  - ", "")}
++        |  - ${parents}%\n  - %
+         |"""
+ }
+ 
+@@ -1420,8 +1424,8 @@ import typer.Typer.BindingPrec
+ class ConstrProxyShadows(proxy: TermRef, shadowed: Type, shadowedIsApply: Boolean)(using Context)
+   extends ReferenceMsg(ConstrProxyShadowsID), NoDisambiguation:
+ 
+-  def clsString(using Context) = proxy.symbol.companionClass.showLocated
+-  def shadowedString(using Context) = shadowed.termSymbol.showLocated
++  def clsString(using Context) = locatedOf(proxy.symbol.companionClass)
++  def shadowedString(using Context) = locatedOf(shadowed.termSymbol)
+   def appClause = if shadowedIsApply then " the apply method of" else ""
+   def appSuffix = if shadowedIsApply then ".apply" else ""
+ 
+@@ -1523,7 +1527,7 @@ extends TypeMsg(MethodDoesNotTakeParametersId) {
+   def msg(using Context) = {
+     val more = if (tree.isInstanceOf[tpd.Apply]) " more" else ""
+     val meth = methodSymbol
+-    val methStr = if (meth.exists) meth.showLocated else "expression"
++    val methStr = if (meth.exists) i"${locatedOf(meth)}" else "expression"
+     i"$methStr does not take$more parameters"
+   }
+ 
+@@ -1593,8 +1597,8 @@ class TypeDoesNotTakeParameters(tpe: Type, params: List[untpd.Tree])(using Conte
+   def msg(using Context) = i"$tpe does not take type parameters$fboundsAddendum"
+   def explain(using Context) =
+     val ps =
+-      if (params.size == 1) s"a type parameter ${params.head}"
+-      else s"type parameters ${params.map(_.show).mkString(", ")}"
++      if (params.size == 1) i"a type parameter ${params.head}"
++      else i"type parameters ${params}%, %"
+     i"""You specified ${NoColor(ps)} for $tpe, which is not
+         |declared to take any.
+         |"""
+@@ -1649,7 +1653,9 @@ class MissingImplicitParameterInEmptyArguments(pname: Name, methString: String)(
+ class MissingArgumentList(method: String, sym: Symbol)(using Context)
+   extends TypeMsg(MissingArgumentListID) {
+   def msg(using Context) =
+-    val symDcl = if sym.exists then "\n\n  " + hl(sym.showDcl(using ctx.withoutColors)) else ""
++    val symDcl =
++      if sym.exists then i"\n\n  ${Styled(sym, "dcl")(hl(sym.showDcl(using ctx.withoutColors)))}"
++      else ""
+     i"missing argument list for $method$symDcl"
+   def explain(using Context) = {
+     i"""Unapplied methods are only converted to functions when a function type is expected."""
+@@ -1780,7 +1786,7 @@ class CannotExtendContextFunction(sym: Symbol)(using Context)
+ 
+ class JavaEnumParentArgs(parent: Type)(using Context)
+   extends TypeMsg(JavaEnumParentArgsID) {
+-    def msg(using Context) = i"""not enough arguments for constructor Enum: ${hl("(name: String, ordinal: Int)")}: ${hl(parent.show)}"""
++    def msg(using Context) = i"""not enough arguments for constructor Enum: ${hl("(name: String, ordinal: Int)")}: ${Styled(parent, "")(hl(parent.show))}"""
+     def explain(using Context) = ""
+   }
+ 
+@@ -1795,7 +1801,7 @@ class CannotHaveSameNameAs(sym: Symbol, cls: Symbol, reason: CannotHaveSameNameA
+           |""".stripMargin
+   }
+ 
+-  def msg(using Context) = i"""$sym cannot have the same name as ${cls.showLocated} -- """ + reasonMessage
++  def msg(using Context) = i"""$sym cannot have the same name as ${locatedOf(cls)} -- """ + reasonMessage
+   def explain(using Context) = ""
+ }
+ object CannotHaveSameNameAs {
+@@ -2089,7 +2095,7 @@ class DuplicateNamedTypeParameter(name: Name)(using Context)
+ 
+ class UndefinedNamedTypeParameter(undefinedName: Name, definedNames: List[Name])(using Context)
+   extends SyntaxMsg(UndefinedNamedTypeParameterID) {
+-  def msg(using Context) = i"Type parameter $undefinedName is undefined. Expected one of ${definedNames.map(_.show).mkString(", ")}."
++  def msg(using Context) = i"Type parameter $undefinedName is undefined. Expected one of ${definedNames}%, %."
+   def explain(using Context) = ""
+ }
+ 
+@@ -2323,7 +2329,7 @@ extends ReferenceMsg(BadSymbolicReferenceID) {
+       else ("", "the signature")
+ 
+     i"""Bad symbolic reference. A signature$location
+-        |refers to $denotationName in ${denotationOwner.showKind} ${denotationOwner.showFullName} which is not available.
++        |refers to $denotationName in ${denotationOwner.showKind} ${fullNameOf(denotationOwner)} which is not available.
+         |It may be completely missing from the current classpath, or the version on
+         |the classpath might be incompatible with the version used when compiling $src."""
+   }
+@@ -2338,9 +2344,9 @@ class UnableToExtendSealedClass(pclazz: Symbol)(using Context) extends SyntaxMsg
+ 
+ class SymbolHasUnparsableVersionNumber(symbol: Symbol, errorMessage: String)(using Context)
+ extends SyntaxMsg(SymbolHasUnparsableVersionNumberID) {
+-  def msg(using Context) = i"${symbol.showLocated} has an unparsable version number: $errorMessage"
++  def msg(using Context) = i"${locatedOf(symbol)} has an unparsable version number: $errorMessage"
+   def explain(using Context) =
+-    i"""The ${symbol.showLocated} is marked with ${hl("@migration")} indicating it has changed semantics
++    i"""The ${locatedOf(symbol)} is marked with ${hl("@migration")} indicating it has changed semantics
+         |between versions and the ${hl("-Xmigration")} settings is used to warn about constructs
+         |whose behavior may have changed since version change."""
+ }
+@@ -2350,9 +2356,9 @@ class SymbolChangedSemanticsInVersion(
+   migrationVersion: ScalaVersion,
+   migrationMessage: String
+ )(using Context) extends SyntaxMsg(SymbolChangedSemanticsInVersionID) {
+-  def msg(using Context) = i"${symbol.showLocated} has changed semantics in version $migrationVersion: $migrationMessage"
++  def msg(using Context) = i"${locatedOf(symbol)} has changed semantics in version $migrationVersion: $migrationMessage"
+   def explain(using Context) =
+-    i"""The ${symbol.showLocated} is marked with ${hl("@migration")} indicating it has changed semantics
++    i"""The ${locatedOf(symbol)} is marked with ${hl("@migration")} indicating it has changed semantics
+         |between versions and the ${hl("-Xmigration")} settings is used to warn about constructs
+         |whose behavior may have changed since version change."""
+ }
+@@ -2479,8 +2485,8 @@ extends NamingMsg(DoubleDefinitionID):
+ 
+     atPhase(typerPhase) {
+       i"""$clashDescription:
+-          |${previousDecl.showDcl} ${symLocation(previousDecl)} and
+-          |${decl.showDcl} ${symLocation(decl)}
++          |${dclOf(previousDecl)} ${symLocation(previousDecl)} and
++          |${dclOf(decl)} ${symLocation(decl)}
+           |"""
+     } + details
+   }
+@@ -2517,8 +2523,8 @@ extends NamingMsg(DoubleDefinitionID):
+         |
+         |In your code the two declarations
+         |
+-        |  ${atPhase(typerPhase)(previousDecl.showDcl)}
+-        |  ${atPhase(typerPhase)(decl.showDcl)}
++        |  ${Styled(previousDecl, "dcl")(atPhase(typerPhase)(previousDecl.showDcl))}
++        |  ${Styled(decl, "dcl")(atPhase(typerPhase)(decl.showDcl))}
+         |
+         |erase to the identical signature
+         |
+@@ -2533,7 +2539,7 @@ extends NamingMsg(DoubleDefinitionID):
+         |   bytecode-level name via `@targetName`; for example:
+         |
+         |      @targetName("${decl.name.show}_2")
+-        |      ${atPhase(typerPhase)(decl.showDcl)}
++        |      ${Styled(decl, "dcl")(atPhase(typerPhase)(decl.showDcl))}
+         |
+         |Choose the `@targetName` argument carefully: it is the name that will be used
+         |when calling the method externally, so it should be unique and descriptive.
+@@ -2542,20 +2548,20 @@ extends NamingMsg(DoubleDefinitionID):
+ end DoubleDefinition
+ 
+ class ImportedTwice(sel: Name)(using Context) extends SyntaxMsg(ImportedTwiceID) {
+-  def msg(using Context) = s"${sel.show} is imported twice on the same import line."
++  def msg(using Context) = i"$sel is imported twice on the same import line."
+   def explain(using Context) = ""
+ }
+ 
+ class UnimportedAndImported(sel: Name, isImport: Boolean)(using Context) extends SyntaxMsg(UnimportedAndImportedID) {
+   def msg(using Context) =
+     val otherStr = if isImport then "and imported" else "twice"
+-    s"${sel.show} is unimported $otherStr on the same import line."
++    i"$sel is unimported $otherStr on the same import line."
+   def explain(using Context) = ""
+ }
+ 
+ class TypeTestAlwaysDiverges(scrutTp: Type, testTp: Type)(using Context) extends SyntaxMsg(TypeTestAlwaysDivergesID) {
+   def msg(using Context) =
+-    s"This type test will never return a result since the scrutinee type ${scrutTp.show} does not contain any value."
++    i"This type test will never return a result since the scrutinee type $scrutTp does not contain any value."
+   def explain(using Context) = ""
+ }
+ 
+@@ -2780,27 +2786,27 @@ class IllegalSuperAccessor(base: Symbol, memberName: Name, targetName: Name,
+ class TraitParameterUsedAsParentPrefix(cls: Symbol)(using Context)
+   extends DeclarationMsg(TraitParameterUsedAsParentPrefixID) {
+   def msg(using Context) =
+-    s"${cls.show} cannot extend from a parent that is derived via its own parameters"
++    i"$cls cannot extend from a parent that is derived via its own parameters"
+   def explain(using Context) =
+     i"""
+-       |The parent class/trait that ${cls.show} extends from is obtained from
+-       |the parameter of ${cls.show}. This is disallowed in order to prevent
++       |The parent class/trait that $cls extends from is obtained from
++       |the parameter of $cls. This is disallowed in order to prevent
+        |outer-related Null Pointer Exceptions in Scala.
+        |
+        |In order to fix this issue consider directly extending from the parent rather
+-       |than obtaining it from the parameters of ${cls.show}.
++       |than obtaining it from the parameters of $cls.
+        |"""
+ }
+ 
+ class UnknownNamedEnclosingClassOrObject(name: TypeName)(using Context)
+   extends ReferenceMsg(UnknownNamedEnclosingClassOrObjectID) {
+   def msg(using Context) =
+-    i"""no enclosing class or object is named '${hl(name.show)}'"""
++    i"""no enclosing class or object is named '${Styled(name, "")(hl(name.show))}'"""
+   def explain(using Context) =
+     i"""
+-    |The class or object named '${hl(name.show)}' was used as a visibility
++    |The class or object named '${Styled(name, "")(hl(name.show))}' was used as a visibility
+     |modifier, but could not be resolved. Make sure that
+-    |'${hl(name.show)}' is not misspelled and has been imported into the
++    |'${Styled(name, "")(hl(name.show))}' is not misspelled and has been imported into the
+     |current scope.
+     """
+   }
+@@ -2872,7 +2878,7 @@ class ExtensionCanOnlyHaveDefs(mdef: untpd.Tree)(using Context)
+   def msg(using Context) = i"Only methods allowed here, since collective parameters are given"
+   def explain(using Context) =
+     i"""Extension clauses can only have `def`s
+-        | `${mdef.show}` is not a valid expression here.
++        | `$mdef` is not a valid expression here.
+         |"""
+ }
+ 
+@@ -2880,7 +2886,7 @@ class UnexpectedPatternForSummonFrom(tree: Tree[?])(using Context)
+   extends SyntaxMsg(UnexpectedPatternForSummonFromID) {
+   def msg(using Context) = i"Unexpected pattern for summonFrom. Expected ${hl("`x: T`")} or ${hl("`_`")}"
+   def explain(using Context) =
+-    i"""|The pattern "${tree.show}" provided in the ${hl("case")} expression of the ${hl("summonFrom")},
++    i"""|The pattern "$tree" provided in the ${hl("case")} expression of the ${hl("summonFrom")},
+         | needs to be of the form ${hl("`x: T`")} or ${hl("`_`")}.
+         |
+         | Example usage:
+@@ -2900,7 +2906,7 @@ class AnonymousInstanceCannotBeEmpty(impl:  untpd.Template)(using Context)
+   def msg(using Context) = i"anonymous instance must implement a type or have at least one extension method"
+   def explain(using Context) =
+     i"""|Anonymous instances cannot be defined with an empty body. The block
+-        |`${impl.show}` should either contain an implemented type or at least one extension method.
++        |`$impl` should either contain an implemented type or at least one extension method.
+         |"""
+ }
+ 
+@@ -2939,7 +2945,7 @@ class ImplicitSearchTooLargeWarning(limit: Int, openSearchPairs: List[(Candidate
+   extends TypeMsg(ImplicitSearchTooLargeID):
+   override def showAlways = true
+   def showQuery(query: (Candidate, Type))(using Context): String =
+-    i"  ${query._1.ref.symbol.showLocated}  for  ${query._2}}"
++    i"  ${locatedOf(query._1.ref.symbol)}  for  ${query._2}}"
+   def msg(using Context) =
+     i"""Implicit search problem too large.
+         |an implicit search was terminated with failure after trying $limit expressions.
+@@ -3141,7 +3147,7 @@ class MissingImplicitArgument(
+             i"""$headline.
+               |I found:
+               |
+-              |    ${original.show.replace("\n", "\n    ")}
++              |    ${Styled(original, "")(original.show.replace("\n", "\n    "))}
+               |
+               |But ${tpe.explanation}."""
+           case _ => headline
+@@ -3232,15 +3238,15 @@ class MissingImplicitArgument(
+       case _ =>
+         // show all available additional info
+         def hiddenImplicitNote(s: SearchSuccess) =
+-          i"\n\nNote: ${s.ref.symbol.showLocated} was not considered because it was not imported with `import given`."
++          i"\n\nNote: ${locatedOf(s.ref.symbol)} was not considered because it was not imported with `import given`."
+         def showImplicitAndConversions(imp: TermRef, convs: Iterable[TermRef]) =
+-          i"\n- ${imp.symbol.showDcl}${convs.map(c => "\n    - " + c.symbol.showDcl).mkString}"
++          i"\n- ${dclOf(imp.symbol)}${convs.map(c => i"\n    - ${dclOf(c.symbol)}").mkString}"
+         def noChainConversionsNote(ignoredConvertibleImplicits: Iterable[TermRef]): Option[String] =
+           Option.when(ignoredConvertibleImplicits.nonEmpty)(
+             i"\n\nNote: implicit conversions are not automatically applied to arguments of using clauses. " +
+             i"You will have to pass the argument explicitly.\n" +
+-            i"The following implicits in scope can be implicitly converted to ${pt.show}:" +
+-            ignoredConvertibleImplicits.map { imp => s"\n- ${imp.symbol.showDcl}"}.mkString
++            i"The following implicits in scope can be implicitly converted to $pt:" +
++            ignoredConvertibleImplicits.map { imp => i"\n- ${dclOf(imp.symbol)}"}.mkString
+           )
+         def importSuggestionAddendum: String =
+           arg.tpe match
+@@ -3269,7 +3275,7 @@ extends ReferenceMsg(CannotBeAccessedID):
+       case Nil =>
+         i"$name cannot"
+       case sym :: Nil =>
+-        i"${if (sym.owner == pre.typeSymbol) sym.show else sym.showLocated} cannot"
++        i"${if (sym.owner == pre.typeSymbol) Styled(sym, "")(sym.show) else locatedOf(sym)} cannot"
+       case _ =>
+         i"none of the overloaded alternatives named $name can"
+     val where = if (ctx.owner.exists) i" from ${ctx.owner.enclosingClass}" else ""
+@@ -3280,13 +3286,13 @@ extends ReferenceMsg(CannotBeAccessedID):
+       val location: String =
+         if alt.is(Protected) then
+           if alt.privateWithin.exists && alt.privateWithin != owner then
+-            if owner.is(Final) then alt.privateWithin.showLocated
+-            else s"${alt.privateWithin.showLocated}, or ${owner.showLocated} or one of its subclasses"
++            if owner.is(Final) then i"${locatedOf(alt.privateWithin)}"
++            else i"${locatedOf(alt.privateWithin)}, or ${locatedOf(owner)} or one of its subclasses"
+           else
+-            if owner.is(Final) then owner.showLocated
+-            else s"${owner.showLocated} or one of its subclasses"
++            if owner.is(Final) then i"${locatedOf(owner)}"
++            else i"${locatedOf(owner)} or one of its subclasses"
+         else
+-          alt.privateWithin.orElse(owner).showLocated
++          i"${locatedOf(alt.privateWithin.orElse(owner))}"
+       val accessMod = if alt.is(Protected) then "protected" else "private"
+       val within = if alt.privateWithin.exists then i"[${alt.privateWithin.name}]"
+         else ""
+@@ -3387,7 +3393,7 @@ class UnstableInlineAccessor(accessed: Symbol, accessorTree: tpd.Tree)(using Con
+        |be checked using MiMa. If binary compatibility is broken, you should add the
+        |old accessor explicitly in the source code. The following code should be
+        |added to $where:
+-       |  @publicInBinary private[$within] ${accessorTree.show}
++       |  @publicInBinary private[$within] $accessorTree
+        |"""
+ 
+   private def accessor = accessorTree.symbol
+@@ -3659,7 +3665,7 @@ class MatchIsNotPartialFunction(using Context) extends SyntaxMsg(MatchIsNotParti
+ 
+ final class PointlessAppliedConstructorType(tpt: untpd.Tree, args: List[untpd.Tree], tpe: Type)(using Context) extends TypeMsg(PointlessAppliedConstructorTypeID):
+   override protected def msg(using Context): String =
+-    val act = i"$tpt(${args.map(_.show).mkString(", ")})"
++    val act = i"$tpt(${args}%, %)"
+     i"""|Applied constructor type $act has no effect.
+         |The resulting type of $act is the same as its base type, namely: $tpe""".stripMargin
+ 
+@@ -3858,7 +3864,7 @@ final class TypeParameterShadowsType(shadow: Symbol, parent: Symbol, shadowed: S
+     extends NamingMsg(TypeParameterShadowsTypeID):
+   override protected def msg(using Context): String =
+     if shadowed.exists then
+-      i"Type parameter ${shadow.name} for $parent shadows the type defined by ${shadowed.showLocated}"
++      i"Type parameter ${shadow.name} for $parent shadows the type defined by ${locatedOf(shadowed)}"
+     else
+       i"Type parameter ${shadow.name} for $parent shadows an explicitly renamed type : ${shadow.name}"
+   override protected def explain(using Context): String =
+@@ -3869,7 +3875,7 @@ final class TypeParameterShadowsType(shadow: Symbol, parent: Symbol, shadowed: S
+ final class PrivateShadowsType(shadow: Symbol, shadowed: Symbol)(using Context)
+     extends NamingMsg(PrivateShadowsTypeID):
+   override protected def msg(using Context): String =
+-    i"${shadow.showLocated} shadows field ${shadowed.name} inherited from ${shadowed.owner}"
++    i"${locatedOf(shadow)} shadows field ${shadowed.name} inherited from ${shadowed.owner}"
+   override protected def explain(using Context): String =
+     i"""A private field shadows an inherited field with the same name.
+        |This can lead to confusion as the inherited field becomes inaccessible.
+@@ -3917,7 +3923,7 @@ extends Message(ConcreteClassHasUnimplementedMethodsID), NoDisambiguation:
+   def kind = MessageKind.Declaration
+ 
+   private def showDecl(sym: Symbol)(using Context): String =
+-    sym.asSeenFrom(clazz.thisType).mapInfo(_.withCleanParamNames).showDcl
++    i"${Styled(sym, "dcl")(sym.asSeenFrom(clazz.thisType).mapInfo(_.withCleanParamNames).showDcl)}"
+ 
+   private def prelude(using Context): String =
+     if clazz.isAnonymousClass || clazz.is(Module) then "object creation impossible"
+@@ -3934,7 +3940,7 @@ extends Message(ConcreteClassHasUnimplementedMethodsID), NoDisambiguation:
+ 
+   def msg(using Context) = missingMethods match
+     case single :: Nil =>
+-      val notDefined = s"${showDecl(single)} in ${single.owner.showLocated} is not defined"
++      val notDefined = i"${showDecl(single)} in ${locatedOf(single.owner)} is not defined"
+       s"$prelude, since $notDefined$addendum"
+     case _ =>
+       s"""$prelude, since it has ${missingMethods.size} unimplemented members.

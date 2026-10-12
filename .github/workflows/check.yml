@@ -1,11 +1,11 @@
 name: Check
 
-# Check `main` against the facts it describes: that every stream's patch series
-# (patches/<stream>/series) applies onto its pinned scala/scala3 commit
-# (UPSTREAM_SHA in mk/<stream>.mk), that the patch files are well-formed, and
-# that the documentation agrees with its sources of truth. bin/proscala-check
-# fetches each scala/scala3 commit on its own, shallowly, so a plain checkout of
-# main is enough.
+# Check `main` against the facts it describes: that the patches are well-formed,
+# that every version applies at each upstream commit it is anchored at, that each
+# stream (UPSTREAM_SHA in mk/<stream>.mk) gets every patch it should, and that the
+# documentation agrees with its sources of truth. bin/proscala-check fetches the
+# scala/scala3 history it needs on its own, shallowly, so a plain checkout of main
+# is enough.
 on:
   push:
     branches:
@@ -24,6 +24,10 @@ jobs:
     steps:
       - name: Check out main
         uses: actions/checkout@v4
+        # Full history: which patches apply is decided by ancestry between
+        # upstream commits, which a shallow checkout cannot see.
+        with:
+          fetch-depth: 0
 
-      - name: Check the patch series and the documentation
+      - name: Check the patches and the documentation
         run: bin/proscala-check -v

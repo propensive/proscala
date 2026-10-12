@@ -1,36 +1,81 @@
 name: Release
 
-# A release is a tag on `main`, pushed by bin/proscala-release: <base>-p<n>, where
-# <base> is a stream's VERSION in mk/<stream>.mk without -propensive. The job
-# builds that stream from the tagged commit — patches/<stream>/series applied
-# onto the scala/scala3 commit pinned as UPSTREAM_SHA — creates the GitHub
-# release (a proscala-<version>.tar.gz of the published jars, plus each jar
-# under its Maven name) and publishes the same jars to Maven Central under
-# `dev.propensive`.
+# A Proscala release is a tag v<x.y.z> on `main`, pushed by bin/proscala-release.
+# Its annotation lists the targets — every scala/scala3 final release 3.<y>.<z>
+# from 3.9 on, and a snapshot of scala/scala3 main — each as
+#   target <spec> <upstream commit> <version>
+# with <version> = <scala version>-proscala-<x.y.z>. This workflow:
 #
-# Run by hand (workflow_dispatch) it is a dry run: it builds the stream's next
-# version from the chosen ref and stops before tagging, releasing or publishing.
+#   plan     reads the targets (or, run by hand, works them out for a dry run)
+#   build    for each target, in parallel: builds the tree, the distribution and
+#            the Maven-layout repository — nothing leaves the runner yet
+#   publish  only once every target has built: creates the GitHub release, with
+#            every target's tarball, jars and repository
+#
+# Releases go to GitHub Releases only. A release publishes for all its targets
+# or for none. Run by hand
+# (workflow_dispatch) it is a dry run: it plans and builds, and publishes nothing.
 on:
   push:
     tags:
-      - '3.*-p*'
+      - 'v*.*.*'
   workflow_dispatch:
     inputs:
-      stream:
-        description: 'Stream to build (a dry run: nothing is released or published)'
+      version:
+        description: 'Version to build (a dry run: nothing is released or published)'
         required: true
-        type: choice
-        options: ['3.9', '3.10']
+        default: '1.0.0'
 
 permissions:
   contents: write
 
 jobs:
-  release:
+  plan:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      dry: ${{ steps.plan.outputs.dry }}
+      matrix: ${{ steps.plan.outputs.matrix }}
     steps:
-      - name: Check out the tagged commit
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        # Full history: which patches apply is decided by ancestry between
+        # upstream commits, which a shallow checkout cannot see.
+        with:
+          fetch-depth: 0
+      - name: Work out the targets
+        id: plan
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            version="${{ inputs.version }}"
+            targets="$(bin/proscala-release "$version" --targets)"
+            dry=true
+          else
+            version="${GITHUB_REF_NAME#v}"
+            git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+            targets="$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME" | awk '$1 == "target" { print $2, $3, $4 }')"
+            [ -n "$targets" ] || { echo "release: tag $GITHUB_REF_NAME lists no targets (was it made by bin/proscala-release?)" >&2; exit 1; }
+            dry=false
+          fi
+          matrix="$(printf '%s\n' "$targets" | awk 'BEGIN { printf "{\"include\":[" }
+            NF == 3 { printf "%s{\"spec\":\"%s\",\"commit\":\"%s\",\"version\":\"%s\"}", (n++ ? "," : ""), $1, $2, $3 }
+            END { printf "]}" }')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "dry=$dry"         >> "$GITHUB_OUTPUT"
+          echo "matrix=$matrix"   >> "$GITHUB_OUTPUT"
+          { echo "### Proscala $version"; echo; echo '| target | upstream commit | version |'; echo '| --- | --- | --- |'
+            printf '%s\n' "$targets" | awk '{ printf "| %s | %s | %s |\n", $1, substr($2, 1, 10), $3 }'; } >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -38,130 +83,69 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Determine the stream and version
-        id: ver
-        run: |
-          set -euo pipefail
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            stream="${{ inputs.stream }}"
-            version="$(bin/proscala-release "$stream" --next-version)"
-            dry=true
-          else
-            version="$GITHUB_REF_NAME"
-            stream=""
-            # The stream whose VERSION base the tag carries. Matched against the
-            # whole base, not a prefix, so 3.1x and 3.1 can never be confused.
-            for mk in mk/*.mk; do
-              s="$(basename "$mk" .mk)"
-              [ -f "patches/$s/series" ] || continue
-              base="$(sed -nE 's/^VERSION[[:space:]]*:=[[:space:]]*([^[:space:]]+).*/\1/p' "$mk" | head -1)"
-              base="${base%-propensive}"
-              if [[ "$version" =~ ^${base//./\\.}-p[0-9]+$ ]]; then stream="$s"; fi
-            done
-            if [ -z "$stream" ]; then
-              echo "release: tag $version matches no stream's VERSION in mk/*.mk on this commit" >&2
-              exit 1
-            fi
-            dry=false
-          fi
-          echo "stream=$stream"   >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "dry=$dry"         >> "$GITHUB_OUTPUT"
-          echo "Building $version (stream $stream, dry run: $dry)"
-
-      # Checked before anything irreversible happens. A release that builds and
-      # publishes to GitHub but then cannot reach Maven Central leaves a
-      # half-published version behind, and Central is append-only — so the
-      # credentials are verified up front rather than an hour into the job.
-      - name: Check publishing credentials
-        if: steps.ver.outputs.dry == 'false'
-        env:
-          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
-          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
-          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        run: |
-          set -euo pipefail
-          missing=""
-          for name in SONATYPE_USERNAME SONATYPE_PASSWORD GPG_PRIVATE_KEY GPG_PASSPHRASE; do
-            eval "value=\${$name:-}"
-            [ -n "$value" ] || missing="$missing $name"
-          done
-          if [ -n "$missing" ]; then
-            echo "release: missing repository secret(s):$missing" >&2
-            echo "         set them under Settings -> Secrets and variables -> Actions." >&2
-            exit 1
-          fi
-          echo "All four publishing secrets are present."
-
-      # Imported before the build for the same reason: an unusable signing key
-      # should stop the job in seconds, not after a full compile.
-      - name: Import the signing key
-        if: steps.ver.outputs.dry == 'false'
-        env:
-          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        run: |
-          set -euo pipefail
-          printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --quiet --import
-          # Prove the key can actually sign non-interactively before relying on
-          # it later; `make publish` uses exactly these gpg options.
-          printf 'release' | gpg --batch --yes --pinentry-mode loopback \
-            --passphrase "$GPG_PASSPHRASE" --armor --detach-sign --output /dev/null
-          echo "Signing key imported and verified."
-
-      # Fetches the one scala/scala3 commit (shallowly) and applies the series
-      # without three-way merging, exactly as bin/proscala-check does.
+      # The commit, not the spec: `main` has moved on since the tag was cut.
       - name: Build the source tree
-        id: tree
-        run: |
-          set -euo pipefail
-          s="${{ steps.ver.outputs.stream }}"
-          bin/proscala-tree "$s" worktrees/dist
-          echo "upstream=$(sed -nE 's/^UPSTREAM_SHA[[:space:]]*:=[[:space:]]*([0-9a-f]+).*/\1/p' "mk/$s.mk")" >> "$GITHUB_OUTPUT"
-          echo "tree=$(git -C worktrees/dist rev-parse 'HEAD^{tree}')" >> "$GITHUB_OUTPUT"
+        run: bin/proscala-tree "${{ matrix.commit }}" worktrees/dist
 
-      - name: Clean build + tarball + jars
+      - name: Build the distribution
         working-directory: worktrees/dist
         run: |
           set -euo pipefail
-          s="${{ steps.ver.outputs.stream }}"
-          v="${{ steps.ver.outputs.version }}"
-          make STREAM="$s" BRANCH=dist VERSION="$v" clean
-          make STREAM="$s" BRANCH=dist VERSION="$v" tarball release-jars
+          v="${{ matrix.version }}"
+          make BRANCH=dist VERSION="$v" clean
+          make BRANCH=dist VERSION="$v" tarball release-jars maven-repo
+          mkdir -p ../../out
+          cp "release/dist/proscala-$v.tar.gz" "release/dist/proscala-$v-maven.zip" release/dist/jars/*.jar ../../out/
 
-      # The tarball and every published jar under its Maven Central name, in one
-      # command, so a release can never exist with only the tarball attached.
-      - name: Publish the GitHub release
-        if: steps.ver.outputs.dry == 'false'
-        working-directory: worktrees/dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proscala-${{ matrix.version }}
+          path: out/
+          if-no-files-found: error
+
+  publish:
+    needs: [plan, build]
+    if: needs.plan.outputs.dry == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: built
+          merge-multiple: true
+
+      # Every target's tarball, jars (under their Maven names) and Maven-layout
+      # repository, in one command, so the release can never exist with only
+      # some of them attached.
+      - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           shopt -s failglob
-          v="${{ steps.ver.outputs.version }}"
-          jars=(release/dist/jars/*.jar)
-          gh release create "$v" --repo "$GITHUB_REPOSITORY" \
-            --title "$v" \
-            --verify-tag \
-            --notes "Proscala ${{ steps.ver.outputs.stream }} stream, built from ${GITHUB_SHA}: patches/${{ steps.ver.outputs.stream }}/series applied onto scala/scala3 ${{ steps.tree.outputs.upstream }} (source tree ${{ steps.tree.outputs.tree }}; rebuild it with \`bin/proscala-tree ${{ steps.ver.outputs.stream }}\` at this tag)." \
-            "release/dist/proscala-${v}.tar.gz" "${jars[@]}"
-
-      # Last, because Maven Central is append-only: a published version can never
-      # be replaced, only superseded by the next -p<n>. Everything reversible has
-      # already succeeded by this point, so a failure here can be retried by hand
-      # for the *same* version, from a tree built at the tag, with
-      #   make STREAM=<s> BRANCH=dist VERSION=<v> publish
-      - name: Publish to Maven Central
-        if: steps.ver.outputs.dry == 'false'
-        working-directory: worktrees/dist
-        env:
-          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
-          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
-          PROSCALA_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        run: |
-          set -euo pipefail
-          s="${{ steps.ver.outputs.stream }}"
-          v="${{ steps.ver.outputs.version }}"
-          make STREAM="$s" BRANCH=dist VERSION="$v" publish
+          tag="$GITHUB_REF_NAME"
+          git fetch --force origin "refs/tags/$tag:refs/tags/$tag"
+          {
+            echo "Proscala ${{ needs.plan.outputs.version }}, built from ${GITHUB_SHA}, for:"
+            echo
+            echo '| Scala | sbt `scalaVersion` (with `scalaOrganization := "dev.propensive"`) |'
+            echo '| --- | --- |'
+            git tag -l --format='%(contents)' "$tag" | awk '$1 == "target" { printf "| %s (`%s`) | `%s` |\n", $2, substr($3, 1, 10), $4 }'
+            echo
+            echo 'Each `proscala-<version>-maven.zip` is a Maven repository of that build. Unzip them into one'
+            echo 'directory and use it in sbt with:'
+            echo
+            echo '```scala'
+            echo 'val proscala = file("/path/to/proscala-repo")   // the unzipped proscala-<version>-maven.zip'
+            echo 'resolvers         += "proscala" at proscala.toURI.toString'
+            echo 'scalaOrganization := "dev.propensive"'
+            echo 'scalaVersion      := "<version from the table>"'
+            echo '// sbt also wants these two, which Proscala does not provide as it expects:'
+            echo 'excludeDependencies += "dev.propensive" % "scaladoc_3"   // no scaladoc is built'
+            echo 'scalaCompilerBridgeBinaryJar := Some(proscala / s"dev/propensive/scala3-sbt-bridge/${scalaVersion.value}/scala3-sbt-bridge-${scalaVersion.value}.jar")'
+            echo '```'
+          } > notes.md
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "Proscala ${{ needs.plan.outputs.version }}" --notes-file notes.md \
+            built/*

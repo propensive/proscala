@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Wed, 19 Aug 2026 11:46:25 +0200
+Subject: Treat non-specialized anonymous-class parents as such, not as a crash
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Specialization.anonymousClassIsSpecialized matches any parent call with two
+argument lists (Apply(Apply(t, args), ev)) and then unconditionally does
+Specialization.unapply(...).get — but that shape also arises for an ordinary
+parent whose constructor takes a second (e.g. using) argument list, where the
+parent type is no AppliedType and the unapply returns None, so the compiler
+crashes with NoSuchElementException in FirstTransform. Seven-line flagless
+reproduction:
+
+    class Base(x: Int)(using s: String)
+    given String = "ctx"
+    inline def make(): Base = new Base(1) {}
+    @main def crash() = println(make())
+
+None simply means the parent is not a specialized trait; answer false.
+Introduced upstream by #26156 (Inline Traits & Specialized Traits). Upstream
+#26842 has since removed the .get, but its `.map(_.hasSpecializedParams).nonEmpty`
+is just `isDefined`: any specialization candidate counts, whether or not it has
+specialized params. This patch keeps the original predicate,
+`exists(_.hasSpecializedParams)`; upstream candidate.
+
+Developed with LLM assistance (Claude).
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Proscala-Patch: anonspec
+---
+ .../tools/dotc/transform/DesugarSpecializedTraits.scala     | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/compiler/src/dotty/tools/dotc/transform/DesugarSpecializedTraits.scala b/compiler/src/dotty/tools/dotc/transform/DesugarSpecializedTraits.scala
+index 850b73fe0aad0128245aa49550a3a88c3a69e688..9c59219cb20ac1b15427edd2b0ba897c693ecf91 100644
+--- a/compiler/src/dotty/tools/dotc/transform/DesugarSpecializedTraits.scala
++++ b/compiler/src/dotty/tools/dotc/transform/DesugarSpecializedTraits.scala
+@@ -932,8 +932,12 @@ object Specialization:
+       case TypeDef(anon, Template(_, parentCalls: List[Tree], _, _)) =>
+         parentCalls match {
+           case _ :+ Apply(Apply(t, ctorArgs), ev) => // extends Object, parents of spec trait, spec trait
++            // A two-Apply parent call also arises for any ordinary parent whose
++            // constructor takes a second (e.g. using) argument list; its type is
++            // then no AppliedType and the unapply returns None, meaning "not a
++            // specialized trait" — not a crash.
+             val spec = Specialization.unapply(t.tpe.resultType.resultType, t.span)
+-            spec.get.hasSpecializedParams
++            spec.exists(_.hasSpecializedParams)
+           case _ => false
+         }
+       case _ => false

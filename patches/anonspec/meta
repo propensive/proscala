@@ -1,0 +1,3 @@
+variant 403f2f663af8.patch 1 403f2f663af8ad947e36a8f80f9680a9b71f7cf2
+needed-from   3adfcbd32a00cb078db0d80ec4f147309e59895a   # upstream #26156 (Inline Traits & Specialized Traits) introduced the defect
+variant 50c07d7d13c1.patch 1 50c07d7d13c1c7cc878778c83af1400c3db5932c

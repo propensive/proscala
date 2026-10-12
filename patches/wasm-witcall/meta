@@ -1,0 +1,4 @@
+variant 403f2f663af8.patch 1 403f2f663af8ad947e36a8f80f9680a9b71f7cf2
+variant 0bc121c5fd74.patch 1 0bc121c5fd74a0340dc56e0739ebab40de3333a2
+needed-from   3c72711c7dbf67f41abb2d8e5d631dc855a63fd5   # the scala-wasm IR it builds against is Scala.js 1.22.0; upstream upgraded on main here
+needed-from   1874054a76ec7b9706ae2cbd5f9ed41c80a8ffcf   # the same upgrade, on lts-3.9 (first in 3.9.0-RC2)
