@@ -17,6 +17,7 @@
 #   which scala/scala3 commit it is on   ->  UPSTREAM_SHA in mk/<stream>.mk
 #   which scala/scala3 branch that is on ->  UPSTREAM_REF in mk/<stream>.mk
 #   whether a repro exists               ->  the filesystem, doc/<patch>/repro*/
+#                                            (each with a test.sh beside its README)
 #   which -Z name enables a patch        ->  config.Proscala, as each stream builds it
 #
 # The upstream commits it needs are fetched on their own (shallowly) when absent.
@@ -78,8 +79,10 @@ while IFS=$'\t' read -r feat streams _ _; do
   done
   got="$(printf '%s' "$streams" | tr -d ' ')"
   want="$(printf '%s' "$expected" | tr -d ' ')"
-  if [ -z "$expected" ]; then
-    problem "doc/README.md lists '$feat', which no stream carries"
+  if [ -z "$expected" ] && [ "$got" = "—" ]; then
+    pass "$feat streams (none: carried only on other upstreams)"
+  elif [ -z "$expected" ]; then
+    problem "doc/README.md lists '$feat', which no stream carries (give it '—' in the Streams column if it applies only to other upstreams)"
   elif [ "$got" != "$want" ]; then
     problem "doc/README.md '$feat' Streams = '$streams', but the streams carry it in '$expected'"
   else
@@ -125,6 +128,10 @@ while IFS=$'\t' read -r feat _ _ repro; do
     rn="$(basename "$rd")"
     [ -f "$rd/README.md" ] || [ -f "$rd/FIXME.md" ] \
       || problem "$rd has neither README.md nor FIXME.md"
+    # a reproduction is also executable: bin/proscala-test runs its test.sh
+    if [ -f "$rd/README.md" ] && [ ! -f "$rd/test.sh" ]; then
+      problem "$rd has a README.md but no test.sh (its executable form, run by bin/proscala-test)"
+    fi
     if [ "$rn" != repro ] && ! printf '%s' "$repro" | grep -q "$rn"; then
       problem "doc/$feat/$rn/ exists but the Repro column ('$repro') does not mention it"
     fi

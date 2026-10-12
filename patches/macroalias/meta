@@ -1,2 +1,3 @@
-variant 403f2f663af8.patch 1 403f2f663af8ad947e36a8f80f9680a9b71f7cf2
 needed-from   f3355d6979f274b1e38269b16f31b24feaf06017   # upstream #25756 (Check macro expansion type) introduced the conformance check
+obsolete-from 74a90ae23aecc3acfa8c8a4730ae28097b4ca5d6   # upstream #26984 dealiases transparent types in typedSplice itself, which fixes this case (found by bin/proscala-test)
+variant 25c18aaa21b6.patch 2 25c18aaa21b6be202945e024cd5180d9d62d650f

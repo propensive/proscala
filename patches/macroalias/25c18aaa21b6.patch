@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 8 Aug 2026 12:28:58 +0200
+Subject: Strip ordinary aliases when the macro-expansion check reveals opaques
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The macro-expansion conformance check (upstream #25756) dealises opaque types
+so aliases invisible at the expansion site do not fail the check, but its
+TypeMap only reveals an opaque that heads the type directly. An opaque hidden
+behind an ordinary alias (`type Date = Timestamp {...}` over an opaque
+`Timestamp`) is left unrevealed — and because the two sides of the check
+arrive differently normalized (the expected type from the inline definition's
+TASTy is already dealiased; the actual type from the unpickled expansion is
+not), well-typed expansions are rejected. Stripping ordinary aliases first
+(`tp.dealias`) normalizes both sides identically; `dealias` respects opaque
+scopes, so nothing is revealed that the check would not reveal anyway.
+
+Developed with LLM assistance (Claude); two-file reproduction in the feature
+documentation.
+
+Proscala-Patch: macroalias
+---
+ compiler/src/dotty/tools/dotc/inlines/Inliner.scala | 11 ++++++++---
+ 1 file changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/compiler/src/dotty/tools/dotc/inlines/Inliner.scala b/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
+index 51016f50deafdd3ff366d7a7061c675d737a5f58..277121a7a2adf7f05ad71e4e492bd078ee921422 100644
+--- a/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
++++ b/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
+@@ -1087,13 +1087,18 @@ class Inliner(val call: tpd.Tree)(using Context):
+ 
+           // We dealias opaque types because their aliases might not be visible
+           // at the expansion site. See `tests/run-macros/opaque-inline`.
++          // Ordinary aliases are stripped first (`tp.dealias`): an opaque hidden
++          // behind a plain alias (`type Date = Timestamp {...}` over an opaque
++          // `Timestamp`) must be revealed the same way on both sides, or the
++          // conformance check below compares an opaque-revealed expected type
++          // against an unrevealed actual type and fails on well-typed expansions.
+           val dealiasOpaques = new TypeMap:
+-            def apply(tp: Type): Type = tp match
++            def apply(tp: Type): Type = tp.dealias match
+               case tp: TypeRef if tp.typeSymbol.isOpaqueAlias =>
+                 val sym = tp.typeSymbol
+                 apply(sym.opaqueAlias.asSeenFrom(tp.prefix, sym.owner))
+-              case _ =>
+-                mapOver(tp)
++              case dealiased =>
++                mapOver(dealiased)
+ 
+           val actualTp = dealiasOpaques(res.tpe)
+           val expectedTp = dealiasOpaques(tree1.tpe)

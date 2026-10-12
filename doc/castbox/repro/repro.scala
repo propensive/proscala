@@ -10,6 +10,7 @@ trait Tactic extends caps.ExclusiveCapability
 
 def demo(using t: Tactic): Unit =
   val inst: Object^{t} = new Object {}
-  internal.Tagged["label"](inst)   // inlined: inst.asInstanceOf[Tagged[inst.type, "label"]]
+  def expect(tagged: internal.Tagged[inst.type, "label"]): Unit = ()
+  expect(internal.Tagged["label"](inst))   // inlined: inst.asInstanceOf[Tagged[inst.type, "label"]]
   // error: Tagged[box (inst : Object^{t}), "label"] expected,
   //        but the cast produced the unboxed spelling

@@ -58,10 +58,13 @@ In the motivating cases the retained set is `{?n, caps.any}` (capability-typed
 evidence in the Soundness codebase always includes `caps.any` alongside the tactic),
 so the widening does not even change the set's meaning.
 
-No self-contained reproduction is known: the skolem only arises in a sufficiently deep
-inline/summonInline chain (small models with nested `provide`-style inlining and
-dependent capability results compile cleanly), so the regression test for this patch is
-the Soundness build itself (`ethereal.test` et al.).
+The [reproduction](repro/README.md) is 21 self-contained lines. It needs three things
+together, and compiles cleanly without any one of them: the tactic must come from a
+given *method* (an application, so the inline argument is unstable and gets a skolem;
+Soundness's `throwUnsafely` is such a given), the summoned given's result must retain
+its parameter (`Decodable^{tactic}`), and the evidence must be resolved by
+`summonInline` and passed to an inline context-function argument, as Soundness's
+`provide` does.
 
 ## Code
 

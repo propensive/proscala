@@ -1,14 +1,21 @@
-package ethereal
+import language.experimental.captureChecking
+import compiletime.summonInline
 
-import soundness.*
+trait Tactic extends caps.SharedCapability
 
-import classloaders.systemClassloader
-import environments.javaEnvironment
-import systems.javaSystem
-import temporaryDirectories.systemTemporaryDirectory
-import logging.silentLogging
-import strategies.throwUnsafely
+// A given *method*: the tactic it supplies is an application, not a stable path.
+given tactic: () => Tactic = ???
 
-object Tests:
-  def run(): Unit =
-    val launcher = Enclave(t"e").dispatch('{ 42 })
+trait Decodable
+
+// The result's capture set retains the parameter.
+given decodable: (tactic: Tactic) => (Decodable^{tactic}) = ???
+
+def decode(using decodable: Decodable^): Unit = ()
+
+// Soundness's `provide`: resolve the context with `summonInline` and pass it to an
+// inline context-function argument.
+inline def provide[context](inline body: context ?=> Unit): Unit =
+  body(using summonInline[context])
+
+def run(): Unit = provide[Decodable](decode)

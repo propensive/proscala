@@ -180,7 +180,7 @@ new versions once their changes are confirmed identical.
 The bounds give the streams different patch sets:
 
     stream 3.9    36 patches   carries castbox, depset, splicealias, samstateful, staleread, virtualdir, rootclassify, sharedunscoped, classifiermeet
-    stream 3.10   33 patches   adds anonspec, anykindcap, boolunapply, integratemap, macroalias, modulepath, prunecomplete, unioncaps; drops those nine, and nullreceiver and permitlazy (fixed upstream)
+    stream 3.10   32 patches   adds anonspec, anykindcap, boolunapply, integratemap, modulepath, prunecomplete, unioncaps; drops those nine, and nullreceiver, permitlazy and macroalias (fixed upstream; macroalias still applies to 3.10.0)
 
 (The counts exclude `zflags`.)
 
@@ -216,7 +216,7 @@ plainly at every one of its anchors, after the patches chosen before it (in a
 throwaway index, with no worktree). It notes, without failing, versions that are
 behind their patch's latest revision. It checks the feature table against what
 the streams carry, the `Repro` column against the reproductions that actually
-exist, the `Flag` column against the registry each stream builds, the stream
+exist (and that each has its executable `test.sh`), the `Flag` column against the registry each stream builds, the stream
 tables in `README.md` and this file against `mk/<stream>.mk`, the patch counts
 quoted above, that no feature doc hard-codes a stream when its patch spans
 several, and that every relative link resolves. Run it after touching any of
@@ -230,10 +230,12 @@ needs reading.
 ### Feature documentation
 
 Every patch has a documentation directory, `doc/<patch>/`, containing
-`doc/<patch>/<patch>.md` (the feature doc) and, for bug fixes,
-`doc/<patch>/repro/` with a minimal reproduction (standalone source files plus a
-`README.md` giving the compiler flags and expected failure, or a `FIXME.md` while
-no self-contained reproduction is known). `doc/README.md` indexes all features.
+`doc/<patch>/<patch>.md` (the feature doc) and `doc/<patch>/repro/` with a
+minimal reproduction: standalone source files, a `README.md` giving the compiler
+flags and what happens with and without the patch, and a `test.sh` that is the
+same thing in executable form (see *Testing the patches*) — or a `FIXME.md`
+while no self-contained reproduction is known. A feature rather than a fix has
+one too, showing what the feature does. `doc/README.md` indexes all features.
 Patches themselves carry **only code** — no documentation files. Writing the doc
 is part of developing a patch, not an afterthought — commit it with the patch.
 
@@ -377,6 +379,56 @@ patch does when upstream edited the lines around it. Those that differ are
 listed (`--accept-changed` records them too, for review); those that do not
 merge at all need a person.
 
+### Testing the patches: `bin/proscala-test`
+
+    cd worktrees/3.10 && make && cd ../..
+    bin/proscala-test worktrees/3.10                 # every patch the tree carries
+    bin/proscala-test worktrees/3.10 --only aliascap -v
+    bin/proscala-test worktrees/3.10 --stock 3.10.0  # do the reproductions reproduce?
+
+`bin/proscala-test <tree>` tests a built tree's patches, against the compiler in
+its `release/<name>/`. For each patch the tree carries, it runs:
+
+- **its reproductions** — each `doc/<patch>/repro*/test.sh`, in a scratch copy of
+  its directory. A spec says what must happen with the patch and, where it can be
+  shown, without it:
+
+  ```bash
+  ZFLAG=-Zalias-captures            # the patch's -Z flag; omitted if always on
+
+  with_feature() {                  # must hold for Proscala, with $ZFLAG
+    compiles $ZFLAG -d . defs.scala
+    compiles $ZFLAG -cp . -d . lib.scala
+    compiles $ZFLAG -cp . -d . client.scala
+  }
+
+  without_feature() {               # upstream's behaviour: the bug
+    compiles -d . defs.scala
+    compiles -cp . -d . lib.scala
+    fails_with 'is not visible from any in type raises' -cp . -d . client.scala
+  }
+  ```
+
+  with the helpers `compiles`, `fails_with <regex>`, `reports <regex>` (output
+  must match, success or not), `runs <regex> <classpath> <main>`, `fail` and
+  `skip`, and `$DIST`, `$COMPILER_CP` and `$SCALA_VERSION` for anything else. A
+  gated patch's `without_feature` is run too, on the same compiler without the
+  flag, which proves the gate.
+- **its own tests** — every upstream-style test the patch adds under `tests/`,
+  compiled as upstream's test runner would: upstream's default options (tree
+  checking included), the directory's extra ones (capture checking for
+  `*-custom-args/captures`, explicit nulls for `explicit-nulls/*`, …) and the
+  file's own `//> using options`; files named `*_1`, `*_2`, … compile in
+  separate runs, in order. A `pos` test must compile; a `neg` test must report
+  errors on exactly the lines marked `// error`.
+
+`--stock <version>` runs every `without_feature` against upstream's published
+compiler instead (fetched with `cs`), which must show the bug: it proves that a
+reproduction reproduces, and, run against a newer upstream, reveals a patch that
+upstream has made unnecessary. The release workflow runs `bin/proscala-test` on
+every target before releasing anything, and the Coverage workflow on its builds
+of upstream `main` and `lts-3.9`.
+
 ### Covering a new target
 
 To support an upstream commit that has gaps (say a new release candidate):
@@ -391,7 +443,8 @@ To support an upstream commit that has gaps (say a new release candidate):
    hand (`git am -3 patches/<patch>/<file>`, resolving the conflicts, or redo the
    change), commit it with the `Proscala-Patch:` trailer in its place in the
    series (`git rebase -i` to move it), and `bin/proscala-export <target> --adapt`.
-4. Build and test the tree, run `bin/proscala-check`, and commit on `main`.
+4. Build the tree, run `bin/proscala-test` on it, run `bin/proscala-check`, and
+   commit on `main`.
 
 ### Everyday workflow
 
@@ -404,11 +457,13 @@ To support an upstream commit that has gaps (say a new release candidate):
    otherwise anywhere — the end is simplest. To change an existing patch, fold the
    change into that patch's commit (`git commit --fixup=<commit>` then
    `git rebase -i --autosquash`).
-3. **Export, document, check.** `bin/proscala-export <target>` (with `--revise`
-   for a change to an existing patch); give a new patch the bounds it needs; write
-   `doc/<patch>/<patch>.md` (and a repro); add the patch's row to
-   `doc/README.md`; run `bin/proscala-check`; then commit the patch, its doc and
-   its row together on `main`.
+3. **Export, document, test, check.** `bin/proscala-export <target>` (with
+   `--revise` for a change to an existing patch); give a new patch the bounds it
+   needs; write `doc/<patch>/<patch>.md` and its reproduction, with `test.sh`;
+   add the patch's row to `doc/README.md`; run `bin/proscala-test` on the built
+   tree (and with `--stock` where upstream has a release) and
+   `bin/proscala-check`; then commit the patch, its doc and its row together on
+   `main`.
 4. **Other upstreams.** A new patch at first has one version, so other targets
    may report it missing: run `bin/proscala-coverage`, and cover the targets that
    matter (above), at least the other stream.
@@ -514,8 +569,9 @@ tag. That runs `.github/workflows/release.yml`:
 1. **plan** reads the targets from the tag.
 2. **build**, for every target in parallel: builds the tree for the target's
    commit with `bin/proscala-tree`, and the release artefacts in it, cleanly
-   (`make … tarball release-jars maven-repo`; see *What a release contains*).
-   Nothing leaves the runner yet.
+   (`make … tarball release-jars maven-repo`; see *What a release contains*),
+   then tests the patches against it (`bin/proscala-test`). Nothing leaves the
+   runner yet.
 3. **publish**, only once every target has built: creates the GitHub release
    `v<x.y.z>`, with every target's tarball, jars and Maven repository, and notes
    listing each target's upstream commit and `scalaVersion` and how to use them.

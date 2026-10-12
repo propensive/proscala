@@ -9,9 +9,9 @@ different branch.
 Compile in three steps — the macro must be a separate compilation unit from
 its use, and the use site is deliberately compiled without the instance:
 
-    scalac -experimental -d out text.scala
-    scalac -experimental -cp out -d out macro.scala
-    scalac -experimental -cp out -d out use.scala
+    scalac -Zliterate-literals -experimental -d out text.scala
+    scalac -Zliterate-literals -experimental -cp out -d out macro.scala
+    scalac -Zliterate-literals -experimental -cp out -d out use.scala
     scala -cp out repro.use.run
 
 Expected (patched): prints

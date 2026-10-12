@@ -78,6 +78,25 @@ ccOwner.isContainedIn(adjustedLevel.widenOwner(skipModules = true))
 
 The map itself lives in `compiler/src/dotty/tools/dotc/cc/CCState.scala` as `contextResultClosures: EqHashMap[Symbol, Symbol]`, so it is scoped to a capture-checking run.
 
+## On the 3.10 line
+
+Upstream's 3.10 line changed the level check so that a *parameter reference*
+(`ParamRef`) is rejected by a local root before any level is consulted. In
+`foo9a` the outer layer's parameter reaches the inner layer's result root as
+exactly such a reference — the parameter of the outer context function in the
+method's declared result type — so the closure-to-method mapping above was
+never reached, and the patch fixed nothing there (its own test,
+`erased-methods2.scala`, failed; `bin/proscala-test` found it in October 2026).
+
+The 3.10 version therefore also accepts, in `LocalCap.acceptsLevelOf`, a
+`ParamRef` bound by one of the first `contextResultCount` context-function
+layers of the root's owner's result type — the same layers erasure flattens.
+The check is cheap and cautious: it applies only to a contextual binder, only for
+a method with a context-function result, and matches the layer by its parameter
+names (the checker compares against a copy of the result type, so the binder is
+not the same object). Over upstream's 704 capture-checking tests, the only
+change in outcome is `erased-methods2.scala`, which now compiles.
+
 ## Relevance to Soundness
 
 Soundness threads capabilities almost exclusively through context functions, and hit this exact class of failure. `lib/contingency/src/core/contingency_core.scala` documents the workaround it was forced into for `safely`/`unsafely`: their block parameters supply `Diagnostics`, the tactic, and `CanThrow` in a *single* context-function layer, because — as the comment there records — "a curried `Unsafe ?=> … ?=> success` block was rejected wherever the argument was a `raises`-typed expression"; a second `?=>` layer closing over the outer layer's scoped tactic "cannot be reconciled with the block's expected type". With this patch, references bound by an outer context-function layer are valid inside inner layers, removing the need to collapse layers in such APIs (e.g. also `exoskeleton`'s `execute(block: (erased effectful: Effectful) ?=> Invocation ?=> Exit)`).

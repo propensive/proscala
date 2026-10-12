@@ -1,40 +1,46 @@
 # Reproduction: skolemcap
 
-A 14-line source file — but it needs the Soundness classpath, matching the
-feature doc's observation that the skolem only arises in a sufficiently deep
-inline/`summonInline` chain (small self-contained models compile cleanly).
-The chain here is superlunary's `Rig.dispatch` → `stageable.extract` →
-proscenium's `provide[entity is Decodable in Json]` → `lambda(using
-infer[context])`.
-
-Compile `repro.scala` with the compile classpath of Soundness's
-`ethereal.test` module (Soundness commit `211be67b5`, built with a patched
-toolchain):
+A self-contained, 21-line reproduction needing only the standard library:
 
 ```
-cd <soundness>; ./mill show ethereal.test.compileClasspath   # → classpath
-scalac -experimental -new-syntax -preview -Yno-flexible-types -Yexplicit-nulls \
-  -language:experimental.modularity ... (the repo's standard option set) \
-  -Yno-predef -Yimports:java.lang,scala,proscenium \
-  -Ycc-new -language:experimental.captureChecking \
-  -classpath <classpath> repro.scala
+scalac -language:experimental.captureChecking repro.scala
 ```
 
-Without the patch, compilation fails with:
+Without the patch (upstream, or Proscala without `-Zretains-skolems`) it fails:
 
 ```
-Illegal capture reference: (?1 : Any)
-  Inline stack trace:
-  ... inlined from proscenium_core.scala:104:  lambda(using infer[context])
-  ... provide[entity is Decodable in Json](json.as[entity])
-  ... stageable.extract[output]: ...
+-- Error: repro.scala:21:26 ----------------------------------------------------
+21 |def run(): Unit = provide[Decodable](decode)
+   |                          ^
+   |                          Illegal capture reference: (?1 : Any)
+1 error found
 ```
 
-With the patch, it compiles.
+With `-Zretains-skolems` it compiles. The inlined proxy for the summoned evidence
+is then typed with the skolem widened to the top capability:
 
-Because the classpath needs the other fork patches to build at all, the
-verified differential is **trunk/3.9 vs trunk-minus-skolemcap** (trunk with
-only the 9-line skolemcap hunk reverted), not stock-vs-single-feature:
-CRASH on trunk-minus-skolemcap (3× deterministic), PASS on trunk/3.9
-(2026-07-17). Derived by reduction from `ethereal_test.scala`, whose full
-669-line version fails identically.
+```scala
+val contextual$1: (Decodable^{any}) = decodable(tactic)
+decode(contextual$1)
+```
+
+Three ingredients are needed; removing any one makes the error disappear:
+
+- the given `decodable` has a dependent result, `Decodable^{tactic}`, retaining its
+  parameter;
+- the argument for that parameter is not a stable path — `tactic` is a given
+  *method* (`() => Tactic`), so `decodable(tactic)` is typed by substituting a
+  skolem `?1` for the parameter. A given *value* (`given tactic: Tactic`) is stable
+  and compiles cleanly;
+- the evidence is resolved by `summonInline` and passed to an `inline`
+  context-function argument, as Soundness's `provide` does, so the inliner binds it
+  to a proxy val whose explicit type carries the skolem in its `@retains`
+  annotation. With a non-`inline` `body` parameter, or with `summonInline` passed
+  directly to `decode`, it compiles.
+
+Reduced from the earlier Soundness-based reproduction (the compile classpath of
+Soundness's `ethereal.test` module at Soundness `a5c6577d4c`, through superlunary's
+`Rig.dispatch` → `Stageable.extract` → proscenium's `provide[entity is Decodable in
+Json]`), which failed with the same message. Verified on 2026-10-12 against stock
+Scala 3.9.0 and 3.10.0 (both fail), and against Proscala 3.9 and 3.10 with and
+without the flag.

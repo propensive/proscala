@@ -3,8 +3,12 @@
 Compile `repro.scala` with:
 
 ```
-scalac -experimental -Ycc-new -language:experimental.captureChecking repro.scala
+scalac -experimental -Ycc-new -language:experimental.separationChecking repro.scala
 ```
+
+Separation checking is needed: it turns on strict mutability, under which `Array`
+is classified as mutable at all (with capture checking alone both compilers
+accept the file). The patch is gated: pass `-Zopaque-mutability` too.
 
 Note the direction is the opposite of most reproductions here: the **unpatched**
 compiler accepts the file, and that acceptance is the bug. `Buffer` is an opaque
@@ -24,6 +28,5 @@ Found:    (buffer : repro.Buffer[Int])
 Required: repro.Buffer[Int]^{any}
 ```
 
-Like the other reproductions in this repository, this has not been re-verified
-against freshly built unpatched and patched compilers; the flags and the
-expected error are those recorded in `repro.scala`'s own header.
+Verified (with the flags above) against the 3.9 and 3.10 streams with and
+without `-Zopaque-mutability`, and against stock 3.9.0 and 3.10.0.

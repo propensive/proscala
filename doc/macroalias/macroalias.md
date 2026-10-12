@@ -113,3 +113,14 @@ time by an inline macro returning `Date` — tripped the new conformance check
 on every use site once the 3.10 line picked up #25756, even though the
 expansions were exactly the values the signatures declared. With the patch,
 aviation's literal syntax compiles again unchanged.
+
+## Upstream status
+
+Upstream #26984 ("Also dealias transparent types when dealiasing opaques in
+typedSplice", `74a90ae23a`, September 2026) fixes this case itself, so the patch
+is `obsolete-from` that commit: it is carried on the 3.10.0 release and its
+release candidates, and on `main` between #25756 and #26984, but not on `main`
+since, nor on `release-3.10.1`. Until October 2026 the patch's code did not match
+the snippet above — its fall-through case mapped the original type, not the
+dealiased one, so it never revealed the opaque it was written for; its
+reproduction, once executable, showed this.

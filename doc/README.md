@@ -49,7 +49,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [classifiermeet](classifiermeet/classifiermeet.md) | Accept a declared meet of two unrelated classifiers | 3.9 | feature | yes | always on |
 | [ctxresult](ctxresult/ctxresult.md) | Context-result closures level-checked at the method's level | 3.9, 3.10 | bug fix | yes | always on |
 | [dependarg](dependarg/dependarg.md) | Conserve stable argument paths in dependent-application rechecking | 3.9, 3.10 | bug fix | yes | always on |
-| [depset](depset/depset.md) | Add a mutable IdentitySet to optimize variable dependencies in CC | 3.9 | backport (perf) | n/a | always on |
+| [depset](depset/depset.md) | Add a mutable IdentitySet to optimize variable dependencies in CC | 3.9 | backport (perf) | yes | always on |
 | [dictcaps](dictcaps/dictcaps.md) | Infer the capture set of recursive-implicit dictionary instances | 3.9, 3.10 | bug fix | yes | always on |
 | [givencache](givencache/givencache.md) | Keep given aliases cached when capture checking is enabled | 3.9, 3.10 | bug fix (crash) | yes | always on |
 | [givenprefix](givenprefix/givenprefix.md) | Seal package-object prefixes on implicit candidate references | 3.9, 3.10 | bug fix | yes | `-Zgiven-prefixes` |
@@ -60,7 +60,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [integratemap](integratemap/integratemap.md) | Evaluate IntegrateMap symbols in the spliced run context | 3.10 | bug fix (crash) | yes | always on |
 | [lazycycle](lazycycle/lazycycle.md) | Guard against cyclic LazyRef graphs in capture-checking Setup | 3.9, 3.10 | bug fix (crash) | FIXME (not triggered by current Soundness) | always on |
 | [literate](literate/literate.md) | Re-type literals through a `Literate` instance in scope | 3.9, 3.10 | feature | yes | `-Zliterate-literals` |
-| [macroalias](macroalias/macroalias.md) | Strip ordinary aliases when the macro-expansion check reveals opaques | 3.10 | bug fix | yes | always on |
+| [macroalias](macroalias/macroalias.md) | Strip ordinary aliases when the macro-expansion check reveals opaques | — | bug fix | yes | always on |
 | [modulepath](modulepath/modulepath.md) | Give an inline accessor for a module the module's `TermRef` | 3.10 | bug fix | yes | always on |
 | [nullreceiver](nullreceiver/nullreceiver.md) | Widen bottom-typed call receivers to Object in the backend | 3.9 | bug fix (crash) | yes | always on |
 | [permitlazy](permitlazy/permitlazy.md) | Lazy resolution of permitted subclasses in classfile parsing | 3.9 | bug fix | yes | always on |
@@ -72,18 +72,18 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [sambox](sambox/sambox.md) | Capability-implied captures on SAM anonymous-class type members | 3.9, 3.10 | bug fix | yes | always on |
 | [samstateful](samstateful/samstateful.md) | Read-only views of constant method-result capture sets | 3.9 | bug fix | yes | always on |
 | [searchdiag](searchdiag/searchdiag.md) | Preserve an `@internal.diagnostic` candidate's errors as the search-failure message | 3.9, 3.10 | feature | yes | `-Zdiagnostic-givens` |
-| [semdiag](semdiag/semdiag.md) | `-Zsemantic-diagnostics`: XML error output with TASTy-encoded types | 3.9, 3.10 | feature | n/a | `-Zsemantic-diagnostics` |
+| [semdiag](semdiag/semdiag.md) | `-Zsemantic-diagnostics`: XML error output with TASTy-encoded types | 3.9, 3.10 | feature | yes | `-Zsemantic-diagnostics` |
 | [sharedunscoped](sharedunscoped/sharedunscoped.md) | A shared, level-exempt classifier: `caps.SharedUnscoped` | 3.9 | feature | yes | always on |
-| [skolemcap](skolemcap/skolemcap.md) | Widen skolems in retains sets to the top capability | 3.9, 3.10 | bug fix | yes (needs Soundness classpath) | `-Zretains-skolems` |
-| [smap](smap/smap.md) | `-Zinline-source-maps`: JSR-45 SMAP attributes mapping inlined code to its source files | 3.9, 3.10 | feature | n/a | `-Zinline-source-maps` |
+| [skolemcap](skolemcap/skolemcap.md) | Widen skolems in retains sets to the top capability | 3.9, 3.10 | bug fix | yes | `-Zretains-skolems` |
+| [smap](smap/smap.md) | `-Zinline-source-maps`: JSR-45 SMAP attributes mapping inlined code to its source files | 3.9, 3.10 | feature | yes | `-Zinline-source-maps` |
 | [splicealias](splicealias/splicealias.md) | Give spliced type binders their spliced type as info | 3.9 | bug fix | yes | always on |
 | [spreadable](spreadable/spreadable.md) | Splice any type with a `Spreadable` instance into a vararg position | 3.9, 3.10 | feature | yes (2: `repro`, `repro-cc`) | `-Zspreadable-varargs` |
-| [staleread](staleread/staleread.md) | Tolerate reading newer denotations from stale run contexts | 3.9 | bug fix (crash) | yes (needs Soundness classpath) | always on |
+| [staleread](staleread/staleread.md) | Tolerate reading newer denotations from stale run contexts | 3.9 | bug fix (crash) | yes | always on |
 | [unboxedpure](unboxedpure/unboxedpure.md) | Do not box pure types with vacuous or pure-tuple capture sets | 3.9, 3.10 | bug fix | yes | `-Zunboxed-pure-types` |
 | [unioncaps](unioncaps/unioncaps.md) | Classify and preserve capture information on union types | 3.10 | bug fix | yes | `-Zunion-captures` |
-| [virtualdir](virtualdir/virtualdir.md) | Backport the `io.virtualDirectory` factory from the 3.10 stream | 3.9 | API backport | n/a | always on |
-| [wasm](wasm/wasm.md) | WIT / WebAssembly Component Model support | 3.9, 3.10 | feature | n/a | always on |
-| [wasm-witcall](wasm-witcall/wasm-witcall.md) | `witImportCall`: stub-free WIT imports | 3.9, 3.10 | feature | n/a | always on |
+| [virtualdir](virtualdir/virtualdir.md) | Backport the `io.virtualDirectory` factory from the 3.10 stream | 3.9 | API backport | yes | always on |
+| [wasm](wasm/wasm.md) | WIT / WebAssembly Component Model support | 3.9, 3.10 | feature | yes | always on |
+| [wasm-witcall](wasm-witcall/wasm-witcall.md) | `witImportCall`: stub-free WIT imports | 3.9, 3.10 | feature | yes | always on |
 
 Reproductions marked "yes" are extracted verbatim from the feature docs or
 from the minimal test files the patches add; they have not been re-verified
