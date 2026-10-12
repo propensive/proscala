@@ -9,11 +9,13 @@
 #
 # A Proscala version names a set of features (the patches, with their documented
 # guarantees), independent of the Scala it patches. A release is built for every
-# scala/scala3 final release 3.<y>.<z> with y >= 9, and for a snapshot of
-# scala/scala3 main as it is when the release is cut. Each build is versioned
-# <scala version>-proscala-<x.y.z> (3.10.0-proscala-1.0.0,
-# 3.10.2-RC1-bin-88be2f5-proscala-1.0.0), with the upstream first so that sbt's
-# scalaVersion still reads as a Scala version.
+# scala/scala3 final release 3.<y>.<z> with y >= 9, and for a snapshot of each
+# upstream branch developing an unreleased version (main, lts-3.<y>,
+# release-3.<y>.<z>) as it is when the release is cut. Each build is versioned
+# <scala version>-pro-<x.y.z> (3.10.0-pro-1.0.0; a snapshot's scala version is
+# the version its branch develops and 16 hex digits of the commit, as in
+# 3.10.2-88be2f56a1103b0e-pro-1.0.0), with a full 3.x.y first, without which sbt
+# does not treat scalaVersion as Scala 3.
 #
 # The exact upstream commits are written into the tag's annotation, so the
 # release workflow builds what was checked here even after main has moved on.

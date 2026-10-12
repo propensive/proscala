@@ -2,9 +2,10 @@ name: Release
 
 # A Proscala release is a tag v<x.y.z> on `main`, pushed by bin/proscala-release.
 # Its annotation lists the targets — every scala/scala3 final release 3.<y>.<z>
-# from 3.9 on, and a snapshot of scala/scala3 main — each as
+# from 3.9 on, and a snapshot of each upstream branch developing an unreleased
+# version — each as
 #   target <spec> <upstream commit> <version>
-# with <version> = <scala version>-proscala-<x.y.z>. This workflow:
+# with <version> = <scala version>-pro-<x.y.z>. This workflow:
 #
 #   plan     reads the targets (or, run by hand, works them out for a dry run)
 #   build    for each target, in parallel: builds the tree, the distribution and

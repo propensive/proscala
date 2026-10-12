@@ -31,7 +31,8 @@ before moving a release line onto it.
 
 Proscala has **its own version number**, independent of the Scala it patches
 (see *Proscala version numbers*), and each release is published for every Scala
-release from 3.9.0 on and for a snapshot of upstream `main`.
+release from 3.9.0 on and for a snapshot of every upstream branch developing an
+unreleased version (`main`, `lts-3.9`, `release-3.10.1`, …).
 
 `main` holds the patches, the documentation, the repository-wide files **and the
 build** (the Makefile, per-stream config, vendored Scala.js sources and helper
@@ -476,19 +477,31 @@ patches, is a patch release: 1.0.1 is 1.0.0's features on more Scala versions.
     bin/proscala-release 1.0.0              # tag HEAD v1.0.0 and push the tag
 
 A release is a **tag `v<x.y.z>` on `main`**, built for every `scala/scala3`
-final release `3.<y>.<z>` with `y` ≥ 9 (today 3.9.0 and 3.10.0), and for a
-**snapshot** of `scala/scala3` `main` as it is when the release is cut. Each
-build's version puts the upstream first, so that sbt's `scalaVersion` still reads
-as a Scala version:
+final release `3.<y>.<z>` with `y` ≥ 9, and for a **snapshot** of every upstream
+branch developing a version that has not been released yet — `main`, each
+`lts-3.<y>` and each `release-3.<y>.<z>`, from 3.9 on — as it is when the release
+is cut. A release branch drops out once its version is tagged, and is then
+covered as a release. Each build's version puts the upstream first, then `-pro-`
+and the Proscala version:
 
-| Upstream | Version |
-| -------- | ------- |
-| a release, e.g. 3.10.0 | `3.10.0-proscala-1.0.0` |
-| `main` at `88be2f5`, which builds as 3.10.2-RC1 | `3.10.2-RC1-bin-88be2f5-proscala-1.0.0` |
+| Upstream (on 2026-10-12) | Version |
+| ------------------------ | ------- |
+| release 3.9.0 | `3.9.0-pro-1.0.0` |
+| release 3.10.0 | `3.10.0-pro-1.0.0` |
+| `lts-3.9`, developing 3.9.1 | `3.9.1-0bc121c5fd74a034-pro-1.0.0` |
+| `release-3.10.1`, developing 3.10.1 | `3.10.1-60c03047d6043474-pro-1.0.0` |
+| `main`, developing 3.10.2 | `3.10.2-88be2f56a1103b0e-pro-1.0.0` |
 
-so a project uses Proscala 1.0.0 on Scala 3.10.0 with
-`scalaOrganization := "dev.propensive"` and
-`scalaVersion := "3.10.0-proscala-1.0.0"`.
+A snapshot is named after the version its branch develops (upstream's
+`developedVersion`) and the first 16 hex digits of the commit
+(`PROSCALA_HASH_LENGTH`), which identify it with no realistic risk of a clash. The
+`3.x.y` at the front is not decoration: sbt treats a `scalaVersion` as Scala 3
+only if it starts with a full `3.x.y` — anything else (a bare hash, `3-…`,
+`3.10-…`) makes it fetch the Scala 2 compiler, or a `scala3-library_<version>`
+that does not exist — and `_` or `+` as the separator break resolution the same
+way (all tested with sbt 1.11). So a project uses Proscala 1.0.0 on Scala 3.10.0
+with `scalaOrganization := "dev.propensive"` and
+`scalaVersion := "3.10.0-pro-1.0.0"`.
 
 `bin/proscala-release <x.y.z>` refuses unless `HEAD` is `origin/main`, nothing
 tracked is uncommitted, `bin/proscala-check` passes, the version is greater than
@@ -538,14 +551,14 @@ needed (tested with sbt 1.11):
 val proscala = file("/path/to/proscala-repo")   // the unzipped proscala-<version>-maven.zip
 resolvers         += "proscala" at proscala.toURI.toString
 scalaOrganization := "dev.propensive"
-scalaVersion      := "3.10.0-proscala-1.0.0"
+scalaVersion      := "3.10.0-pro-1.0.0"
 // sbt also wants these two, which Proscala does not provide as it expects:
 excludeDependencies += "dev.propensive" % "scaladoc_3"   // no scaladoc is built
 scalaCompilerBridgeBinaryJar := Some(proscala / s"dev/propensive/scala3-sbt-bridge/${scalaVersion.value}/scala3-sbt-bridge-${scalaVersion.value}.jar")
 ```
 
 Fifteen artifacts are in each repository, under the group `dev.propensive`, at
-the target's version (`<scala version>-proscala-<x.y.z>`). Thirteen carry **the same artifact names as the mainline
+the target's version (`<scala version>-pro-<x.y.z>`). Thirteen carry **the same artifact names as the mainline
 Scala releases**: `scala-library`, `scala3-library_3`, `scala3-interfaces`,
 `tasty-core_3`, `scala3-compiler_3`, `scala3-directives-parser_3`,
 `scala3-staging_3`, `scala3-tasty-inspector_3`, `scala3-repl_3`,
