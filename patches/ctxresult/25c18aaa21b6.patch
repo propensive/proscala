@@ -35,12 +35,14 @@ is sound under erasure flattening.
 
 Proscala-Patch: ctxresult
 ---
- .../src/dotty/tools/dotc/cc/CCState.scala     |  9 ++++
- .../src/dotty/tools/dotc/cc/Capability.scala  | 52 ++++++++++++++++++-
+ .../src/dotty/tools/dotc/cc/CCState.scala     |  9 +++
+ .../src/dotty/tools/dotc/cc/Capability.scala  | 60 ++++++++++++++++++-
  .../src/dotty/tools/dotc/cc/CaptureSet.scala  |  7 +++
- .../dotty/tools/dotc/cc/CheckCaptures.scala   | 19 ++++++-
- .../captures/erased-methods2.scala            |  6 +--
- 5 files changed, 87 insertions(+), 6 deletions(-)
+ .../dotty/tools/dotc/cc/CheckCaptures.scala   | 43 ++++++++++++-
+ .../captures/ctxresult-layers.scala           | 28 +++++++++
+ .../captures/erased-methods2.scala            |  6 +-
+ 6 files changed, 145 insertions(+), 8 deletions(-)
+ create mode 100644 tests/pos-custom-args/captures/ctxresult-layers.scala
  rename tests/{neg-custom-args => pos-custom-args}/captures/erased-methods2.scala (87%)
 
 diff --git a/compiler/src/dotty/tools/dotc/cc/CCState.scala b/compiler/src/dotty/tools/dotc/cc/CCState.scala
@@ -64,10 +66,10 @@ index 6ee581d76f5f8444fc83a4a4fc5c186e2a53d61b..59e2e4d280bc5773a8523fa863f45148
  
    /** Warnings relating to upper approximations of capture sets with
 diff --git a/compiler/src/dotty/tools/dotc/cc/Capability.scala b/compiler/src/dotty/tools/dotc/cc/Capability.scala
-index 687ddf42dbabb55ec5a536217794eb2875f2e230..2c7555ba0a1a9c75becd06ad8a0c02a97c8e7ff9 100644
+index 687ddf42dbabb55ec5a536217794eb2875f2e230..549d4ce951f764c27cde8d578edf032da374a967 100644
 --- a/compiler/src/dotty/tools/dotc/cc/Capability.scala
 +++ b/compiler/src/dotty/tools/dotc/cc/Capability.scala
-@@ -229,13 +229,61 @@ object Capabilities:
+@@ -229,13 +229,69 @@ object Capabilities:
       */
      def acceptsLevelOf(ref: Capability)(using Context): Boolean =
        ref.core match
@@ -117,12 +119,20 @@ index 687ddf42dbabb55ec5a536217794eb2875f2e230..2c7555ba0a1a9c75becd06ad8a0c02a9
 +        def sameLayer(mt: MethodType): Boolean = (mt eq p.binder) || (p.binder match
 +          case b: MethodType => b.paramNames == mt.paramNames
 +          case _ => false)
++        // A layer whose parameter names differ from the binder's (a non-dependent layer,
++        // `A ?=> B`, has none) is the binder's layer if their parameters agree.
++        def sameArgs(args: List[Type]): Boolean = p.binder match
++          case b: MethodType =>
++            b.paramInfos.length == args.length
++            && b.paramInfos.lazyZip(args).forall: (param, arg) =>
++              param.stripCapturing.classSymbol == arg.stripCapturing.classSymbol
++          case _ => false
 +        def inChain(tp: Type, n: Int): Boolean =
 +          n > 0 && (tp.dealias match
 +            case CapturingType(parent, _) => inChain(parent, n)
 +            case tp @ defn.RefinedFunctionOf(mt: MethodType) =>
-+              sameLayer(mt) || inChain(mt.resType, n - 1)
-+            case defn.ContextFunctionType(_, res) => inChain(res, n - 1)
++              sameLayer(mt) || sameArgs(mt.paramInfos) || inChain(mt.resType, n - 1)
++            case defn.ContextFunctionType(args, res) => sameArgs(args) || inChain(res, n - 1)
 +            case _ => false)
 +        inChain(meth.info.finalResultType,
 +          transform.ContextFunctionResults.contextResultCount(meth))
@@ -151,7 +161,7 @@ index f8ef2acd40d922002df5ad2850842162dc533fc8..45fa4df40fc78fbddf91f653589b2708
          else true
  
 diff --git a/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala b/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
-index 7612a01b35b9aa569d8b091cdde924f863801275..c79a7bd443039eb36dcde9fb3848c27839ea26aa 100644
+index 7612a01b35b9aa569d8b091cdde924f863801275..d839c15182b748574b79b42d8f546497e360afe2 100644
 --- a/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
 +++ b/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
 @@ -18,7 +18,7 @@ import typer.ErrorReporting.err
@@ -163,7 +173,39 @@ index 7612a01b35b9aa569d8b091cdde924f863801275..c79a7bd443039eb36dcde9fb3848c278
  import Recheck.*
  import scala.collection.mutable
  import CaptureSet.{withCaptureSetsExplained, IncludeFailure, MutAdaptFailure, VarState}
-@@ -1321,6 +1321,23 @@ class CheckCaptures extends Recheck, SymTransformer:
+@@ -1092,9 +1092,29 @@ class CheckCaptures extends Recheck, SymTransformer:
+      *  block containing the anonymous function and the Closure node.
+      */
+     override def recheckClosure(tree: Closure, pt: Type, forceDependent: Boolean)(using Context): Type =
+-      val cs = tree.meth.symbol.useSet
++      val anonfun = tree.meth.symbol
++      val cs = anonfun.useSet
+       capt.println(i"typing closure $tree with cvs $cs")
+-      super.recheckClosure(tree, pt, forceDependent).capturing(cs)
++      // A closure implementing a layer of a method's context-function result chain has
++      // its parameters at the method's level (see CCState.contextResultClosures). Where
++      // the layers after it capture them, and its declared layer is not itself dependent,
++      // its type names them by their symbols, which that level admits, rather than
++      // approximating the dependency away to `any`.
++      def expectsDependent = pt.stripCapturing.dealias match
++        case defn.RefinedFunctionOf(_) => true
++        case _ => false
++      val tp = tree.meth.tpe.widen match
++        case mt: MethodType
++        if tree.tpt.isEmpty && mt.isResultDependent && !mt.isParamDependent
++            && !mt.hasErasedParams && !expectsDependent
++            && ccState.contextResultClosures.lookup(anonfun) != null =>
++          anonfun.paramSymss match
++            case params :: Nil if params.length == mt.paramInfos.length =>
++              defn.FunctionNOf(mt.paramInfos, mt.instantiate(params.map(_.termRef)),
++                mt.isContextualMethod)
++            case _ => super.recheckClosure(tree, pt, forceDependent)
++        case _ => super.recheckClosure(tree, pt, forceDependent)
++      tp.capturing(cs)
+         .showing(i"rechecked closure $tree / $pt = $result", capt)
+ 
+     /** Recheck a lambda of the form
+@@ -1321,6 +1341,23 @@ class CheckCaptures extends Recheck, SymTransformer:
      override def recheckDefDef(tree: DefDef, sym: Symbol)(using Context): Type =
        if Synthetics.isExcluded(sym) then sym.info
        else {
@@ -187,6 +229,40 @@ index 7612a01b35b9aa569d8b091cdde924f863801275..c79a7bd443039eb36dcde9fb3848c278
          val saved = curEnv
          val localSet = sym.useSet
          if sym.isAnonymousFunction && !localSet.isConst then
+diff --git a/tests/pos-custom-args/captures/ctxresult-layers.scala b/tests/pos-custom-args/captures/ctxresult-layers.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..e7a274d0c9550358b00c87e86d235de0d197f9a3
+--- /dev/null
++++ b/tests/pos-custom-args/captures/ctxresult-layers.scala
+@@ -0,0 +1,28 @@
++// The inner layer of a method's context-function result chain may capture the outer
++// layer's parameter: erasure flattens both layers into the method's own parameters.
++// Here the layers are not dependent function types, so they are matched by shape.
++
++trait Tactic[-E] extends caps.SharedCapability:
++  def abort(e: E): Nothing
++infix type raises[R, E] = Tactic[E]^ ?=> R
++
++object lib:
++  def query(n: Int): List[Int] raises String raises Int =
++    if n < 0 then summon[Tactic[Int]].abort(n)
++    if n > 9 then summon[Tactic[String]].abort("big")
++    List(n)
++
++object umbrella:
++  export lib.query
++
++// Three layers: the middle one captures the outer one's parameter, and the inner one
++// captures both, in a chain none of whose layers is a dependent function type.
++object lib3:
++  def query(n: Int): List[Int] raises String raises Int raises Boolean =
++    if n < 0 then summon[Tactic[Int]].abort(n)
++    if n > 9 then summon[Tactic[String]].abort("big")
++    if n == 5 then summon[Tactic[Boolean]].abort(true)
++    List(n)
++
++object umbrella3:
++  export lib3.query
 diff --git a/tests/neg-custom-args/captures/erased-methods2.scala b/tests/pos-custom-args/captures/erased-methods2.scala
 similarity index 87%
 rename from tests/neg-custom-args/captures/erased-methods2.scala

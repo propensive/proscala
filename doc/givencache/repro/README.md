@@ -11,7 +11,7 @@ scalac -experimental repro.scala
 
 Without the patch, the compiler crashes in capture-checking Setup —
 `UncacheGivenAliases` has demoted the stable alias `canvas0` to a `def`, so
-the capture set forced by the dependent `summon[I]` names a method:
+the capture set forced by the dependent `summon[I^]` names a method:
 
 ```
 dotty.tools.dotc.cc.IllegalCaptureRef: (canvas0 : => Board^{canvas})

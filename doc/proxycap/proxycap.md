@@ -1,8 +1,8 @@
-# Infer a closure argument's own captures on its inline proxy
+# Capture-check inline argument proxies within their parameters' bounds
 
-Stops capture checking from rejecting a capturing closure passed to an inline method's function parameter, by inferring the closure proxy's own capture set where the parameter allows any, and keeping everything else the parameter declares.
+Stops capture checking from rejecting arguments of inline methods that capture what their parameters allow, by inferring each argument proxy's capture sets within the bounds its parameter declares.
 
-Always on: it only turns programs that upstream rejects into accepted ones, and it accepts nothing a parameter's declared type forbids.
+Always on: it only turns programs that upstream rejects into accepted ones, and it accepts nothing a parameter's declared capture set forbids.
 
 ## Context
 
@@ -10,21 +10,21 @@ When an inline method is expanded, each argument that is not a simple path is
 bound to a *proxy*, a local `val`, and the body refers to the proxy instead of the
 parameter. The argument is then checked against the proxy's type alone.
 [scala/scala3#26989](https://github.com/scala/scala3/pull/26989) (on `main`, and
-backported to 3.10.0-RC3) gave proxies **explicit** types, the argument's type
-from Typer. Before, their types were inferred, which let an argument capture
-anything at all, whatever the parameter declared.
+backported to 3.10.0-RC3) gave proxies **explicit** types: the argument's type
+from Typer. Before, they were inferred, which let an argument capture anything,
+whatever its parameter declared
+([scala/scala3#26982](https://github.com/scala/scala3/issues/26982), "inline
+methods turn off capture checking"). That hole was real.
 
-But Typer knows nothing about capture sets. For a closure, its type from Typer is
-precise about the closure's parameters and result, which is what #26989 wanted
-(its test `cc-inline1` catches a capability leaking through a closure's result
-this way), but says nothing about what the closure *itself* captures. Taken at
-face value, it declares every closure pure.
+But Typer knows nothing about capture sets, so an argument's type from Typer,
+taken at face value, says the argument captures nothing. Every argument that
+captures anything was rejected — even where the same call compiles without
+`inline` — and a capability type inside one (an array) was declared with a fresh
+`any`, which separation checking then rejects too.
 
 ## Reproducing it
 
 ```scala
-import language.experimental.captureChecking
-
 extension [value](iterable: Iterable[value])
   inline def fuse[state](base: state)(lambda: (state, value) ?=> state): state =
     val iterator: Iterator[value] = iterable.iterator
@@ -37,25 +37,32 @@ def fold[acc](initial: acc)(lambda: (Int, acc) => Exception => acc): acc =
   (0 until errors.length).fuse(initial)(lambda(summon[Int], summon[acc])(errors(summon[Int])))
 ```
 
-Scala 3.10.0 rejects it, although `fuse` declares that its `lambda` may capture
-anything (`?=>`):
-
-```
-Found:    (contextual$1: acc, contextual$2: Int) ?->{lambda} acc
-Required: (contextual$1: acc, contextual$2: Int) ?-> acc
-```
-
-In Soundness this broke `contingency`, `metamorphose` and `wisteria`. Without
-`inline` the method compiles, as it does on every release before 3.10.0-RC3.
+Scala 3.10.0 rejects it (`capability lambda cannot flow into capture set {}`),
+although `fuse`'s `?=>` allows any capture, and without `inline` it compiles. So
+does `inline def useOnly(io: Res)(x: Object^{io})` called with `identity(o)` for
+an `o: Object^{io}`. In Soundness this failed a dozen modules.
 
 ## The solution
 
-`Inliner.paramBindingDef` builds a closure proxy's type from two annotations
-Setup already understands, and upstream already uses for inline calls' type
-arguments: a part annotated `@caps.internal.inferred` is given fresh capture-set
-variables, as an inferred type, and inside it a part annotated
-`@caps.internal.declared` is explicit again. The closure's parameter and result
-types stay declared; its own capture set follows the parameter's function type:
+`Inliner.paramBindingDef` builds the proxy's type from two annotations Setup
+already understands (and upstream uses for inline calls' type arguments): a part
+annotated `@caps.internal.inferred` gets fresh capture-set variables, as an
+inferred type, and inside one a part annotated `@caps.internal.declared` is
+explicit again. The parameter types it bounds by are computed with the call's
+inferred type arguments marked inferred (an inferred capture-set argument bounds
+nothing).
+
+**Any argument but a closure** is inferred, intersected with a declared bound on
+its top-level capture set: the parameter's explicit set (`^{io}`, `^{}`), or
+empty for a parameter of a pure type. A parameter that may capture anything — `^`,
+a capability class, an array, an inferred type argument, a union with one — bounds
+nothing. So `useOnly(io)(identity(o))` is accepted for `o: Object^{io}` and
+rejected for an `o: Object^{other}`, and `usePure(identity(o))` is rejected for a
+parameter `Object^{}`. Nested capture sets are inferred, as before #26989.
+
+**A closure** keeps declared parameter and result types, so a leak through its
+result is still caught, as in upstream's `cc-inline1`; its own capture set
+follows the parameter's function type:
 
 | parameter | the closure proxy's own capture set |
 | --------- | ----------------------------------- |
@@ -63,37 +70,14 @@ types stay declared; its own capture set follows the parameter's function type:
 | `A ->{x} B` | `{x}`, as declared |
 | `A -> B` | empty, as declared |
 
-```scala
-def inferredFunction(t: Type): Type = t match
-  case t @ RefinedType(parent, nme.apply, mt: MethodType) if defn.isFunctionType(t) =>
-    inferred(t.derivedRefinedType(parent, nme.apply,
-      mt.derivedLambdaType(mt.paramNames, mt.paramInfos.map(declared), part(mt.resType))))
-  case t @ AppliedType(tycon, args) if defn.isFunctionType(t) =>
-    inferred(t.derivedAppliedType(tycon, args.init.map(declared) :+ part(args.last)))
-  case _ => NoType
-```
-
-The same rule applies to a function in the closure's result (`part`), as for
-`Int ?=> A => Unit`. Inferring matters, rather than declaring the parameter's
-`any`: separation checking sees a proxy declared with a fresh `any` as *hiding*
-what the closure captures, and rejects any later use of it. And inferring only
-where the parameter allows anything matters too: a closure that captures `io`,
-passed for a parameter declared `() -> Unit`, is still rejected.
+The same applies to a function in the closure's result. Its parameters are
+declared as the parameter's function type declares them where that says something
+about captures (`FileHandle^`, which is what catches `useFile(l => l)`), and
+inferred where it says nothing, rather than declared from a capture-free Typer
+type that would give an array a root of its own.
 
 The patch's tests, `pos-custom-args/captures/proxycap.scala` (separation-checked)
-and `neg-custom-args/captures/proxycap.scala`, cover each row in both
+and `neg-custom-args/captures/proxycap.scala`, cover each case in both
 directions. Every error in upstream's `cc-inline1` is still reported, and the
 outcome of every other test in `tests/{neg,pos}-custom-args/captures` is
 unchanged.
-
-## Not covered
-
-Arguments other than closures have the same problem: their proxies are typed
-with Typer's capture-free type, so `useOnly(io)(identity(o))` is rejected for a
-parameter `x: Object^{io}` and an `o: Object^{io}`, and an array inside a
-proxy's type is declared as a fresh capability (Soundness's `.to[List]` on
-arrays, `.nn` on a nullable array). Inferring those proxies' types instead, as
-before 3.10.0-RC3, reopens the hole #26989 closed; bounding them by the
-parameter's declared type fails because that type's inferred type arguments
-are not marked as inferred (a capture-set parameter arrives as `caps.CapSet`).
-That needs a fix of its own.

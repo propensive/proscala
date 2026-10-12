@@ -1,0 +1,119 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 8 Aug 2026 14:21:44 +0200
+Subject: Classify and preserve capture information on union types
+
+Two union-type gaps in capture checking under strict mutability, which
+together made types like `Unset | Array[Byte]` (Soundness's Optional[Data])
+unusable:
+
+- A union's inherited classifier fell through to its class symbols' common
+  superclasses (Object, Matchable), whose classifier is Any, so a fresh
+  capability instantiated for the union could never be re-absorbed at a local
+  binding the way a bare Array's Unscoped-classified fresh is. The classifier
+  is now the least upper bound of the members' classifiers, with always-pure
+  members contributing nothing.
+
+- CapturingType.apply dropped an empty capture set on a union unless every
+  member derived from a capability trait, so the capability members
+  re-acquired implied capture sets per occurrence, and two mentions of the
+  same aliased union never matched. The empty set is now kept if any dealiased
+  member derives from a capability trait.
+
+Developed with LLM assistance (Claude); source-level fixes for the affected
+Soundness module were exhaustively ruled out before patching the compiler.
+
+Enabled by `-Z:union-captures`; without it, upstream's code runs at every site this
+patch touches.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: unioncaps
+---
+ .../src/dotty/tools/dotc/cc/CaptureOps.scala  | 41 ++++++++++++++++++-
+ .../dotty/tools/dotc/cc/CapturingType.scala   | 19 ++++++++-
+ 2 files changed, 57 insertions(+), 3 deletions(-)
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala b/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala
+index 728ddbaf647022d4ea390041ae56243b0795cd3d..a723b85fa051075c16182d76bb07572fcdd8878f 100644
+--- a/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala
++++ b/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala
+@@ -507,8 +507,45 @@ extension (tp: Type)
+       tp
+ 
+   def inheritedClassifier(using Context): ClassSymbol =
+-    if tp.isArrayUnderStrictMut then defn.Caps_Unscoped
+-    else tp.classSymbols.map(_.classifier).foldLeft(defn.AnyClass)(leastClassifier)
++    // The least upper bound of two classifiers: the more general of the two if
++    // they are comparable, otherwise their closest common ancestor classifier,
++    // or `AnyClass` if there is none. This differs from `greatestClassifier`,
++    // which picks the more specific class when the two are comparable; here we
++    // need the more general one, since a joined classifier must permit every
++    // capability that either operand's classifier permits.
++    def lubClassifier(cls1: ClassSymbol, cls2: ClassSymbol): ClassSymbol =
++      if cls2.isSubClass(cls1) then cls1
++      else if cls1.isSubClass(cls2) then cls2
++      else cls1.classDenot.baseClasses
++        .find(bc => bc.isClassifiedCapabilityClass && cls2.isSubClass(bc))
++        .getOrElse(defn.AnyClass)
++    // The classifier contributed by one member of a union type. A value of a
++    // union type is a value of one of the union's members, so a member that is
++    // always pure (e.g. `Unset` in `Unset | Array[Byte]`, or `Int` in
++    // `Int | Array[Int]`) contributes no capabilities at all and yields
++    // `NothingClass`, the identity of `lubClassifier`. Any other member yields
++    // its own inherited classifier (`AnyClass` if it is unclassified, which
++    // absorbs the other members' classifiers). Without this, a union would
++    // fall through to `classSymbols`, which sees only the members' common
++    // superclasses (e.g. `Object`, `Matchable`) whose classifier is `Any`; so
++    // under strict mutability `Unset | Array[Byte]` would classify as `Any`
++    // even though a bare `Array[Byte]` classifies as `Unscoped`.
++    def memberClassifier(part: Type): ClassSymbol = part.stripCapturing.dealias match
++      case part: OrType =>
++        lubClassifier(memberClassifier(part.tp1), memberClassifier(part.tp2))
++      case part =>
++        if part.isAlwaysPure then defn.NothingClass else part.inheritedClassifier
++    // A union is classified member by member (each array member as `Unscoped`), before
++    // `isArrayUnderStrictMut`, whose `classSymbol` would join the members: that join
++    // fails an assertion when they share no dominating class (an opaque `Unset` bounded
++    // by `Matchable & caps.Pure` beside an enum). A capture set on the union is looked
++    // through: the classifier is of the members.
++    tp.stripCapturing.dealias match
++      case tp: OrType if config.Proscala.enabled(config.Proscala.UnionCaptures) =>
++        lubClassifier(memberClassifier(tp.tp1), memberClassifier(tp.tp2))
++      case _ =>
++        if tp.isArrayUnderStrictMut then defn.Caps_Unscoped
++        else tp.classSymbols.map(_.classifier).foldLeft(defn.AnyClass)(leastClassifier)
+ 
+   /** The classifiers of all terminal capabilities in the span capture set of `tp` */
+   def embeddedLocalCaps(using Context): List[Capability] =
+diff --git a/compiler/src/dotty/tools/dotc/cc/CapturingType.scala b/compiler/src/dotty/tools/dotc/cc/CapturingType.scala
+index 00f672c50effda3060980a1b443f8f48e3b7ff8a..88d17debfe6b7fcd3125e75efdbccd70e98f77cb 100644
+--- a/compiler/src/dotty/tools/dotc/cc/CapturingType.scala
++++ b/compiler/src/dotty/tools/dotc/cc/CapturingType.scala
+@@ -32,9 +32,26 @@ object CapturingType:
+    *  An outer type capturing type A can be fused with an inner capturing type B if their
+    *  boxing status is the same or if A is boxed.
+    */
++  /** Does some member of the dealiased union structure of `tp` derive from a
++   *  capability trait? Unlike `derivesFromCapability`, which holds for a union
++   *  only if all members are capabilities, this also holds if just one member
++   *  is. An empty capture set is information-bearing on such a union: without
++   *  it, capability members would re-acquire implied capture sets at each
++   *  occurrence of the union. E.g. under strict mutability, dropping the `{}`
++   *  of `(Unset | Array[Byte])^{}` (as arises from normalizing
++   *  `Unset | Array[Byte]^{}`) would give the union a fresh `{any.rd}` per
++   *  occurrence, so that two mentions of the same alias never match.
++   */
++  private def hasCapabilityPart(tp: Type)(using Context): Boolean = tp.dealias match
++    case tp: OrType => hasCapabilityPart(tp.tp1) || hasCapabilityPart(tp.tp2)
++    case tp => tp.derivesFromCapability
++
+   def apply(parent: Type, refs: CaptureSet, boxed: Boolean = false)(using Context): Type =
+     assert(!boxed || !parent.derivesFromCapSet)
+-    if refs.isAlwaysEmpty && !parent.isAny && !refs.keepAlways && !parent.derivesFromCapability then
++    if refs.isAlwaysEmpty && !parent.isAny && !refs.keepAlways
++       && !(if config.Proscala.enabled(config.Proscala.UnionCaptures) then hasCapabilityPart(parent)
++            else parent.derivesFromCapability)
++    then
+       parent
+     else parent match
+       case parent @ CapturingType(parent1, refs1) if refs == CaptureSet.Fluid =>

@@ -43,6 +43,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [aliascap](aliascap/aliascap.md) | Keep root capabilities global in type alias infos | 3.9, 3.10 | bug fix | yes | `-Zalias-captures` |
 | [anonspec](anonspec/anonspec.md) | Treat non-specialized anonymous-class parents as such, not as a crash | 3.10 | bug fix (crash) | yes | always on |
 | [anykindcap](anykindcap/anykindcap.md) | Do not constrain type arguments by an `AnyKind` bound's capture set | 3.10 | bug fix | yes | always on |
+| [assumeseparate](assumeseparate/assumeseparate.md) | Keep an `unsafeAssumeSeparate` operand's own type | 3.10 | bug fix | yes | always on |
 | [blockimport](blockimport/blockimport.md) | Recheck a block's result expression in its statements' context | 3.9, 3.10 | bug fix | yes | always on |
 | [boolunapply](boolunapply/boolunapply.md) | Keep Boolean results of nullary case-class unapplies under capture checking | 3.10 | bug fix | yes | always on |
 | [castbox](castbox/castbox.md) | Box opaque-external type arguments in cast type applications | 3.9 | bug fix | yes | always on |
@@ -51,6 +52,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [dependarg](dependarg/dependarg.md) | Conserve stable argument paths in dependent-application rechecking | 3.9, 3.10 | bug fix | yes | always on |
 | [depset](depset/depset.md) | Add a mutable IdentitySet to optimize variable dependencies in CC | 3.9 | backport (perf) | yes | always on |
 | [dictcaps](dictcaps/dictcaps.md) | Infer the capture set of recursive-implicit dictionary instances | 3.9, 3.10 | bug fix | yes | always on |
+| [exportuses](exportuses/exportuses.md) | Do not recheck the escaping uses of an export forwarder | 3.10 | bug fix | yes | always on |
 | [givencache](givencache/givencache.md) | Keep given aliases cached when capture checking is enabled | 3.9, 3.10 | bug fix (crash) | yes | always on |
 | [givenprefix](givenprefix/givenprefix.md) | Seal package-object prefixes on implicit candidate references | 3.9, 3.10 | bug fix | yes | `-Zgiven-prefixes` |
 | [iarraypure](iarraypure/iarraypure.md) | Treat `IArray` as pure under capture checking | 3.9, 3.10 | bug fix | yes | `-Zpure-iarrays` |
@@ -65,7 +67,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [modulepath](modulepath/modulepath.md) | Give an inline accessor for a module the module's `TermRef` | 3.10 | bug fix | yes | always on |
 | [nullreceiver](nullreceiver/nullreceiver.md) | Widen bottom-typed call receivers to Object in the backend | 3.9 | bug fix (crash) | yes | always on |
 | [permitlazy](permitlazy/permitlazy.md) | Lazy resolution of permitted subclasses in classfile parsing | 3.9 | bug fix | yes | always on |
-| [proxycap](proxycap/proxycap.md) | Infer a closure argument's own captures on its inline proxy | 3.10 | bug fix | yes | always on |
+| [proxycap](proxycap/proxycap.md) | Capture-check inline argument proxies within their parameters' bounds | 3.10 | bug fix | yes | always on |
 | [proxyskolem](proxyskolem/proxyskolem.md) | No skolem-typed inline argument proxies under capture checking | 3.9, 3.10 | bug fix | yes (2: `repro`, `repro2`) | always on |
 | [prunecomplete](prunecomplete/prunecomplete.md) | Do not force completion when filtering prunable inline methods | 3.10 | bug fix (crash) | FIXME | always on |
 | [retainbounds](retainbounds/retainbounds.md) | Sanitize `TypeBounds` in `@retains` arguments to the top capability | 3.9, 3.10 | bug fix | yes | `-Zretains-bounds` |
