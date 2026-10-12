@@ -72,7 +72,9 @@ jobs:
     needs: plan
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: true
+      # Every target runs to the end, so one failure shows them all; publishing
+      # still waits for every build to succeed.
+      fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4

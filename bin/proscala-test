@@ -203,7 +203,13 @@ report() { # report <status> <what> <log>
   case "$1" in
     0)  pass=$((pass + 1)); [ "$verbose" = 0 ] || echo "   ok    $2" ;;
     77) skipn=$((skipn + 1)); echo "   skip  $2: $(sed -n 's/^SKIPPED: //p' "$3" | head -1)" ;;
-    *)  failn=$((failn + 1)); failed+=("$2"); echo "   FAIL  $2"; sed 's/^/         | /' "$3" | tail -25 ;;
+    *)  failn=$((failn + 1)); failed+=("$2"); echo "   FAIL  $2"
+        # the first errors and exceptions (a long stack trace would push them out
+        # of the tail), then the tail
+        if [ "$(wc -l < "$3")" -gt 25 ]; then
+          { grep -m8 -E '^-- |Exception|Error|error:|^Caused by' "$3" || true; } | sed 's/^/         ! /'
+        fi
+        sed 's/^/         | /' "$3" | tail -25 ;;
   esac
 }
 
