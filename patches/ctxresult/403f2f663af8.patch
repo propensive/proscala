@@ -35,12 +35,12 @@ is sound under erasure flattening.
 
 Proscala-Patch: ctxresult
 ---
- .../src/dotty/tools/dotc/cc/CCState.scala     |  9 +++++++++
- .../src/dotty/tools/dotc/cc/Capability.scala  | 12 +++++++++++-
- .../src/dotty/tools/dotc/cc/CaptureSet.scala  |  7 +++++++
- .../dotty/tools/dotc/cc/CheckCaptures.scala   | 19 ++++++++++++++++++-
- .../captures/erased-methods2.scala            |  6 +++---
- 5 files changed, 48 insertions(+), 5 deletions(-)
+ .../src/dotty/tools/dotc/cc/CCState.scala     |  9 ++++
+ .../src/dotty/tools/dotc/cc/Capability.scala  | 49 ++++++++++++++++++-
+ .../src/dotty/tools/dotc/cc/CaptureSet.scala  |  7 +++
+ .../dotty/tools/dotc/cc/CheckCaptures.scala   | 19 ++++++-
+ .../captures/erased-methods2.scala            |  6 +--
+ 5 files changed, 84 insertions(+), 6 deletions(-)
  rename tests/{neg-custom-args => pos-custom-args}/captures/erased-methods2.scala (87%)
 
 diff --git a/compiler/src/dotty/tools/dotc/cc/CCState.scala b/compiler/src/dotty/tools/dotc/cc/CCState.scala
@@ -64,10 +64,20 @@ index 6ee581d76f5f8444fc83a4a4fc5c186e2a53d61b..59e2e4d280bc5773a8523fa863f45148
  
    /** Warnings relating to upper approximations of capture sets with
 diff --git a/compiler/src/dotty/tools/dotc/cc/Capability.scala b/compiler/src/dotty/tools/dotc/cc/Capability.scala
-index 45ac62521accc722ebd180945a908626b0d8919f..7943b319723bc2cf87bec3786cadd9f547703f66 100644
+index 45ac62521accc722ebd180945a908626b0d8919f..4e5cb44dedee5b7fa19e3be98707c22d141e5b27 100644
 --- a/compiler/src/dotty/tools/dotc/cc/Capability.scala
 +++ b/compiler/src/dotty/tools/dotc/cc/Capability.scala
-@@ -233,7 +233,17 @@ object Capabilities:
+@@ -229,13 +229,58 @@ object Capabilities:
+      */
+     def acceptsLevelOf(ref: Capability)(using Context): Boolean =
+       ref.core match
+-        case ResultCap(_) | _: ParamRef => false
++        case ResultCap(_) => false
++        // A parameter of one of the context-function layers of this capability's
++        // owner's result type: erasure flattens those layers' parameters into the
++        // owner's own parameter list, so they are at its level, exactly as the
++        // closures implementing those layers are (see CCState.contextResultClosures).
++        case p: ParamRef => isContextResultParam(p, ccOwner)
          case _ =>
            !ccConfig.useLocalCapLevels
            || CCState.collapseLocalCaps
@@ -85,7 +95,39 @@ index 45ac62521accc722ebd180945a908626b0d8919f..7943b319723bc2cf87bec3786cadd9f5
 +          }
            || classifier.derivesFrom(defn.Caps_Unscoped)
  
++    /** Is `p` bound by one of the context-function layers of `meth`'s result type
++     *  that erasure flattens into `meth`'s parameters (the first
++     *  `ContextFunctionResults.contextResultCount(meth)` of them)? The binder is
++     *  matched by shape, not identity: the checker compares against a copy of the
++     *  result type whose roots have been instantiated, with fresh method types.
++     */
++    private def isContextResultParam(p: ParamRef, meth: Symbol)(using Context): Boolean =
++      // Cheap tests first, and the method's info last: an ordinary parameter (of a
++      // non-contextual method type) is never one of these, and forcing the info of a
++      // method whose own signature is being checked would be a cyclic reference.
++      val contextualBinder = p.binder match
++        case b: MethodType => b.isContextualMethod
++        case _ => false
++      contextualBinder && meth.is(Method) && !meth.isAnonymousFunction
++      && transform.ContextFunctionResults.contextResultCount(meth) > 0
++      && {
++        def sameLayer(mt: MethodType): Boolean = (mt eq p.binder) || (p.binder match
++          case b: MethodType => b.paramNames == mt.paramNames
++          case _ => false)
++        def inChain(tp: Type, n: Int): Boolean =
++          n > 0 && (tp.dealias match
++            case CapturingType(parent, _) => inChain(parent, n)
++            case tp @ defn.RefinedFunctionOf(mt: MethodType) =>
++              sameLayer(mt) || inChain(mt.resType, n - 1)
++            case defn.ContextFunctionType(_, res) => inChain(res, n - 1)
++            case _ => false)
++        inChain(meth.info.finalResultType,
++          transform.ContextFunctionResults.contextResultCount(meth))
++      }
++
      /** Classify this LocalCap as `cls`, provided `isClassified` is still false.
+      *  @param  freeze  Determines future `isClassified` state.
+      */
 diff --git a/compiler/src/dotty/tools/dotc/cc/CaptureSet.scala b/compiler/src/dotty/tools/dotc/cc/CaptureSet.scala
 index 8b42bbe9abe90af96c5ec1beb2d408d605273057..a40efe04d454e0944ba696c714abae3bad0063d0 100644
 --- a/compiler/src/dotty/tools/dotc/cc/CaptureSet.scala
