@@ -179,8 +179,8 @@ new versions once their changes are confirmed identical.
 
 The bounds give the streams different patch sets:
 
-    stream 3.9    37 patches   carries castbox, depset, splicealias, samstateful, staleread, virtualdir, rootclassify, sharedunscoped, classifiermeet
-    stream 3.10   33 patches   adds anonspec, anykindcap, boolunapply, integratemap, modulepath, prunecomplete, unioncaps; drops those nine, and nullreceiver, permitlazy and macroalias (fixed upstream; macroalias still applies to 3.10.0)
+    stream 3.9    36 patches   carries castbox, depset, splicealias, samstateful, staleread, virtualdir
+    stream 3.10   34 patches   adds anonspec, anykindcap, boolunapply, integratemap, modulepath, prunecomplete, unioncaps; drops those six, and nullreceiver, permitlazy and rootclassify (fixed upstream); macroalias applies to 3.10.0 only
 
 (The counts exclude `zflags`.)
 

@@ -46,7 +46,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [blockimport](blockimport/blockimport.md) | Recheck a block's result expression in its statements' context | 3.9, 3.10 | bug fix | yes | always on |
 | [boolunapply](boolunapply/boolunapply.md) | Keep Boolean results of nullary case-class unapplies under capture checking | 3.10 | bug fix | yes | always on |
 | [castbox](castbox/castbox.md) | Box opaque-external type arguments in cast type applications | 3.9 | bug fix | yes | always on |
-| [classifiermeet](classifiermeet/classifiermeet.md) | Accept a declared meet of two unrelated classifiers | 3.9 | feature | yes | always on |
+| [classifiermeet](classifiermeet/classifiermeet.md) | Accept a declared meet of two unrelated classifiers | 3.9, 3.10 | feature | yes | always on |
 | [ctxresult](ctxresult/ctxresult.md) | Context-result closures level-checked at the method's level | 3.9, 3.10 | bug fix | yes | always on |
 | [dependarg](dependarg/dependarg.md) | Conserve stable argument paths in dependent-application rechecking | 3.9, 3.10 | bug fix | yes | always on |
 | [depset](depset/depset.md) | Add a mutable IdentitySet to optimize variable dependencies in CC | 3.9 | backport (perf) | yes | always on |
@@ -74,7 +74,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [samstateful](samstateful/samstateful.md) | Read-only views of constant method-result capture sets | 3.9 | bug fix | yes | always on |
 | [searchdiag](searchdiag/searchdiag.md) | Preserve an `@internal.diagnostic` candidate's errors as the search-failure message | 3.9, 3.10 | feature | yes | `-Zdiagnostic-givens` |
 | [semdiag](semdiag/semdiag.md) | `-Zsemantic-diagnostics`: XML error output with TASTy-encoded types | 3.9, 3.10 | feature | yes | `-Zsemantic-diagnostics` |
-| [sharedunscoped](sharedunscoped/sharedunscoped.md) | A shared, level-exempt classifier: `caps.SharedUnscoped` | 3.9 | feature | yes | always on |
+| [sharedunscoped](sharedunscoped/sharedunscoped.md) | A shared, level-exempt classifier: `caps.SharedUnscoped` | 3.9, 3.10 | feature | yes | always on |
 | [skolemcap](skolemcap/skolemcap.md) | Widen skolems in retains sets to the top capability | 3.9, 3.10 | bug fix | yes | `-Zretains-skolems` |
 | [smap](smap/smap.md) | `-Zinline-source-maps`: JSR-45 SMAP attributes mapping inlined code to its source files | 3.9, 3.10 | feature | yes | `-Zinline-source-maps` |
 | [splicealias](splicealias/splicealias.md) | Give spliced type binders their spliced type as info | 3.9 | bug fix | yes | always on |

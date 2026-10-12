@@ -1,7 +1,7 @@
 # Executable form of README.md, run by bin/proscala-test.
 
 with_feature() {
-  compiles -experimental -Ycc-new -language:experimental.separationChecking -d . mixed.scala
+  compiles -Zretains-skolems -experimental -Ycc-new -language:experimental.separationChecking -d . mixed.scala
 }
 
 # Without this patch the compile crashes with the README's assertion. Stock

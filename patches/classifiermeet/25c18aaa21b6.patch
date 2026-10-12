@@ -1,0 +1,105 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 9 Oct 2026 09:36:45 +0200
+Subject: Accept a declared meet of two unrelated classifiers
+
+`Setup.checkClassifiedInheritance` rejected any class whose base classes
+include two unrelated classifiers, even when another classifier among
+them derives from both. That classifier is their meet, and
+`CaptureOps.classifier` (the `leastClassifier` fold over the base
+classes) already picks it as the least classifier; the fold collapses
+to `Nothing` only when no such meet exists. The check now accepts an
+unrelated pair when a declared meet is present, so a capability can be
+classified by, say, a `Durable` classifier and a level-exempt one at
+once.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Proscala-Patch: classifiermeet
+---
+ compiler/src/dotty/tools/dotc/cc/Setup.scala  | 11 +++++++--
+ .../captures/classifiermeet.scala             | 14 +++++++++++
+ .../captures/classifiermeet.scala             | 24 +++++++++++++++++++
+ 3 files changed, 47 insertions(+), 2 deletions(-)
+ create mode 100644 tests/neg-custom-args/captures/classifiermeet.scala
+ create mode 100644 tests/pos-custom-args/captures/classifiermeet.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/Setup.scala b/compiler/src/dotty/tools/dotc/cc/Setup.scala
+index e43ebeaabce5401240f96092aff9bb799dac25a5..4987d2f1445fffb29950a7e6851a7e7f7c516f96 100644
+--- a/compiler/src/dotty/tools/dotc/cc/Setup.scala
++++ b/compiler/src/dotty/tools/dotc/cc/Setup.scala
+@@ -1098,14 +1098,21 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
+   // ------ Checks to run at Setup ----------------------------------------
+ 
+   private def checkClassifiedInheritance(cls: ClassSymbol)(using Context): Unit =
++    val classifiers = cls.baseClasses.filter(_.isClassifiedCapabilityClass).distinct
++
++    // Two unrelated classifiers are acceptable when another classifier among the base classes
++    // derives from both: a declared meet, which `classifier` then picks as the least classifier.
++    def met(c: ClassSymbol, c1: ClassSymbol): Boolean =
++      classifiers.exists(m => m.derivesFrom(c) && m.derivesFrom(c1))
++
+     def recur(cs: List[ClassSymbol]): Unit = cs match
+       case c :: cs1 =>
+         for c1 <- cs1 do
+-          if !c.derivesFrom(c1) && !c1.derivesFrom(c) then
++          if !c.derivesFrom(c1) && !c1.derivesFrom(c) && !met(c, c1) then
+             report.error(em"$cls inherits two unrelated classifier traits: $c and $c1", cls.srcPos)
+         recur(cs1)
+       case Nil =>
+-    recur(cls.baseClasses.filter(_.isClassifiedCapabilityClass).distinct)
++    recur(classifiers)
+ 
+   // ------ Checks to run after main capture checking --------------------------
+ 
+diff --git a/tests/neg-custom-args/captures/classifiermeet.scala b/tests/neg-custom-args/captures/classifiermeet.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..eccef83fc664d5bc8cb056f6888837e70b20024f
+--- /dev/null
++++ b/tests/neg-custom-args/captures/classifiermeet.scala
+@@ -0,0 +1,14 @@
++import language.experimental.captureChecking
++import language.experimental.separationChecking
++
++// Without a declared meet, two unrelated classifiers are still rejected.
++trait Durable extends caps.SharedCapability, caps.Classifier
++trait Scoped extends caps.SharedCapability, caps.Classifier
++
++trait Sink extends Durable, Scoped: // error
++  def log(message: String): Unit
++
++// A meet that derives from only one of the pair does not reconcile the other.
++trait Half extends Durable, caps.Classifier
++trait Mixed extends Half, Scoped: // error
++  def run(): Unit
+diff --git a/tests/pos-custom-args/captures/classifiermeet.scala b/tests/pos-custom-args/captures/classifiermeet.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..453c4009b5588059f931f7ef3eaf92cee9499a71
+--- /dev/null
++++ b/tests/pos-custom-args/captures/classifiermeet.scala
+@@ -0,0 +1,24 @@
++import language.experimental.captureChecking
++import language.experimental.separationChecking
++
++// A declared classifier meet: `Both` derives from two unrelated classifiers, so it is the least
++// classifier of anything extending it, and the pairwise inheritance check must accept it.
++trait Durable extends caps.SharedCapability, caps.Classifier
++trait Scoped extends caps.SharedCapability, caps.Classifier
++trait Both extends Durable, Scoped, caps.Classifier
++
++trait Sink extends Both:
++  def log(message: String): Unit
++
++trait Monitor extends Durable:
++  def cancelled: Boolean
++
++class Loop(iteration: () ->{caps.any.only[Durable]} Unit) extends Durable:
++  def run(): Unit = iteration()
++
++def task(body: () ->{caps.any.only[Durable]} Unit): Unit = body()
++
++def use(monitor: Monitor^, sink: Sink^): Unit =
++  task { () => if monitor.cancelled then () }
++  task { () => sink.log("x"); monitor.cancelled }
++  Loop(() => { sink.log("tick"); if monitor.cancelled then () }).run()

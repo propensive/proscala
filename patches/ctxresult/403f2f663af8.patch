@@ -36,11 +36,11 @@ is sound under erasure flattening.
 Proscala-Patch: ctxresult
 ---
  .../src/dotty/tools/dotc/cc/CCState.scala     |  9 ++++
- .../src/dotty/tools/dotc/cc/Capability.scala  | 49 ++++++++++++++++++-
+ .../src/dotty/tools/dotc/cc/Capability.scala  | 52 ++++++++++++++++++-
  .../src/dotty/tools/dotc/cc/CaptureSet.scala  |  7 +++
  .../dotty/tools/dotc/cc/CheckCaptures.scala   | 19 ++++++-
  .../captures/erased-methods2.scala            |  6 +--
- 5 files changed, 84 insertions(+), 6 deletions(-)
+ 5 files changed, 87 insertions(+), 6 deletions(-)
  rename tests/{neg-custom-args => pos-custom-args}/captures/erased-methods2.scala (87%)
 
 diff --git a/compiler/src/dotty/tools/dotc/cc/CCState.scala b/compiler/src/dotty/tools/dotc/cc/CCState.scala
@@ -64,10 +64,10 @@ index 6ee581d76f5f8444fc83a4a4fc5c186e2a53d61b..59e2e4d280bc5773a8523fa863f45148
  
    /** Warnings relating to upper approximations of capture sets with
 diff --git a/compiler/src/dotty/tools/dotc/cc/Capability.scala b/compiler/src/dotty/tools/dotc/cc/Capability.scala
-index 45ac62521accc722ebd180945a908626b0d8919f..4e5cb44dedee5b7fa19e3be98707c22d141e5b27 100644
+index 45ac62521accc722ebd180945a908626b0d8919f..6c3f0448ab99d75ba96ea42612258671fef72d97 100644
 --- a/compiler/src/dotty/tools/dotc/cc/Capability.scala
 +++ b/compiler/src/dotty/tools/dotc/cc/Capability.scala
-@@ -229,13 +229,58 @@ object Capabilities:
+@@ -229,13 +229,61 @@ object Capabilities:
       */
      def acceptsLevelOf(ref: Capability)(using Context): Boolean =
        ref.core match
@@ -103,12 +103,15 @@ index 45ac62521accc722ebd180945a908626b0d8919f..4e5cb44dedee5b7fa19e3be98707c22d
 +     */
 +    private def isContextResultParam(p: ParamRef, meth: Symbol)(using Context): Boolean =
 +      // Cheap tests first, and the method's info last: an ordinary parameter (of a
-+      // non-contextual method type) is never one of these, and forcing the info of a
-+      // method whose own signature is being checked would be a cyclic reference.
++      // non-contextual method type) is never one of these, and forcing the info (or
++      // the annotations) of a method whose own signature is being checked would be a
++      // cyclic reference, as for a given with a `using` clause whose result type
++      // mentions its parameters.
 +      val contextualBinder = p.binder match
 +        case b: MethodType => b.isContextualMethod
 +        case _ => false
 +      contextualBinder && meth.is(Method) && !meth.isAnonymousFunction
++      && !meth.denot.isCompleting
 +      && transform.ContextFunctionResults.contextResultCount(meth) > 0
 +      && {
 +        def sameLayer(mt: MethodType): Boolean = (mt eq p.binder) || (p.binder match
