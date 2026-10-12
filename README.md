@@ -22,11 +22,14 @@ Proscala has its own version number, independent of the Scala it patches: a
 Proscala version is a set of features, each adapted to whichever Scala it is
 applied to (or left out, where that Scala already behaves as the feature
 promises). Each release is published for every Scala release from 3.9.0 on, and
-for a snapshot of upstream `main`, under versions that name both:
+for a snapshot of each upstream branch developing an unreleased version
+(`main`, `lts-3.9`, `release-3.10.1`, …), under versions that name both —
+`3.10.0-pro-1.0.0`, or `3.10.2-88be2f56a1103b0e-pro-1.0.0` for a snapshot of the
+branch developing 3.10.2, at that commit:
 
 ```scala
 scalaOrganization := "dev.propensive"
-scalaVersion      := "3.10.0-proscala-1.0.0"   // Proscala 1.0.0 on Scala 3.10.0
+scalaVersion      := "3.10.0-pro-1.0.0"   // Proscala 1.0.0 on Scala 3.10.0
 // and a resolver for the release's Maven repository: see Releases
 ```
 
@@ -118,7 +121,8 @@ Releases are published automatically to
 there. A release is a tag `v<x.y.z>` on `main`, pushed by
 `bin/proscala-release <x.y.z>`, which records the exact upstream commits it is
 for. A GitHub Actions workflow then builds every target — each Scala release
-from 3.9.0 on, and upstream `main` as it was when the tag was cut — and, only
+from 3.9.0 on, and each upstream branch developing an unreleased version as it
+was when the tag was cut — and, only
 once all have built, attaches each target's `proscala-<version>.tar.gz` (a
 top-level `lib/` of everything Proscala builds plus the Scala.js / scala-wasm
 runtime), each jar under its Maven name, and `proscala-<version>-maven.zip`, a
@@ -129,7 +133,7 @@ resolver, that repository lets a build use the fork in place of Scala:
 val proscala = file("/path/to/proscala-repo")   // the unzipped proscala-<version>-maven.zip
 resolvers         += "proscala" at proscala.toURI.toString
 scalaOrganization := "dev.propensive"
-scalaVersion      := "3.10.0-proscala-1.0.0"
+scalaVersion      := "3.10.0-pro-1.0.0"
 // sbt also wants these two, which Proscala does not provide as it expects:
 excludeDependencies += "dev.propensive" % "scaladoc_3"   // no scaladoc is built
 scalaCompilerBridgeBinaryJar := Some(proscala / s"dev/propensive/scala3-sbt-bridge/${scalaVersion.value}/scala3-sbt-bridge-${scalaVersion.value}.jar")

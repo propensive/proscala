@@ -6,7 +6,7 @@
 # POM and sources jar per artifact, with checksums), under the `dev.propensive`
 # group with the same artifact names as the mainline Scala releases —
 # `scala3-compiler_3`, `scala-library`, `tasty-core_3` and so on — at version
-# <scala version>-proscala-<x.y.z> (see AGENTS.md, "Releases"). Unpacked and
+# <scala version>-pro-<x.y.z> (see AGENTS.md, "Releases"). Unpacked and
 # named as a resolver, that repository lets sbt's
 # `scalaOrganization := "dev.propensive"` swap the fork in wholesale.
 #

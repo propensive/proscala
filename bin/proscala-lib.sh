@@ -394,9 +394,15 @@ default_targets() {
 
 # --- releases ----------------------------------------------------------------------
 # A Proscala release (tag v<x.y.z>) is built for every scala/scala3 final release
-# 3.<y>.<z> with y >= 9, and for a snapshot of scala/scala3 main. Each build's
-# version is <scala version>-proscala-<x.y.z>: the upstream it patches first, so
-# sbt's scalaVersion still reads as a Scala version.
+# 3.<y>.<z> with y >= 9, and for a snapshot of every upstream branch developing a
+# version not yet released: main, lts-3.<y> and release-3.<y>.<z>, from 3.9 on.
+# Each build's version puts the upstream first, so that sbt reads it as Scala 3
+# (sbt needs a full 3.x.y at the front, or it fetches Scala 2):
+#
+#   a release        3.10.0-pro-1.0.0
+#   a snapshot       3.10.2-88be2f56a1103b0e-pro-1.0.0   (developed version, then
+#                    PROSCALA_HASH_LENGTH hex digits of the commit)
+PROSCALA_HASH_LENGTH="${PROSCALA_HASH_LENGTH:-16}"
 
 # sbt_val <name> <text> — the value of `val <name> = …` in sbt build sources: a
 # string ("3.10.0"), an interpolation (s"$developedVersion-RC1") or a bare
@@ -411,29 +417,54 @@ sbt_val() {
   printf '%s' "$v"
 }
 
+# sbt_versions <commit> — the `val … =` lines of a scala/scala3 commit's sbt build
+sbt_versions() { g grep -h -E 'val [A-Za-z]+ *=' "$1" -- project/ 2>/dev/null || true; }
+
 # upstream_version <commit> — the Scala version a scala/scala3 commit builds as
 upstream_version() {
   local v
-  v="$(sbt_val baseVersion "$(g grep -h -E 'val [A-Za-z]+ *=' "$1" -- project/ 2>/dev/null || true)")"
+  v="$(sbt_val baseVersion "$(sbt_versions "$1")")"
   [ -n "$v" ] || die "cannot read the Scala version of scala/scala3 $1"
   printf '%s\n' "$v"
 }
 
+# developed_version <commit> — the version a scala/scala3 commit is working towards
+developed_version() {
+  local v
+  v="$(sbt_val developedVersion "$(sbt_versions "$1")")"
+  [[ "$v" =~ ^3\.[0-9]+\.[0-9]+$ ]] || die "cannot read the developed version of scala/scala3 $1 (got '$v')"
+  printf '%s\n' "$v"
+}
+
 # release_targets — "<spec> <commit> <scala version>" for every target a release is
-# built for: each final release tag 3.<y>.<z>, y >= 9, then the head of main
+# built for: each final release tag 3.<y>.<z>, y >= 9; then the head of each of
+# main, lts-3.<y> and release-3.<y>.<z> (y >= 9) whose developed version has no
+# release tag yet, as <developed version>-<hash>
 release_targets() {
-  local tag sha main
+  local refs tag sha b dev
+  local -A released=() seen=()
+  refs="$(git ls-remote --tags --heads --refs "$PROSCALA_SCALA3_URL" 2>/dev/null)" \
+    || die "cannot list scala/scala3's tags and branches"
   while read -r tag; do
+    released[$tag]=1
     sha="$(resolve_target "$tag")"
+    seen[$sha]=1
     echo "$tag $sha $tag"
-  done < <(git ls-remote --tags --refs "$PROSCALA_SCALA3_URL" 2>/dev/null | awk '{ print $2 }' \
-             | sed 's#refs/tags/##' | { grep -E '^3\.(9|[1-9][0-9])\.[0-9]+$' || true; } | sort -V)
-  main="$(resolve_target main)"
-  echo "main $main $(upstream_version "$main")-bin-$(g rev-parse --short=7 "$main")"
+  done < <(awk '$2 ~ /^refs\/tags\// { sub(/^refs\/tags\//, "", $2); print $2 }' <<<"$refs" \
+             | { grep -E '^3\.(9|[1-9][0-9])\.[0-9]+$' || true; } | sort -V)
+  while read -r b; do
+    sha="$(resolve_target "$b")"
+    [ -z "${seen[$sha]:-}" ] || continue
+    dev="$(developed_version "$sha")"
+    [ -z "${released[$dev]:-}" ] || continue
+    seen[$sha]=1
+    echo "$b $sha $dev-$(g rev-parse --short="$PROSCALA_HASH_LENGTH" "$sha")"
+  done < <(awk '$2 ~ /^refs\/heads\// { sub(/^refs\/heads\//, "", $2); print $2 }' <<<"$refs" \
+             | { grep -E '^(main|lts-3\.(9|[1-9][0-9])|release-3\.(9|[1-9][0-9])\.[0-9]+)$' || true; } | sort -V)
 }
 
 # artifact_version <scala version> <proscala version>
-artifact_version() { printf '%s-proscala-%s\n' "$1" "$2"; }
+artifact_version() { printf '%s-pro-%s\n' "$1" "$2"; }
 
 # release_tag_targets <tag> — the targets a release tag was cut for, from its
 # annotation: "<spec> <commit> <artifact version>" lines
