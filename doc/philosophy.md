@@ -2,7 +2,7 @@
 
 Proscala is not a new language. It is Scala, built from the upstream compiler
 sources with a bounded, published set of patches — each one recorded in
-[features/3.9](../features/3.9) and [features/3.10](../features/3.10),
+[patches/3.9/series](../patches/3.9/series) and [patches/3.10/series](../patches/3.10/series),
 documented under [doc/](README.md), and reproducible on its own. Full support
 for the existing language is an invariant, not a goal: every change carried
 here must leave every existing Scala program compiling, with unchanged

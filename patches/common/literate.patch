@@ -1,0 +1,366 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 28 Aug 2026 12:45:09 +0200
+Subject: Re-type literals through a Literate instance in scope
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Squashed from 7 commits, oldest first:
+
+* Literate: re-type literals through user-provided instances (prototype)
+
+A scala.Literate[From] instance in scope grants permission for a literal
+of type From to be re-typed as the instance's Result — by convention a
+refinement carrying the literal's singleton type, e.g.
+Text { type Original = "foo" } — wherever the expected type does not
+already accept the literal as it is. String literals are rewritten at
+typedLiteral, Int/Double literals at typedNumber's fallback (the
+expected-type-driven FromDigits cases take precedence). The rewrite is
+speculative with full rollback, and is suppressed in patterns, type
+positions, annotations, inline-val rhs, inline expansion, and during
+overload-resolution argument pre-typing, where arguments are ranked
+against a wildcard. With no instance in scope, behaviour is unchanged.
+
+convert is deliberately not a trait member (a deferred inline method
+cannot be invoked through the trait type): instances are named classes
+with a concrete inline convert, resolved on the instance's own type, so
+the conversion erases to nothing.
+
+Developed with LLM assistance (Claude).
+
+* Literate: convert on member selection unconditionally
+
+With an instance in scope, the instance's API is the literal's API: a
+selection on a literal always converts, so a partial String method
+('foo'.charAt(5)) is a compile error rather than a latent runtime
+exception; an ascription (('foo': String).charAt(0)) remains the
+explicit way to the underlying API. WildcardSelectionProto — how
+singleton types (type Topic = 42, val x: 'foo') type their path — names
+no member and keeps the literal.
+
+Developed with LLM assistance (Claude).
+
+* Literate: force instance type variables before committing a rewrite
+
+A polymorphic given (given literate: [str <: String & Singleton] =>
+TextLiterate[str]) leaves fresh type variables in the speculatively
+typed conversion tree; nothing on this re-entrant path interpolates
+them, so they escaped into committed trees — surfacing as 'Required:
+str' errors in inline method bodies and 'error when pickling type str'
+elsewhere. Force both the instance's and the conversion's types with
+ForceDegree.all (the argument constrains the variable to the literal's
+singleton), and refuse the rewrite if anything remains undefined.
+
+Developed with LLM assistance (Claude).
+
+* Literate: exempt synthesized members from literal rewriting
+
+Case-class and enum toString bodies are literals with inferred result
+types; converting them broke the Any.toString override. Skip when the
+owner is Synthetic, except anonymous functions, whose bodies are user
+code.
+
+Developed with LLM assistance (Claude).
+
+* Literate: do not rewrite literals in quote patterns; guard against completion cycles
+
+Two fixes found by the Soundness on-state trial.
+
+A literal in a quote pattern is matched structurally against the literal
+a macro's caller wrote. Converting it made the pattern expect the
+instance's target type, so it silently stopped matching: telekinesis's
+'{("", $status: Http.Status)} case fell through to its generic
+header case, and every named-argument HTTP response failed to compile
+with a misleading message. This is the first defect that changes
+behaviour rather than merely rejecting code. Gate on
+Mode.isQuotedPattern; a 12-line reproduction is in the spike.
+
+Searching for an instance forces whatever the search touches, including
+the root import that supplies it. For a literal in an annotation on a
+symbol of the importing unit, that cycles. Declining a rewrite is always
+sound, so a TypeError during the search now leaves the literal alone.
+Annotation arguments are also suppressed directly in ProtoTypes.typedArg,
+which retracts Mode.InAnnotation and so defeated the mode gate.
+
+Developed with LLM assistance (Claude).
+
+* Enable literal re-typing with -Z:literate-literals
+
+Without the flag, upstream's code runs: a literal keeps its ordinary type
+whether or not a Literate instance is in scope.
+
+* Ship Literate in the supplementary proscala-library jar
+
+The standard library additions of the fork live under library-proscala/src and
+are built into their own jar (proscala-library, plus a Scala.js variant), so the
+scala-library and scalajs-scalalib jars are byte-identical to what upstream
+builds from the same tree. The compiler looks the class up by name and runs
+without it.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: literate
+---
+ .../dotty/tools/dotc/core/Definitions.scala   |   6 ++
+ .../src/dotty/tools/dotc/core/StdNames.scala  |   1 +
+ .../dotty/tools/dotc/typer/ProtoTypes.scala   |  19 +++-
+ .../src/dotty/tools/dotc/typer/ReTyper.scala  |   4 +
+ .../src/dotty/tools/dotc/typer/Typer.scala    | 102 +++++++++++++++++-
+ library-proscala/src/scala/Literate.scala     |  28 +++++
+ 6 files changed, 154 insertions(+), 6 deletions(-)
+ create mode 100644 library-proscala/src/scala/Literate.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/core/Definitions.scala b/compiler/src/dotty/tools/dotc/core/Definitions.scala
+index 07cedd20c7baaf11c528d3e3023a3e279fa1d451..568d1fd9c91c350c1a7437ea4967c8f3f5420c0e 100644
+--- a/compiler/src/dotty/tools/dotc/core/Definitions.scala
++++ b/compiler/src/dotty/tools/dotc/core/Definitions.scala
+@@ -1014,6 +1014,12 @@ class Definitions {
+       val methodName = if CanEqualClass.name == tpnme.Eql then nme.eqlAny else nme.canEqualAny
+       CanEqualClass.companionModule.requiredMethod(methodName)
+ 
++  // Looked up leniently, like Spreadable: a literal consults it only when an
++  // instance can possibly be in scope, so a library without `scala.Literate`
++  // never searches. `convert` is deliberately not a member of the trait (a
++  // deferred inline method cannot be invoked through it); it is resolved by
++  // name on the instance's own type.
++  @tu lazy val LiterateClass: Symbol = getClassIfDefined("scala.Literate")
+   @tu lazy val CanThrowClass: ClassSymbol = requiredClass("scala.CanThrow")
+   @tu lazy val throwsAlias: Symbol = ScalaRuntimePackageVal.requiredType(tpnme.THROWS)
+ 
+diff --git a/compiler/src/dotty/tools/dotc/core/StdNames.scala b/compiler/src/dotty/tools/dotc/core/StdNames.scala
+index 8ed0a38d214ca5df9bfe112f1f54d66ca366c86d..da55bbb6f87d08e0ec0ff43cf5a16bb142170a22 100644
+--- a/compiler/src/dotty/tools/dotc/core/StdNames.scala
++++ b/compiler/src/dotty/tools/dotc/core/StdNames.scala
+@@ -463,6 +463,7 @@ object StdNames {
+     val conforms_ : N           = "$conforms"
+     val consume: N              = "consume"
+     val contents: N             = "contents"
++    val convert: N              = "convert"
+     val copy: N                 = "copy"
+     val create: N               = "create"
+     val currentMirror: N        = "currentMirror"
+diff --git a/compiler/src/dotty/tools/dotc/typer/ProtoTypes.scala b/compiler/src/dotty/tools/dotc/typer/ProtoTypes.scala
+index 81d203462aa02af1230a5cc273fd6046bcac8e46..e9ffa67e979175f1595000443ac612de7cce4726 100644
+--- a/compiler/src/dotty/tools/dotc/typer/ProtoTypes.scala
++++ b/compiler/src/dotty/tools/dotc/typer/ProtoTypes.scala
+@@ -501,8 +501,13 @@ object ProtoTypes {
+         inContext(protoCtx.withUncommittedTyperState) {
+           val protoTyperState = ctx.typerState
+           val oldConstraint = protoTyperState.constraint
++          // Literals are not rewritten through `Literate` instances here: this
++          // typing is against a wildcard, only to rank overload alternatives.
++          // The cached argument is adapted to the selected alternative's real
++          // formal afterwards, which is where the expected type can speak.
++          val literateCtx = ctx.fresh.setProperty(Typer.LiterateConversion, ())
+           val args1 = args.mapWithIndexConserve((arg, idx) =>
+-            cacheTypedArg(arg, arg => typer.typed(norm(arg, idx)), force = false, NoType))
++            cacheTypedArg(arg, arg => typer.typed(norm(arg, idx))(using literateCtx), force = false, NoType))
+           val newConstraint = protoTyperState.constraint
+ 
+           if !args1.exists(arg => isUndefined(arg.tpe)) then state.typedArgs = args1
+@@ -543,9 +548,19 @@ object ProtoTypes {
+      */
+     def typedArg(arg: untpd.Tree, formal: Type)(using Context): Tree = {
+       val wideFormal = formal.widenExpr
+-      val argCtx =
++      val argCtx0 =
+         if wideFormal eq formal then ctx.retractMode(Mode.InAnnotation)
+         else ctx.retractMode(Mode.InAnnotation).withNotNullInfos(ctx.notNullInfos.retractMutables)
++      // An annotation's arguments are typed with `InAnnotation` retracted, so
++      // that mode cannot gate anything here. Literals in them must still keep
++      // their ordinary types: they are read back as constants (`@targetName`,
++      // `@implicitNotFound`), and searching for a `Literate` instance while
++      // the annotated symbol is completing can even cycle through a root
++      // import.
++      val argCtx =
++        if ctx.mode.is(Mode.InAnnotation)
++        then argCtx0.fresh.setProperty(Typer.LiterateConversion, ())
++        else argCtx0
+       val locked = ctx.typerState.ownedVars
+       val targ = cacheTypedArg(arg,
+         typer.typedUnadapted(_, wideFormal, locked)(using argCtx),
+diff --git a/compiler/src/dotty/tools/dotc/typer/ReTyper.scala b/compiler/src/dotty/tools/dotc/typer/ReTyper.scala
+index cd416c460241c22e9d0be04aef81fad8656b934f..fca31b8bc4bcd716431f9333f71442c121911afc 100644
+--- a/compiler/src/dotty/tools/dotc/typer/ReTyper.scala
++++ b/compiler/src/dotty/tools/dotc/typer/ReTyper.scala
+@@ -45,6 +45,10 @@ class ReTyper(nestingLevel: Int = 0) extends Typer(nestingLevel) with ReChecking
+   override def typedLiteral(tree: untpd.Literal)(implicit ctc: Context): Tree =
+     promote(tree)
+ 
++  // Literals in already-typed trees have their meaning; rechecking never
++  // re-routes them through a Literate instance.
++  override def literated(tree: Tree, pt: Type)(using Context): Tree = tree
++
+   override def typedThis(tree: untpd.This)(using Context): Tree =
+     promote(tree)
+ 
+diff --git a/compiler/src/dotty/tools/dotc/typer/Typer.scala b/compiler/src/dotty/tools/dotc/typer/Typer.scala
+index d85b5bcc1bc42657f64ac4c7d4a0313caef0e99a..01fd73dcdc70f51ff152c0be17a4a4bacfdeb817 100644
+--- a/compiler/src/dotty/tools/dotc/typer/Typer.scala
++++ b/compiler/src/dotty/tools/dotc/typer/Typer.scala
+@@ -106,6 +106,14 @@ object Typer {
+    */
+   private val DroppedEmptyArgs = new Property.Key[Unit]
+ 
++  /** A context property suppressing rewrites of literals through `Literate`
++   *  instances. Set while such a rewrite is in progress (literals in the
++   *  instance's inline body, or in the implicit search, are not themselves
++   *  rewritten), and during overload-resolution argument pre-typing, where
++   *  arguments are typed against a wildcard only to rank alternatives.
++   */
++  private[typer] val LiterateConversion = new Property.Key[Unit]
++
+   /** An attachment that indicates a failed conversion or extension method
+    *  search was tried on a tree. This will in some cases be reported in error messages
+    */
+@@ -1273,10 +1281,13 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
+             return typed(app, pt)
+           case _ =>
+         }
+-      // Otherwise convert to Int or Double according to digits format
++      // Otherwise convert to Int or Double according to digits format. Either
++      // default may in turn be re-typed through a `Literate` instance; the
++      // expected-type-driven `FromDigits` cases above have already returned,
++      // so this engages only where they do not.
+       tree.kind match {
+-        case Whole(radix) => lit(intFromDigits(digits, radix))
+-        case _ => lit(doubleFromDigits(digits))
++        case Whole(radix) => literated(lit(intFromDigits(digits, radix)), pt)
++        case _ => literated(lit(doubleFromDigits(digits)), pt)
+       }
+     }
+     catch {
+@@ -1295,6 +1306,89 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
+     else tree1
+   }
+ 
++  /** If `tree` is a literal, its author may have granted permission for it to
++   *  be re-typed through a `scala.Literate` instance in scope, keyed on the
++   *  literal's own type. The rewrite happens only where the literal's ordinary
++   *  type is not already required: an expected type the literal satisfies —
++   *  `String` parameters, singleton bounds, annotation arguments, patterns —
++   *  leaves the literal untouched, so code not using the instance is
++   *  unaffected. Overridden to the identity in ReTyper.
++   */
++  def literated(tree: Tree, pt: Type)(using Context): Tree = tree match
++    case lit: Literal if literateTags.contains(lit.const.tag) => literateConvert(lit, pt)
++    case _ => tree
++
++  private val literateTags =
++    Set(Constants.StringTag, Constants.IntTag, Constants.LongTag,
++        Constants.DoubleTag, Constants.FloatTag, Constants.CharTag)
++
++  private def literateConvert(lit: Literal, pt: Type)(using Context): Tree =
++    // Does the expected type already accept the literal as it is? Concrete
++    // expected types are accepted by a (frozen) conformance test — a `String`
++    // parameter or a singleton bound keeps its literal. An underdetermined
++    // expected type — a wildcard, or a not yet instantiated type variable —
++    // accepts nothing yet, and is exactly where the rewrite is wanted. A
++    // selection never accepts: with an instance in scope, the instance's
++    // API *is* the literal's API, so a member the target type does not have
++    // (`"foo".charAt`) is an error rather than a silent partial `String`
++    // method; `("foo": String).charAt(0)` remains the explicit way through.
++    // A WildcardSelectionProto names no member — it is how singleton types
++    // (`type Topic = 42`, `val x: "foo"`) type their path — and must keep
++    // the literal.
++    def accepted: Boolean = pt match
++      case pt: WildcardSelectionProto => true
++      case pt: SelectionProto => false
++      case _: WildcardType => false
++      case pt: ProtoType => true
++      case pt => isFullyDefined(pt, ForceDegree.none) && (lit.tpe frozen_<:< pt)
++    if !config.Proscala.enabled(config.Proscala.LiterateLiterals)
++       || !defn.LiterateClass.exists
++       || !ctx.mode.is(Mode.ImplicitsEnabled)
++       || ctx.mode.is(Mode.Pattern) || ctx.mode.is(Mode.Type) || ctx.mode.is(Mode.InAnnotation)
++       // A literal in a quote pattern is matched structurally against the
++       // literal a macro's caller wrote; re-typing it would make the pattern
++       // expect the instance's target type and silently stop matching.
++       || ctx.mode.isQuotedPattern
++       || ctx.owner.isInlineVal
++       // Synthesized members (a case class's `toString`, an enum case's tag)
++       // implement platform contracts with inferred result types; their
++       // literals keep their ordinary meaning. Anonymous functions are also
++       // Synthetic, but their bodies are user code.
++       || ctx.owner.is(Synthetic) && !ctx.owner.isAnonymousFunction
++       || tpd.enclosingInlineds.nonEmpty
++       || ctx.property(LiterateConversion).isDefined
++       || accepted
++    then lit
++    else
++      // Speculative, like a spreadable splice: nothing the search or the
++      // conversion typing does may leak unless the rewrite is committed.
++      val nestedCtx = ctx.fresh.setNewTyperState().setProperty(LiterateConversion, ())
++      // Searching for an instance forces whatever the search touches — including
++      // the root import that supplies it. Where that is already being completed
++      // (a literal in an annotation on a symbol of the importing unit), the
++      // search cycles; declining the rewrite is always sound, so a completion
++      // error leaves the literal as it is.
++      try inContext(nestedCtx):
++        val instance = inferImplicitArg(defn.LiterateClass.typeRef.appliedTo(lit.tpe), lit.span)
++        if instance.tpe.isError || instance.tpe.isInstanceOf[SearchFailureType] then lit
++        else
++          val app = untpd.Apply(
++            untpd.Select(untpd.TypedSplice(instance), nme.convert).withSpan(lit.span),
++            untpd.TypedSplice(lit) :: Nil).withSpan(lit.span)
++          val converted = typed(app, pt)
++          // A polymorphic instance leaves fresh type variables in the tree
++          // (`literate[str'].convert(lit)`); force them to their solutions —
++          // the argument constrains them to the literal's singleton — and
++          // refuse the rewrite rather than commit an escaping variable.
++          if nestedCtx.reporter.hasErrors
++             || !isFullyDefined(instance.tpe, ForceDegree.all)
++             || !isFullyDefined(converted.tpe, ForceDegree.all)
++          then lit
++          else
++            nestedCtx.typerState.commit()
++            converted
++      catch case _: TypeError => lit
++
+   def typedNew(tree: untpd.New, pt: Type)(using Context): Tree =
+     tree.tpt match {
+       case templ: untpd.Template =>
+@@ -3980,7 +4074,7 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
+             if (ctx.mode is Mode.Pattern) typedUnApply(tree, pt) else typedApply(tree, pt)
+           case tree: untpd.This => typedThis(tree)
+           case tree: untpd.Number => typedNumber(tree, pt)
+-          case tree: untpd.Literal => typedLiteral(tree)
++          case tree: untpd.Literal => literated(typedLiteral(tree), pt)
+           case tree: untpd.New => typedNew(tree, pt)
+           case tree: untpd.Typed => typedTyped(tree, pt)
+           case tree: untpd.NamedArg => typedNamedArg(tree, pt)
+diff --git a/library-proscala/src/scala/Literate.scala b/library-proscala/src/scala/Literate.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..faf1a431a84af82acf14107c863c58e9c8eff42e
+--- /dev/null
++++ b/library-proscala/src/scala/Literate.scala
+@@ -0,0 +1,28 @@
++package scala
++
++import annotation.experimental
++
++/** A permission for the compiler to re-type literal values.
++ *
++ *  When an instance of `Literate[T]` for a literal's type `T` is in scope, and
++ *  the literal appears where its ordinary type is not already required, the
++ *  compiler rewrites the literal to `instance.convert(literal)`. The instance
++ *  decides the result type through `Result`; by convention it is a refinement
++ *  carrying the literal's singleton type, e.g. `Text { type Original = "foo" }`,
++ *  so that no information is lost.
++ *
++ *  `convert` is not a member of this trait: an implementation restriction
++ *  prevents a deferred inline method from being invoked through the trait
++ *  type. Instead, each instance is a named class declaring a concrete
++ *
++ *  {{{
++ *  inline def convert(inline value: From): Result
++ *  }}}
++ *
++ *  which the compiler resolves on the instance's own type, so that the
++ *  conversion can be inlined away entirely (for an opaque-alias target the
++ *  literal reaches bytecode unchanged).
++ */
++@experimental
++trait Literate[-From]:
++  type Result

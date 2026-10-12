@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Mon, 13 Jul 2026 20:34:05 +0200
+Subject: Widen skolems in retains sets to the top capability
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+An inline expansion that substitutes an unstable argument into a
+dependent result's capture set (e.g. a given of type
+`(tactic: Tactic) => (X is Decodable)^{tactic, caps.any}` applied
+during summonInline with a non-path tactic) leaves a SkolemType in the
+@retains annotation of the inliner's evidence proxy val. The proxy's
+type is explicit, so Setup interprets the annotation as written and
+toCapability rejected the skolem with "Illegal capture reference:
+(?1 : Any)" — an error the user can neither cause nor avoid in source,
+and one that comes and goes with symbol-completion order (zinc and
+batch compilation gave opposite verdicts on the same file). Skolem
+infos are already erased to Any by RetainingAnnotation.sanitize, so
+the underlying captures cannot be recovered; widen the skolem to
+caps.any, the standard sound over-approximation for a capability that
+cannot be named.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Enabled by `-Z:retains-skolems`; without it, upstream's code runs at every site this
+patch touches.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: skolemcap
+---
+ compiler/src/dotty/tools/dotc/cc/CaptureOps.scala | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala b/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala
+index cef29d1a9169a393c06eb29752a6e2e6fa03343e..fb9aea815bce2baa77c5ed284b34f35bbeba09d0 100644
+--- a/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala
++++ b/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala
+@@ -79,6 +79,15 @@ extension (tp: Type)
+       ref
+     case ref: TermRef if ref.isLocalMutable =>
+       ref.mapLocalMutable
++    case _: SkolemType if config.Proscala.enabled(config.Proscala.RetainsSkolems) =>
++      // A skolem stands for the unnameable value of an unstable argument, substituted
++      // into a dependent result's capture set (e.g. inline expansion of a given whose
++      // result retains a parameter). It cannot be written in source, so it is not a
++      // user error to report; widen it to the top capability, the standard sound
++      // approximation for a capability that cannot be named. (Skolem infos were
++      // already erased to Any by RetainingAnnotation.sanitize, so the underlying
++      // captures cannot be recovered here.)
++      GlobalAny
+     case _ =>
+       // if this was compiled from cc syntax, problem should have been reported at Typer
+       throw IllegalCaptureRef(tp)

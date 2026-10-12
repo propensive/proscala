@@ -1,0 +1,29 @@
+name: Check
+
+# Check `main` against the facts it describes: that every stream's patch series
+# (patches/<stream>/series) applies onto its pinned scala/scala3 commit
+# (UPSTREAM_SHA in mk/<stream>.mk), that the patch files are well-formed, and
+# that the documentation agrees with its sources of truth. bin/proscala-check
+# fetches each scala/scala3 commit on its own, shallowly, so a plain checkout of
+# main is enough.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+
+      - name: Check the patch series and the documentation
+        run: bin/proscala-check -v

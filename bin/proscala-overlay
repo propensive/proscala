@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
 #
-# proscala-overlay — drop the Proscala build files from `main` into a code-branch
-# checkout so it can be built, without committing them to the branch.
+# proscala-overlay — drop the Proscala build files from `main` into a source
+# tree so it can be built, without committing them to it.
 #
-# Usage (run from inside a code-branch worktree):
-#   bin/proscala-overlay [<stream>]
+# Usage (run from inside the tree; bin/proscala-tree does this for you):
+#   bin/proscala-overlay <stream>
 #
 # The build lives on `main`: the Makefile, the per-stream config (mk/), the
 # Scala.js scalalib support sources (library-js-aux/), the Scala 2 stdlib-overlay
 # list (project/ScalaLibraryFilesToCopy.scala) and the vendored Scala.js IR. This
 # copies them into the current worktree as untracked files and adds them (plus
 # the build output dirs) to this worktree's git exclude list, so `git status`
-# still shows only the branch's own change. Then just run `make`.
+# still shows only the tree's own commits. Then just run `make`.
 #
-# The vendored IR is chosen by whether the branch carries the WASM/WIT feature:
+# The vendored IR is chosen by whether the tree carries the WASM/WIT feature:
 # a tree with library-js/.../scala/scalajs/wit uses the scala-wasm IR (its WASM
 # backend requires it); any other tree uses its stream's stock Scala.js IR
 # (mk/<stream>.mk BASE_SCALAJS_VERSION). The Makefile switches the matching
 # scalajs artifacts the same way.
 #
-# The stream is taken from the argument, else derived from the branch name.
-# Override the source ref with PROSCALA_MAIN (default: origin/main, else main).
+# Override the source ref with PROSCALA_MAIN (default: origin/main, else main);
+# bin/proscala-tree passes the HEAD of the checkout it runs from.
 
 set -euo pipefail
 
@@ -34,13 +34,9 @@ git rev-parse --verify --quiet "$MAIN_REF^{commit}" >/dev/null 2>&1 || MAIN_REF=
 git rev-parse --verify --quiet "$MAIN_REF:Makefile" >/dev/null 2>&1 \
   || die "no Makefile on '$MAIN_REF' — has the build been moved to main yet?"
 
-# Determine the stream (for the base-IR selection and STREAM default).
+# The stream (for the base-IR selection; the Makefile reads .proscala-stream).
 stream="${1:-}"
-if [ -z "$stream" ]; then
-  branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
-  stream="$(printf '%s\n' "$branch" | awk -F/ 'NF>=2{print $2}')"
-fi
-[ -n "$stream" ] || die "cannot determine stream from branch; pass it: bin/proscala-overlay 3.10"
+[ -n "$stream" ] || die "no stream given: bin/proscala-overlay 3.10"
 git rev-parse --verify --quiet "$MAIN_REF:mk/$stream.mk" >/dev/null 2>&1 \
   || die "unknown stream '$stream' (no mk/$stream.mk on $MAIN_REF)"
 
@@ -58,7 +54,8 @@ git rev-parse --verify --quiet "$MAIN_REF:mk/scalajs-ir/$ir" >/dev/null 2>&1 \
 echo ">> overlaying build files from $MAIN_REF (stream $stream, $flavour IR)"
 
 # Always-overlaid build files, at their natural paths.
-git archive "$MAIN_REF" Makefile mk/3.9.mk mk/3.10.mk mk/publish.mk \
+mapfile -t mkfiles < <(git ls-tree --name-only "$MAIN_REF" mk/ | grep '\.mk$')
+git archive "$MAIN_REF" Makefile "${mkfiles[@]}" \
     library-js-aux project/ScalaLibraryFilesToCopy.scala | tar -x
 
 # Selected vendored IR -> compiler/src-scalajs-ir.
@@ -66,7 +63,7 @@ rm -rf compiler/src-scalajs-ir
 mkdir -p compiler/src-scalajs-ir
 git archive "$MAIN_REF" "mk/scalajs-ir/$ir" | tar -x --strip-components=3 -C compiler/src-scalajs-ir
 
-# Keep the branch clean: hide the overlaid files and the build output from
+# Keep the tree clean: hide the overlaid files and the build output from
 # `git status`, scoped to THIS worktree only. We must not touch the shared
 # .git/info/exclude — on a multi-worktree checkout (as Proscala uses) that file
 # is common to every worktree, and excluding /Makefile, /mk/ etc. there would
@@ -76,10 +73,9 @@ git config extensions.worktreeConfig true
 excl="$(git rev-parse --git-dir)/proscala-overlay.excludes"
 {
   printf '/%s\n' Makefile mk/ library-js-aux/ compiler/src-scalajs-ir/ \
-                 project/ScalaLibraryFilesToCopy.scala bin/proscala-overlay
+                 project/ScalaLibraryFilesToCopy.scala bin/proscala-overlay .proscala-stream
   printf '%s\n' /release/ /.build/
 } > "$excl"
 git config --worktree core.excludesFile "$excl"
 
-echo ">> done. Build with:  make          # stream auto-detected from the branch"
-echo "                    or  make STREAM=$stream"
+echo ">> done. Build with:  make STREAM=$stream   (or plain make, given .proscala-stream)"

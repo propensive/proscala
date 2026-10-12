@@ -1,0 +1,283 @@
+#!/usr/bin/env bash
+#
+# proscala-check — check that every stream's patch series applies, that the
+# patch files are well-formed, and that the documentation on `main` agrees with
+# the facts it describes, so none of the copies can drift apart unnoticed.
+#
+# Usage:
+#   bin/proscala-check            # check everything, exit 1 on any problem
+#   bin/proscala-check -v         # also list the checks that passed
+#
+# Each fact has exactly one source of truth; the docs are copies, and this
+# checks the copies against it:
+#
+#   which patches a stream carries       ->  patches/<stream>/series
+#   which scala/scala3 commit it is on   ->  UPSTREAM_SHA in mk/<stream>.mk
+#   which scala/scala3 branch that is on ->  UPSTREAM_REF in mk/<stream>.mk
+#   the release version base             ->  VERSION in mk/<stream>.mk
+#   whether a repro exists               ->  the filesystem, doc/<patch>/repro*/
+#   which -Z name enables a patch        ->  config.Proscala, as the series builds it
+#
+# Applying a series needs the stream's scala/scala3 commit; it is fetched on its
+# own (shallowly) when absent. Nothing in the checkout is changed.
+
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.."
+cd "$ROOT" || exit 1
+
+VERBOSE=0
+[ "${1:-}" = "-v" ] && VERBOSE=1
+
+PROBLEMS=()
+problem() { PROBLEMS+=("$*"); }
+pass() { [ "$VERBOSE" = 1 ] && echo "   ok: $*"; return 0; }
+section() { echo ">> $*"; }
+
+PROSCALA_PROG=proscala-check
+# shellcheck source=proscala-lib.sh
+. "$ROOT/bin/proscala-lib.sh"
+[ -d patches ] || { echo >&2 "proscala-check: no patches/ — run from a 'main' checkout"; exit 1; }
+mapfile -t STREAMS < <(streams)
+
+# patches(<stream>) — the stream's patch ids (the stream base, zflags, is not one)
+patches() { series "$1" | { grep -vx zflags || true; }; }
+
+# doc/README.md table: emit "<feature>\t<streams>\t<kind>\t<repro>"
+table() {
+  awk -F'|' '/^\| *\[/ {
+    f=$2; sub(/^ *\[/,"",f); sub(/\].*/,"",f)
+    s=$4; k=$5; r=$6
+    gsub(/^ +| +$/,"",s); gsub(/^ +| +$/,"",k); gsub(/^ +| +$/,"",r)
+    printf "%s\t%s\t%s\t%s\n", f, s, k, r
+  }' doc/README.md
+}
+
+# --- 1. doc/README.md Streams column vs patches/<stream>/series --------------
+section "feature table vs patches/<stream>/series"
+while IFS=$'\t' read -r feat streams _ _; do
+  expected=""
+  for s in "${STREAMS[@]}"; do
+    patches "$s" | grep -qx "$feat" && expected="${expected:+$expected, }$s"
+  done
+  got="$(printf '%s' "$streams" | tr -d ' ')"
+  want="$(printf '%s' "$expected" | tr -d ' ')"
+  if [ -z "$expected" ]; then
+    problem "doc/README.md lists '$feat', which is in no patches/<stream>/series"
+  elif [ "$got" != "$want" ]; then
+    problem "doc/README.md '$feat' Streams = '$streams', but the series say '$expected'"
+  else
+    pass "$feat streams"
+  fi
+done < <(table)
+
+# every listed patch has a doc directory and a table row
+for s in "${STREAMS[@]}"; do
+  while IFS= read -r p; do
+    [ -f "doc/$p/$p.md" ] || problem "patches/$s/series lists '$p' but doc/$p/$p.md is missing"
+    table | cut -f1 | grep -qx "$p" || problem "patches/$s/series lists '$p' but doc/README.md has no row for it"
+  done < <(patches "$s")
+done
+
+# every doc directory is either in the table or deliberately not a patch
+for d in doc/*/; do
+  f="$(basename "$d")"
+  table | cut -f1 | grep -qx "$f" && continue
+  # Docs that legitimately have no row: the build (not a patch), patches
+  # retired with a dropped stream kept as a record, and documented upstream
+  # behaviours the fork deliberately does not patch.
+  case "$f" in make|zflags|boundscap|localroots|picklesource) continue ;; esac
+  problem "doc/$f/ has no row in doc/README.md (and is not the build, a retired patch or an unpatched upstream record)"
+done
+
+# --- 2. Repro column vs the filesystem ---------------------------------------
+section "repro column vs the filesystem"
+while IFS=$'\t' read -r feat _ _ repro; do
+  has_readme=0; [ -f "doc/$feat/repro/README.md" ] && has_readme=1
+  has_fixme=0;  [ -f "doc/$feat/repro/FIXME.md" ] && has_fixme=1
+  case "$repro" in
+    yes*)   [ "$has_readme" = 1 ] || problem "doc/README.md '$feat' Repro says '$repro' but doc/$feat/repro/README.md is missing" ;;
+    FIXME*) [ "$has_fixme" = 1 ]  || problem "doc/README.md '$feat' Repro says '$repro' but doc/$feat/repro/FIXME.md is missing" ;;
+    n/a|"not extracted")
+            if [ "$has_readme" = 1 ] || [ "$has_fixme" = 1 ]; then
+              problem "doc/README.md '$feat' Repro says '$repro' but doc/$feat/repro/ exists"
+            fi ;;
+    *)      problem "doc/README.md '$feat' Repro = '$repro' — expected yes…, FIXME…, n/a or 'not extracted'" ;;
+  esac
+  # every repro directory must be self-describing, and extra ones must be named
+  for rd in doc/"$feat"/repro*/; do
+    [ -d "$rd" ] || continue
+    rn="$(basename "$rd")"
+    [ -f "$rd/README.md" ] || [ -f "$rd/FIXME.md" ] \
+      || problem "$rd has neither README.md nor FIXME.md"
+    if [ "$rn" != repro ] && ! printf '%s' "$repro" | grep -q "$rn"; then
+      problem "doc/$feat/$rn/ exists but the Repro column ('$repro') does not mention it"
+    fi
+  done
+done < <(table)
+
+# --- 3. stream tables in README.md and AGENTS.md vs mk/<stream>.mk -----------
+section "stream tables vs mk/<stream>.mk"
+for s in "${STREAMS[@]}"; do
+  [ -f "mk/$s.mk" ] || { problem "patches/$s/series exists but mk/$s.mk does not"; continue; }
+  [[ "$(mkvar "$s" UPSTREAM_SHA)" =~ ^[0-9a-f]{40}$ ]] || problem "mk/$s.mk has no full 40-hex UPSTREAM_SHA"
+  uref="$(mkvar "$s" UPSTREAM_REF)"
+  vers="$(mkvar "$s" VERSION)"
+  [ -n "$uref" ] || { problem "mk/$s.mk has no UPSTREAM_REF"; continue; }
+  [ -n "$vers" ] || { problem "mk/$s.mk has no VERSION"; continue; }
+  relver="${vers%-propensive}-p<n>"
+  for f in README.md AGENTS.md; do
+    row="$(grep -n "^| *\`$s\` " "$f" | head -1)"
+    if [ -z "$row" ]; then
+      problem "$f has no stream-table row for $s"
+      continue
+    fi
+    printf '%s' "$row" | grep -q -- "$uref" \
+      || problem "$f stream row for $s does not name '$uref' (mk/$s.mk UPSTREAM_REF) — got: ${row#*:}"
+    printf '%s' "$row" | grep -qF -- "$relver" \
+      || problem "$f stream row for $s does not give version '$relver' (from mk/$s.mk VERSION) — got: ${row#*:}"
+    pass "$f stream row $s"
+  done
+  # and quotes the patch count
+  if grep -qE "^ +patches/$s/series +[0-9]+ patches" AGENTS.md; then
+    stated="$(grep -oE "^ +patches/$s/series +[0-9]+" AGENTS.md | grep -oE '[0-9]+$' | head -1)"
+    actual="$(patches "$s" | wc -l | tr -d ' ')"
+    [ "$stated" = "$actual" ] \
+      || problem "AGENTS.md says patches/$s/series has $stated patches; it has $actual"
+  else
+    problem "AGENTS.md does not quote the patch count of patches/$s/series"
+  fi
+done
+
+# --- 4. feature docs must not hardcode a stream ------------------------------
+section "feature docs vs stream-specific references"
+while IFS=$'\t' read -r feat streams _ _; do
+  doc="doc/$feat/$feat.md"
+  [ -f "$doc" ] || continue
+  mapfile -t named < <(grep -oE '(feature|patches)/3\.[0-9]+/' "$doc" | grep -oE '3\.[0-9]+' | sort -u)
+  [ "${#named[@]}" -eq 0 ] && { pass "$feat has no hardcoded stream"; continue; }
+  count="$(printf '%s' "$streams" | tr ',' '\n' | grep -c '[0-9]')"
+  if [ "$count" -gt 1 ]; then
+    problem "$doc names ${named[*]} but the patch is in $streams — use patches/<stream>/"
+  else
+    only="$(printf '%s' "$streams" | tr -d ' ')"
+    for n in "${named[@]}"; do
+      [ "$n" = "$only" ] || problem "$doc names stream $n but the patch is only in $only"
+    done
+  fi
+done < <(table)
+
+# --- 5. relative links resolve ------------------------------------------------
+# Markdown prose only: fenced blocks and inline code spans are dropped first, or
+# Scala like `apply[tag](value: Any)` reads as a link target.
+section "relative links"
+prose() { # prose <file>
+  awk '/^[[:space:]]*```/ { fence = !fence; next } !fence' "$1" | sed -E 's/`[^`]*`//g'
+}
+while IFS= read -r md; do
+  dir="$(dirname "$md")"
+  while IFS= read -r link; do
+    case "$link" in http*|"#"*|mailto:*|"") continue ;; esac
+    target="${link%%#*}"
+    [ -z "$target" ] && continue
+    [ -e "$dir/$target" ] || problem "$md links to '$target', which does not exist"
+  done < <(prose "$md" | grep -oE '\[[^]]*\]\([^)]+\)' | sed -E 's/^\[[^]]*\]\(//; s/\)$//')
+done < <({ git ls-files -- '*.md'
+            git ls-files --others --exclude-standard -- '*.md' | grep -E '^(doc/|mk/|[^/]+$)'
+          } | sed 's|^|./|' | sort -u)
+
+# --- 6. the patch series ------------------------------------------------------
+section "patch series"
+declare -A in_any=()
+for s in "${STREAMS[@]}"; do
+  first="$(series "$s" | head -1)"
+  [ "$first" = zflags ] || problem "patches/$s/series must start with zflags (the stream base), not '$first'"
+  dups="$(series "$s" | sort | uniq -d | tr '\n' ' ')"
+  [ -z "$dups" ] || problem "patches/$s/series lists ${dups}more than once"
+  while IFS= read -r p; do
+    in_any[$p]=1
+    f="$(patch_file "$s" "$p")"
+    [ -n "$f" ] || { problem "patches/$s/series lists '$p' but neither patches/$s/$p.patch nor patches/common/$p.patch exists"; continue; }
+    rel="${f#"$PROSCALA_ROOT"/}"
+    [ "$(patch_commits "$f")" = 1 ] || problem "$rel holds $(patch_commits "$f") commits; a patch file holds exactly one"
+    [ "$(patch_trailer "$f")" = "$p" ] || problem "$rel's message does not end with the trailer 'Proscala-Patch: $p'"
+    # a stream copy saying exactly what common says should be the common file
+    if [ "$rel" = "patches/$s/$p.patch" ] && [ -f "patches/common/$p.patch" ] \
+       && [ "$(patch_id "$f")" = "$(patch_id "patches/common/$p.patch")" ]; then
+      problem "$rel has the same effect as patches/common/$p.patch; delete the stream copy"
+    fi
+  done < <(series "$s")
+  # stray files
+  for f in patches/"$s"/*.patch; do
+    [ -e "$f" ] || continue
+    p="$(basename "$f" .patch)"
+    in_series "$s" "$p" || problem "$f is not in patches/$s/series"
+  done
+  # the series applies, and the -Z flags in doc/README.md are in its registry
+  outf="$(mktemp)"
+  if apply_series "$s" > "$outf"; then
+    pass "$s: the series applies onto $(mkvar "$s" UPSTREAM_SHA | cut -c1-10)"
+    registry="$(GIT_INDEX_FILE="$APPLIED_INDEX" git cat-file blob ":compiler/src/dotty/tools/dotc/config/Proscala.scala" 2>/dev/null || true)"
+    rm -f "$APPLIED_INDEX"
+    [ -n "$registry" ] || problem "$s: the series builds no compiler/src/dotty/tools/dotc/config/Proscala.scala"
+    while IFS=$'\t' read -r feat streams flag; do
+      printf '%s' "$streams" | tr -d ' ' | tr ',' '\n' | grep -cx "$s" >/dev/null || continue
+      name="${flag#\`-Z}"; name="${name%\`}"
+      printf '%s' "$registry" | grep -cF "Feature(\"$name\", \"$feat\"" >/dev/null \
+        || problem "doc/README.md gives '$feat' flag '$flag', which the $s series' config.Proscala does not register for it"
+    done < <(awk -F'|' '/^\| *\[/ { f=$2; sub(/^ *\[/,"",f); sub(/\].*/,"",f); s=$4; z=$7; gsub(/^ +| +$/,"",s); gsub(/^ +| +$/,"",z); if (z ~ /^`-Z/) printf "%s\t%s\t%s\n", f, s, z }' doc/README.md)
+    pass "$s flags"
+  else
+    problem "patches/$s/series does not apply:"$'\n'"$(cat "$outf")"
+  fi
+  rm -f "$outf"
+done
+
+# common files: each used by some stream, and in the same relative order everywhere
+for f in patches/common/*.patch; do
+  [ -e "$f" ] || continue
+  p="$(basename "$f" .patch)"
+  users=0
+  for s in "${STREAMS[@]}"; do
+    in_series "$s" "$p" && [ ! -f "patches/$s/$p.patch" ] && users=$((users + 1))
+  done
+  [ "$users" -gt 0 ] || problem "$f is used by no stream (every series lacks it or has its own copy)"
+done
+common_order() { # the patches stream $1 takes from common, restricted to those stream $2 does too
+  local p
+  while IFS= read -r p; do
+    [ -f "patches/$1/$p.patch" ] && continue
+    [ -f "patches/common/$p.patch" ] || continue
+    in_series "$2" "$p" && [ ! -f "patches/$2/$p.patch" ] && echo "$p"
+  done < <(series "$1")
+  return 0
+}
+for a in "${STREAMS[@]}"; do
+  for b in "${STREAMS[@]}"; do
+    [[ "$a" < "$b" ]] || continue
+    [ "$(common_order "$a" "$b")" = "$(common_order "$b" "$a")" ] \
+      || problem "streams $a and $b apply their shared (patches/common/) patches in different orders"
+  done
+done
+
+# drift: a patch two streams carry through separate files that say the same thing
+for p in "${!in_any[@]}"; do
+  [ "$p" = zflags ] && continue
+  ids=()
+  for s in "${STREAMS[@]}"; do
+    [ -f "patches/$s/$p.patch" ] && ids+=("$(patch_id "patches/$s/$p.patch")")
+  done
+  if [ "${#ids[@]}" -gt 1 ] && [ "$(printf '%s\n' "${ids[@]}" | sort -u | wc -l | tr -d ' ')" = 1 ]; then
+    echo "   note: $p has identical changes in each stream's copy; it may be shareable from patches/common/"
+  fi
+done
+
+# --- report -------------------------------------------------------------------
+echo
+if [ "${#PROBLEMS[@]}" -eq 0 ]; then
+  echo ">> everything is consistent (${#STREAMS[@]} streams)"
+  exit 0
+fi
+echo "!! ${#PROBLEMS[@]} inconsistenc$([ "${#PROBLEMS[@]}" -eq 1 ] && echo y || echo ies):"
+for p in "${PROBLEMS[@]}"; do echo "   - $p"; done
+exit 1

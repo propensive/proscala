@@ -1,0 +1,201 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Wed, 7 Oct 2026 17:06:48 +0200
+Subject: A shared, level-exempt classifier: caps.SharedUnscoped
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Squashed from 2 commits, oldest first:
+
+* Add caps.SharedUnscoped, a shared and level-exempt classifier
+
+`Unscoped` exempts a capability from the level check — a value minted at a
+deeper level may flow into a result capture set minted further out — but it
+extends `ExclusiveCapability`, so no shared capability can carry it. An
+ambient effect strategy that is aliased freely (a `SharedCapability`, so that
+a codec capturing it and a call taking it as evidence are not a separation
+overlap) and minted by a polymorphic given at its use site needs both.
+
+`SharedUnscoped extends SharedCapability, Classifier` is that point in the
+lattice. The compiler's five consultations of `Unscoped` go through one
+predicate, `isUnscopedClassifier`, which recognises either; exclusivity is
+untouched, so separation checking treats a `SharedUnscoped` capability as any
+shared one.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+* Ship SharedUnscoped in proscala-library, looked up leniently
+
+The trait moves from `scala/caps/package.scala`, which must stay
+byte-identical to upstream's `scala-library`, into the supplementary
+`proscala-library` jar beside `Spreadable` and `Literate`. The compiler
+resolves it with `getClassIfDefined`, as it does those two, so a
+classpath without the jar simply has no capability classified this way
+and nothing fails to load.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: sharedunscoped
+---
+ .../src/dotty/tools/dotc/cc/Capability.scala  |  6 ++--
+ .../src/dotty/tools/dotc/cc/CaptureOps.scala  |  7 +++++
+ .../dotty/tools/dotc/cc/CheckCaptures.scala   |  5 +++-
+ .../src/dotty/tools/dotc/cc/SepCheck.scala    |  2 +-
+ .../dotty/tools/dotc/core/Definitions.scala   |  3 ++
+ .../src/scala/caps/SharedUnscoped.scala       | 16 ++++++++++
+ .../captures/sharedunscoped.scala             | 29 +++++++++++++++++++
+ 7 files changed, 63 insertions(+), 5 deletions(-)
+ create mode 100644 library-proscala/src/scala/caps/SharedUnscoped.scala
+ create mode 100644 tests/pos-custom-args/captures/sharedunscoped.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/Capability.scala b/compiler/src/dotty/tools/dotc/cc/Capability.scala
+index d2ecfab26a982184e8c2a614cd53c635816f4ba5..9b509b0cb517252e995f1721cd23bbfcd2c03178 100644
+--- a/compiler/src/dotty/tools/dotc/cc/Capability.scala
++++ b/compiler/src/dotty/tools/dotc/cc/Capability.scala
+@@ -223,7 +223,7 @@ object Capabilities:
+           case meth: Symbol => meth
+           case null => refLevel
+         ccOwner.isContainedIn(adjustedLevel.widenOwner(skipModules = true))
+-        || classifier.derivesFrom(defn.Caps_Unscoped)
++        || classifier.isUnscopedClassifier
+       else ref.core match
+         case ResultCap(_) | _: ParamRef => false
+         case _ => true
+@@ -574,7 +574,7 @@ object Capabilities:
+           case prefix: ThisType if setOwner.isTerm && setOwner.owner == prefix.cls =>
+             setOwner
+           case prefix: Capability => prefix.computeOwner(mapUnscoped)
+-          case NoPrefix if mapUnscoped && classifier.derivesFrom(defn.Caps_Unscoped) =>
++          case NoPrefix if mapUnscoped && classifier.isUnscopedClassifier =>
+             ctx.owner.topLevelClass
+               .orElse: // fallback needed if ctx.owner is a toplevel module val
+                 assert(ctx.owner.is(ModuleVal))
+@@ -1279,7 +1279,7 @@ object Capabilities:
+     override def mapCapability(c: Capability, deep: Boolean) = c match
+       case c: LocalCap =>
+         if variance >= 0 then
+-          if sym.isAnonymousFunction && c.classifier.derivesFrom(defn.Caps_Unscoped) then
++          if sym.isAnonymousFunction && c.classifier.isUnscopedClassifier then
+             c
+           else if sym.exists && !c.ccOwner.isContainedIn(sym) then
+             //println(i"not mapping $c with ${c.ccOwner} in $sym")
+diff --git a/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala b/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala
+index bc3b9fe095c1e810494d2911d0a1fac9a3816a5a..7c071998fa88345819583938c1e87266fa914f55 100644
+--- a/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala
++++ b/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala
+@@ -838,6 +838,13 @@ extension (sym: Symbol) {
+       // too annoying. This is a hole since a default getter's result type
+       // might leak into a type variable.
+ 
++  /** Does `sym`, a classifier, exempt the capabilities it classifies from level checking?
++   *  True for `Unscoped` and for its shared counterpart `SharedUnscoped`.
++   */
++  def isUnscopedClassifier(using Context): Boolean =
++    sym.derivesFrom(defn.Caps_Unscoped)
++    || defn.Caps_SharedUnscoped.exists && sym.derivesFrom(defn.Caps_SharedUnscoped)
++
+   /** If `sym` is a method or a non-static inner class, a capture set
+    *  representing the captured references of the environment associated with `sym`.
+    */
+diff --git a/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala b/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
+index 5639c83eb30644e39e5ec389973093c61823f8d4..462915694d0642a16eee800445ae620115ee21e3 100644
+--- a/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
++++ b/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
+@@ -985,7 +985,10 @@ class CheckCaptures extends Recheck, SymTransformer:
+             && !resultType.isBoxedCapturing
+             && !tree.fun.symbol.isConstructor
+             && !resultType.captureSet.containsResultCapability
+-            && !resultType.captureSet.elems.exists(_.derivesFromCapTrait(defn.Caps_Unscoped))
++            && !resultType.captureSet.elems.exists(elem =>
++                 elem.derivesFromCapTrait(defn.Caps_Unscoped)
++                 || defn.Caps_SharedUnscoped.exists
++                    && elem.derivesFromCapTrait(defn.Caps_SharedUnscoped.asClass))
+             && qualCaptures.mightSubcapture(refs)
+             && argCaptures.forall(_.mightSubcapture(refs)) =>
+           val callCaptures = argCaptures.foldLeft(qualCaptures)(_ ++ _)
+diff --git a/compiler/src/dotty/tools/dotc/cc/SepCheck.scala b/compiler/src/dotty/tools/dotc/cc/SepCheck.scala
+index 64e327187567d167837535835e85a10e21150350..ca5c397f1bf42c6529421e92d5966fd15c0b9652 100644
+--- a/compiler/src/dotty/tools/dotc/cc/SepCheck.scala
++++ b/compiler/src/dotty/tools/dotc/cc/SepCheck.scala
+@@ -583,7 +583,7 @@ class SepCheck(checker: CheckCaptures.CheckerAPI) extends tpd.TreeTraverser:
+          */
+         def escapes(ref: Capability): Boolean = ref.pathRoot match
+           case ref @ LocalCap(NoPrefix)
+-          if ref.classifier.derivesFrom(defn.Caps_Unscoped) =>
++          if ref.classifier.isUnscopedClassifier =>
+             // we have an escaping reference if the LocalCap's adjusted owner
+             // is properly contained inside the scope of the variable.
+             ref.ccOwner.widenOwner(skipModules = false).isProperlyContainedIn(lhsOwner)
+diff --git a/compiler/src/dotty/tools/dotc/core/Definitions.scala b/compiler/src/dotty/tools/dotc/core/Definitions.scala
+index 97232c48a8e75aae93e8dd6b9f350afbbdfba0bc..57fc520a7f3df1c34fe890ff928a3a828122e61d 100644
+--- a/compiler/src/dotty/tools/dotc/core/Definitions.scala
++++ b/compiler/src/dotty/tools/dotc/core/Definitions.scala
+@@ -1054,6 +1054,9 @@ class Definitions {
+     @tu lazy val Caps_Control: ClassSymbol = requiredClass("scala.caps.Control")
+     @tu lazy val Caps_Stateful: ClassSymbol = requiredClass("scala.caps.Stateful")
+     @tu lazy val Caps_Unscoped: ClassSymbol = requiredClass("scala.caps.Unscoped")
++    // Looked up leniently, like `Spreadable`: the trait ships in the supplementary
++    // proscala-library jar, and a classpath without it simply classifies nothing this way.
++    @tu lazy val Caps_SharedUnscoped: Symbol = getClassIfDefined("scala.caps.SharedUnscoped")
+     @tu lazy val Caps_Mutable: ClassSymbol = requiredClass("scala.caps.Mutable")
+     @tu lazy val Caps_Read: ClassSymbol = requiredClass("scala.caps.Read")
+     @tu lazy val Caps_CapSet: ClassSymbol = requiredClass("scala.caps.CapSet")
+diff --git a/library-proscala/src/scala/caps/SharedUnscoped.scala b/library-proscala/src/scala/caps/SharedUnscoped.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..0d69d2af04f8ee4ee5e14b64c1b61c9347bfc833
+--- /dev/null
++++ b/library-proscala/src/scala/caps/SharedUnscoped.scala
+@@ -0,0 +1,16 @@
++package scala.caps
++
++import scala.annotation.experimental
++
++/** The shared counterpart of `Unscoped`: a marker trait for shared capabilities that are not
++ *  subject to scoping restrictions. A capability so classified may be aliased freely, as any
++ *  `SharedCapability`, and may also be created at any level — the case of an ambient effect
++ *  strategy that captures nothing scoped and is handed out by a polymorphic given at its use
++ *  site. `Unscoped` itself extends `ExclusiveCapability`, so the two cannot be combined.
++ *
++ *  Shipped in the supplementary `proscala-library` jar, not in `scala-library`: the compiler
++ *  looks it up leniently, so a classpath without it simply has no capability classified this
++ *  way.
++ */
++@experimental
++trait SharedUnscoped extends SharedCapability, Classifier
+diff --git a/tests/pos-custom-args/captures/sharedunscoped.scala b/tests/pos-custom-args/captures/sharedunscoped.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..bd915fec8f3a33cab8b67137e69223e3ea36e68f
+--- /dev/null
++++ b/tests/pos-custom-args/captures/sharedunscoped.scala
+@@ -0,0 +1,29 @@
++import language.experimental.separationChecking
++import language.experimental.captureChecking
++import scala.caps
++
++trait Tactic[E] extends caps.SharedCapability:
++  def abort(error: E): Nothing
++
++class Throwing[E] extends Tactic[E], caps.SharedUnscoped:
++  def abort(error: E): Nothing = throw new RuntimeException(error.toString)
++
++given throwing: [E] => (Throwing[E]^) = Throwing()
++
++trait Decodable[T]:
++  def decoded(input: String): T
++
++given intCodec: (tactic: Tactic[String]) => (Decodable[Int]^{tactic}) = new Decodable[Int]:
++  def decoded(input: String): Int =
++    if input.isEmpty then tactic.abort("empty") else input.length
++
++// The by-name element codec, as jacinta's `optional`/`array`/`map` givens take it.
++// Sealed pure as jacinta's `optional` is (a by-name parameter cannot be named in a capture
++// set — safety-10); the level check on the synthesised thunk happens before the seal.
++given optionCodec: [T] => (inner: => Decodable[T]^) => Decodable[Option[T]] =
++  caps.unsafe.unsafeAssumePure:
++    new Decodable[Option[T]]:
++      def decoded(input: String): Option[T] =
++        if input == "null" then None else Some(inner.decoded(input))
++
++def use(): Option[Int] = summon[Decodable[Option[Int]]].decoded("abc")

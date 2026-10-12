@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 8 Aug 2026 12:28:58 +0200
+Subject: Sanitize TypeBounds in @retains arguments to the top capability
+
+Namer#inferredResultType applies `deskolemized` to inferred result types; on a
+type whose capture set holds a skolem (a dependent method applied to an
+unstable argument), the ApproximatingTypeMap maps the skolem element to a
+range, `derivedOrType` merges it with neighbouring elements, and
+`derivedAppliedType` re-packs the range as a wildcard argument of @retains.
+A TypeBounds is not a legal capability: it crashed the pickler before 3.9
+("no TypeBounds allowed") and now surfaces as "Illegal capture reference"
+when the annotation is forced, e.g. for the export forwarder of a transparent
+inline method (Soundness #1410). Capture sets are covariant and the range's
+upper bound has absorbed the surviving refs, so approximating the bounds by
+`any` loses no precision, in analogy to the existing skolem case.
+
+Developed with LLM assistance (Claude); mechanism and fix validated against a
+minimal reproduction and a full Soundness build.
+
+Enabled by `-Z:retains-bounds`; without it, upstream's code runs at every site this
+patch touches.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: retainbounds
+---
+ .../dotty/tools/dotc/cc/RetainingAnnotation.scala    | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/RetainingAnnotation.scala b/compiler/src/dotty/tools/dotc/cc/RetainingAnnotation.scala
+index a7bee572d900a0338e35666d0e1588b2501d18e8..a001244788acafcd8eaf81739063e123acb47d9e 100644
+--- a/compiler/src/dotty/tools/dotc/cc/RetainingAnnotation.scala
++++ b/compiler/src/dotty/tools/dotc/cc/RetainingAnnotation.scala
+@@ -26,6 +26,18 @@ class RetainingAnnotation(tpe: Type) extends CompactAnnotation(tpe) {
+   override protected def sanitize(tp: Type)(using Context): Type = tp match
+     case SkolemType(_) =>
+       SkolemType(defn.AnyType)
++    case _: TypeBounds if config.Proscala.enabled(config.Proscala.RetainsBounds) =>
++      // An ApproximatingTypeMap turned a retained element into a range: e.g.
++      // `deskolemized` (applied to inferred result types in Namer#inferredResultType)
++      // maps a skolem element of a dependent method's capture set to a range, which
++      // `derivedOrType` merges with neighbouring elements and `derivedAppliedType`
++      // re-packs as a wildcard argument `>: lo <: hi` of @retains. A TypeBounds is
++      // not a legal capability: it either crashes the pickler ("no TypeBounds
++      // allowed") or surfaces as "Illegal capture reference" when the annotation is
++      // converted to a capture set, e.g. for an export forwarder of a transparent
++      // inline method. Capture sets are covariant and the range's upper bound has
++      // absorbed the surviving refs, so approximate by the top capability.
++      defn.Caps_any.termRef
+     case tp @ AnnotatedType(parent, ann: RetainingAnnotation)
+     if parent.typeSymbol != defn.Caps_CapSet && ann.symbol != defn.RetainsCapAnnot =>
+       AnnotatedType(parent, RetainingAnnotation(defn.RetainsCapAnnot))

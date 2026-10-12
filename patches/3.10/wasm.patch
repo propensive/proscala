@@ -1,0 +1,2134 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 17 Jul 2026 15:06:04 +0200
+Subject: wasm: WASM and WIT compiler and library support
+
+WASM/WIT code generation (dotty.tools.backend.sjs, transform.sjs) and the
+scala.scalajs.wit library API. The vendored Scala.js IR and the scala-wasm
+build config this needs now live on the main branch and are supplied by
+bin/proscala-overlay at build time.
+
+Developed with LLM assistance (Claude Code); reviewed by hand per LLM_POLICY.md.
+
+Proscala-Patch: wasm
+---
+ .../dotty/tools/backend/sjs/JSCodeGen.scala   |  94 +++-
+ .../tools/backend/sjs/JSDefinitions.scala     |  56 +++
+ .../dotty/tools/backend/sjs/JSEncoding.scala  |  15 +
+ .../dotty/tools/backend/sjs/WitCodeGen.scala  | 474 ++++++++++++++++++
+ .../tools/dotc/transform/sjs/JSSymUtils.scala |  48 ++
+ .../dotc/transform/sjs/PrepJSInterop.scala    | 389 +++++++++++++-
+ library-js/src/scala/Symbol.scala             |  26 +-
+ library-js/src/scala/scalajs/wit/Result.scala |  55 ++
+ library-js/src/scala/scalajs/wit/Tuple.scala  | 255 ++++++++++
+ .../scalajs/wit/annotation/WitExport.scala    |  20 +
+ .../wit/annotation/WitExportInterface.scala   |  42 ++
+ .../scalajs/wit/annotation/WitFlags.scala     |  35 ++
+ .../wit/annotation/WitImplementation.scala    |  40 ++
+ .../scalajs/wit/annotation/WitImport.scala    |  20 +
+ .../scalajs/wit/annotation/WitRecord.scala    |  18 +
+ .../annotation/WitResourceConstructor.scala   |  18 +
+ .../wit/annotation/WitResourceDrop.scala      |  18 +
+ .../wit/annotation/WitResourceImport.scala    |  20 +
+ .../wit/annotation/WitResourceMethod.scala    |  20 +
+ .../annotation/WitResourceStaticMethod.scala  |  20 +
+ .../scalajs/wit/annotation/WitVariant.scala   |  49 ++
+ .../src/scala/scalajs/wit/package.scala       |  36 ++
+ .../scala/scalajs/wit/unsigned/package.scala  |   8 +
+ 23 files changed, 1763 insertions(+), 13 deletions(-)
+ create mode 100644 compiler/src/dotty/tools/backend/sjs/WitCodeGen.scala
+ create mode 100644 library-js/src/scala/scalajs/wit/Result.scala
+ create mode 100644 library-js/src/scala/scalajs/wit/Tuple.scala
+ create mode 100644 library-js/src/scala/scalajs/wit/annotation/WitExport.scala
+ create mode 100644 library-js/src/scala/scalajs/wit/annotation/WitExportInterface.scala
+ create mode 100644 library-js/src/scala/scalajs/wit/annotation/WitFlags.scala
+ create mode 100644 library-js/src/scala/scalajs/wit/annotation/WitImplementation.scala
+ create mode 100644 library-js/src/scala/scalajs/wit/annotation/WitImport.scala
+ create mode 100644 library-js/src/scala/scalajs/wit/annotation/WitRecord.scala
+ create mode 100644 library-js/src/scala/scalajs/wit/annotation/WitResourceConstructor.scala
+ create mode 100644 library-js/src/scala/scalajs/wit/annotation/WitResourceDrop.scala
+ create mode 100644 library-js/src/scala/scalajs/wit/annotation/WitResourceImport.scala
+ create mode 100644 library-js/src/scala/scalajs/wit/annotation/WitResourceMethod.scala
+ create mode 100644 library-js/src/scala/scalajs/wit/annotation/WitResourceStaticMethod.scala
+ create mode 100644 library-js/src/scala/scalajs/wit/annotation/WitVariant.scala
+ create mode 100644 library-js/src/scala/scalajs/wit/package.scala
+ create mode 100644 library-js/src/scala/scalajs/wit/unsigned/package.scala
+
+diff --git a/compiler/src/dotty/tools/backend/sjs/JSCodeGen.scala b/compiler/src/dotty/tools/backend/sjs/JSCodeGen.scala
+index df6f73e4306c70985076bcf56d6b6c50838b16a6..8767049fbb4406f8c2f097162f156fefb009451c 100644
+--- a/compiler/src/dotty/tools/backend/sjs/JSCodeGen.scala
++++ b/compiler/src/dotty/tools/backend/sjs/JSCodeGen.scala
+@@ -61,6 +61,7 @@ class JSCodeGen()(using genCtx: Context) {
+   val sjsPlatform = dotty.tools.dotc.config.SJSPlatform.sjsPlatform
+   val jsdefn = JSDefinitions.jsdefn
+   private val primitives = new JSPrimitives()(using genCtx)
++  private val witCodeGen = new WitCodeGen(this)
+ 
+   val positionConversions = new JSPositions()(using genCtx)
+   import positionConversions.*
+@@ -270,7 +271,12 @@ class JSCodeGen()(using genCtx: Context) {
+             delambdafyTargetDefDefs := MutableSymbolMap(),
+             methodsAllowingJSAwait := mutable.Set.empty,
+         ) {
+-          val tree = if (sym.isJSType) {
++          val tree = if (sym.hasAnnotation(jsdefn.WitResourceImportAnnot)) {
++            // WIT resource class (trait annotated with @WitResourceImport)
++            withNewLocalNameScope {
++              witCodeGen.genWasmComponentResourceClassData(td)
++            }
++          } else if (sym.isJSType) {
+             if (!sym.is(Trait) && sym.isNonNativeJSClass)
+               genNonNativeJSClass(td)
+             else
+@@ -437,6 +443,9 @@ class JSCodeGen()(using genCtx: Context) {
+ 
+     val methodsBuilder = List.newBuilder[js.MethodDef]
+     val jsNativeMembersBuilder = List.newBuilder[js.JSNativeMemberDef]
++    val witNativeMembersBuilder = List.newBuilder[js.WitNativeMemberDef]
++    val witExportDefsBuilder = List.newBuilder[js.WitExportDef]
++    val witExportMethods = mutable.Map.empty[Symbol, DefDef] // Methods to export via WIT
+ 
+     for (tree <- collectValOrDefDefs(td.rhs.asInstanceOf[Template])) {
+       tree match {
+@@ -451,6 +460,36 @@ class JSCodeGen()(using genCtx: Context) {
+           if sym.hasAnnotation(jsdefn.JSNativeAnnot) then
+             if !sym.is(Accessor) then
+               jsNativeMembersBuilder += genJSNativeMemberDef(dd)
++          else if sym.hasAnnotation(jsdefn.WitImportAnnot) then
++            // WIT import - generate WitNativeMemberDef
++            for {
++              annot <- sym.getAnnotation(jsdefn.WitImportAnnot)
++              moduleName <- annot.argumentConstantString(0)
++              functionName <- annot.argumentConstantString(1)
++            } {
++              // These `witCodeGen` entry points materialize the implicit
++              // `LocalNameGenerator` (`localNames`), which is only bound while a
++              // method body is generated; here we are at class scope, so
++              // establish a fresh local-name scope.
++              withNewLocalNameScope {
++                val flags = js.MemberFlags.empty.withNamespace(js.MemberNamespace.PublicStatic)
++                val name = js.WitFunctionName.Function(functionName)
++                witNativeMembersBuilder += witCodeGen.genWitNativeMemberDef(flags, dd, moduleName, name)
++              }
++            }
++          else if sym.isWitResourceStaticMethod then
++            withNewLocalNameScope {
++              witCodeGen.genWitResourceStaticMethodDef(dd).foreach(witNativeMembersBuilder += _)
++            }
++          else if sym.isWitResourceConstructor then
++            withNewLocalNameScope {
++              witCodeGen.genWitResourceConstructor(dd).foreach(witNativeMembersBuilder += _)
++            }
++          else if sym.hasAnnotation(jsdefn.WitExportAnnot) ||
++              sym.allOverriddenSymbols.exists(_.hasAnnotation(jsdefn.WitExportAnnot)) then
++            // WIT export - record for later, after method generation
++            witExportMethods(sym) = dd
++            methodsBuilder ++= genMethod(dd) // Also generate the method itself
+           else
+             methodsBuilder ++= genMethod(dd)
+       }
+@@ -461,11 +500,39 @@ class JSCodeGen()(using genCtx: Context) {
+     val jsNativeMembers = jsNativeMembersBuilder.result()
+     val generatedMethods = methodsBuilder.result() ::: staticGetterDefs
+ 
++    // Generate WIT export definitions
++    for ((sym, dd) <- witExportMethods) {
++      val witExportAnnotOpt = sym.getAnnotation(jsdefn.WitExportAnnot)
++        .orElse(sym.allOverriddenSymbols.flatMap(_.getAnnotation(jsdefn.WitExportAnnot)).nextOption())
++      for {
++        annot <- witExportAnnotOpt
++        moduleName <- annot.argumentConstantString(0)
++        functionName <- annot.argumentConstantString(1)
++      } {
++        // `witFunctionTypeOf` / `genWitExportDef` materialize the implicit
++        // `LocalNameGenerator` (`localNames`), which is only bound while a
++        // method body is being generated. This loop runs at class scope, after
++        // per-method generation, so establish a fresh local-name scope here.
++        withNewLocalNameScope {
++          val funcType = witCodeGen.witFunctionTypeOf(sym)
++          val exportInfo = WitExportInfo(moduleName, functionName, funcType)(dd.sourcePos)
++
++          // Find the generated method def
++          val methodIdent = encodeMethodSym(sym)
++          generatedMethods.find(_.name.name == methodIdent.name).foreach { methodDef =>
++            witExportDefsBuilder += witCodeGen.genWitExportDef(exportInfo, methodDef)
++          }
++        }
++      }
++    }
++    val witNativeMembers = witNativeMembersBuilder.result()
++
+     // Generate member exports
+     val memberExports = jsExportsGen.genMemberExports(sym)
+ 
+-    // Generate top-level export definitions
+-    val topLevelExportDefs = jsExportsGen.genTopLevelExports(sym)
++    // Generate top-level export definitions (including WIT exports)
++    val jsTopLevelExportDefs = jsExportsGen.genTopLevelExports(sym)
++    val topLevelExportDefs = jsTopLevelExportDefs ::: witExportDefsBuilder.result()
+ 
+     // Static initializer
+     val optStaticInitializer = {
+@@ -529,6 +596,7 @@ class JSCodeGen()(using genCtx: Context) {
+                 jsConstructor = None,
+                 jsMethodProps = Nil,
+                 jsNativeMembers = Nil,
++                witNativeMembers = Nil,
+                 topLevelExportDefs = Nil
+             )(js.OptimizerHints.empty)
+             generatedStaticForwarderClasses += sym -> forwardersClassDef
+@@ -562,6 +630,7 @@ class JSCodeGen()(using genCtx: Context) {
+         jsConstructor = None,
+         memberExports,
+         jsNativeMembers,
++        witNativeMembers,
+         topLevelExportDefs)(
+         optimizerHints)
+ 
+@@ -690,6 +759,7 @@ class JSCodeGen()(using genCtx: Context) {
+         Some(generatedConstructor),
+         jsMethodProps,
+         jsNativeMembers = Nil,
++        witNativeMembers = Nil,
+         topLevelExports)(
+         OptimizerHints.empty)
+ 
+@@ -726,7 +796,8 @@ class JSCodeGen()(using genCtx: Context) {
+         Nil,
+         None,
+         Nil,
+-        Nil,
++        jsNativeMembers = Nil,
++        witNativeMembers = Nil,
+         Nil)(
+         OptimizerHints.empty)
+   }
+@@ -773,7 +844,8 @@ class JSCodeGen()(using genCtx: Context) {
+         allMemberDefs,
+         None,
+         Nil,
+-        Nil,
++        jsNativeMembers = Nil,
++        witNativeMembers = Nil,
+         Nil)(
+         OptimizerHints.empty)
+ 
+@@ -1825,7 +1897,7 @@ class JSCodeGen()(using genCtx: Context) {
+ 
+   /** Gen JS code for a tree in expression position (in the IR).
+    */
+-  private def genExpr(tree: Tree): js.Tree = {
++  private[sjs] def genExpr(tree: Tree): js.Tree = {
+     val result = genStatOrExpr(tree, isStat = false)
+     assert(result.tpe != jstpe.VoidType,
+         s"genExpr($tree) returned a tree with type VoidType at pos ${tree.span}")
+@@ -2518,7 +2590,8 @@ class JSCodeGen()(using genCtx: Context) {
+           ClassKind.AbstractJSType, None, Some(parent), interfaces = Nil,
+           jsSuperClass = None, jsNativeLoadSpec = None, fields = Nil,
+           methods = originalClassDef.methods, jsConstructor = None,
+-          jsMethodProps = Nil, jsNativeMembers = Nil, topLevelExportDefs = Nil)(
++          jsMethodProps = Nil, jsNativeMembers = Nil, witNativeMembers = Nil,
++          topLevelExportDefs = Nil)(
+           originalClassDef.optimizerHints)
+     }
+ 
+@@ -3221,6 +3294,13 @@ class JSCodeGen()(using genCtx: Context) {
+         genApplyJSClassMethod(genExpr(receiver), sym, genActualArgs(sym, args))
+     } else if (sym.hasAnnotation(jsdefn.JSNativeAnnot)) {
+       genJSNativeMemberCall(tree)
++    } else if (sym.hasAnnotation(jsdefn.WitResourceMethodAnnot) ||
++        sym.hasAnnotation(jsdefn.WitResourceDropAnnot)) {
++      // WIT resource instance methods and drop - pass receiver
++      witCodeGen.genWitNativeMemberCall(sym, tree, Some(receiver), isStat)(using this, implicitLocalNames)
++    } else if (witCodeGen.hasWitNativeAnnotation(sym)) {
++      // WIT imports, resource constructors, and static methods - no receiver
++      witCodeGen.genWitNativeMemberCall(sym, tree, None, isStat)(using this, implicitLocalNames)
+     } else {
+       genApplyMethodMaybeStatically(genExpr(receiver), sym, genActualArgs(sym, args))
+     }
+diff --git a/compiler/src/dotty/tools/backend/sjs/JSDefinitions.scala b/compiler/src/dotty/tools/backend/sjs/JSDefinitions.scala
+index 5386813e69a44f6ec1409a01ca70cfe84e4ce7c5..953fb48119a49ff5b37df4fbb34f20f68587c618 100644
+--- a/compiler/src/dotty/tools/backend/sjs/JSDefinitions.scala
++++ b/compiler/src/dotty/tools/backend/sjs/JSDefinitions.scala
+@@ -235,6 +235,62 @@ final class JSDefinitions() {
+   @threadUnsafe lazy val LinkTimePropertyAnnotType: TypeRef = requiredClassRef("scala.scalajs.annotation.linkTimeProperty")
+   def LinkTimePropertyAnnot(using Context) = LinkTimePropertyAnnotType.symbol.asClass
+ 
++  // Wasm Component Model (WIT) annotations and symbols
++  @threadUnsafe lazy val ScalaJSWitPackageVal = requiredPackage("scala.scalajs.wit")
++  @threadUnsafe lazy val ScalaJSWitPackageClass = ScalaJSWitPackageVal.moduleClass.asClass
++    @threadUnsafe lazy val WitPackage_nativeR = ScalaJSWitPackageClass.requiredMethodRef("native")
++    def WitPackage_native(using Context) = WitPackage_nativeR.symbol
++
++  // WIT Import/Export annotations
++  @threadUnsafe lazy val WitImportAnnotType: TypeRef = requiredClassRef("scala.scalajs.wit.annotation.WitImport")
++  def WitImportAnnot(using Context) = WitImportAnnotType.symbol.asClass
++  @threadUnsafe lazy val WitExportAnnotType: TypeRef = requiredClassRef("scala.scalajs.wit.annotation.WitExport")
++  def WitExportAnnot(using Context) = WitExportAnnotType.symbol.asClass
++
++  // WIT type annotations
++  @threadUnsafe lazy val WitRecordAnnotType: TypeRef = requiredClassRef("scala.scalajs.wit.annotation.WitRecord")
++  def WitRecordAnnot(using Context) = WitRecordAnnotType.symbol.asClass
++  @threadUnsafe lazy val WitVariantAnnotType: TypeRef = requiredClassRef("scala.scalajs.wit.annotation.WitVariant")
++  def WitVariantAnnot(using Context) = WitVariantAnnotType.symbol.asClass
++  @threadUnsafe lazy val WitFlagsAnnotType: TypeRef = requiredClassRef("scala.scalajs.wit.annotation.WitFlags")
++  def WitFlagsAnnot(using Context) = WitFlagsAnnotType.symbol.asClass
++
++  // WIT resource annotations
++  @threadUnsafe lazy val WitResourceImportAnnotType: TypeRef = requiredClassRef("scala.scalajs.wit.annotation.WitResourceImport")
++  def WitResourceImportAnnot(using Context) = WitResourceImportAnnotType.symbol.asClass
++  @threadUnsafe lazy val WitResourceMethodAnnotType: TypeRef = requiredClassRef("scala.scalajs.wit.annotation.WitResourceMethod")
++  def WitResourceMethodAnnot(using Context) = WitResourceMethodAnnotType.symbol.asClass
++  @threadUnsafe lazy val WitResourceStaticMethodAnnotType: TypeRef = requiredClassRef("scala.scalajs.wit.annotation.WitResourceStaticMethod")
++  def WitResourceStaticMethodAnnot(using Context) = WitResourceStaticMethodAnnotType.symbol.asClass
++  @threadUnsafe lazy val WitResourceConstructorAnnotType: TypeRef = requiredClassRef("scala.scalajs.wit.annotation.WitResourceConstructor")
++  def WitResourceConstructorAnnot(using Context) = WitResourceConstructorAnnotType.symbol.asClass
++  @threadUnsafe lazy val WitResourceDropAnnotType: TypeRef = requiredClassRef("scala.scalajs.wit.annotation.WitResourceDrop")
++  def WitResourceDropAnnot(using Context) = WitResourceDropAnnotType.symbol.asClass
++
++  // WIT implementation/export interface annotations
++  @threadUnsafe lazy val WitImplementationAnnotType: TypeRef = requiredClassRef("scala.scalajs.wit.annotation.WitImplementation")
++  def WitImplementationAnnot(using Context) = WitImplementationAnnotType.symbol.asClass
++  @threadUnsafe lazy val WitExportInterfaceAnnotType: TypeRef = requiredClassRef("scala.scalajs.wit.annotation.WitExportInterface")
++  def WitExportInterfaceAnnot(using Context) = WitExportInterfaceAnnotType.symbol.asClass
++
++  // WIT Result classes
++  @threadUnsafe lazy val ComponentResultType: TypeRef = requiredClassRef("scala.scalajs.wit.Result")
++  def ComponentResultClass(using Context) = ComponentResultType.symbol.asClass
++  @threadUnsafe lazy val ComponentResultOkType: TypeRef = requiredClassRef("scala.scalajs.wit.Ok")
++  def ComponentResultOkClass(using Context) = ComponentResultOkType.symbol.asClass
++  @threadUnsafe lazy val ComponentResultErrType: TypeRef = requiredClassRef("scala.scalajs.wit.Err")
++  def ComponentResultErrClass(using Context) = ComponentResultErrType.symbol.asClass
++
++  // WIT unsigned types
++  @threadUnsafe lazy val WitUnsigned_UByteType: TypeRef = requiredClassRef("scala.scalajs.wit.unsigned.UByte")
++  def WitUnsigned_UByte(using Context) = WitUnsigned_UByteType.symbol
++  @threadUnsafe lazy val WitUnsigned_UShortType: TypeRef = requiredClassRef("scala.scalajs.wit.unsigned.UShort")
++  def WitUnsigned_UShort(using Context) = WitUnsigned_UShortType.symbol
++  @threadUnsafe lazy val WitUnsigned_UIntType: TypeRef = requiredClassRef("scala.scalajs.wit.unsigned.UInt")
++  def WitUnsigned_UInt(using Context) = WitUnsigned_UIntType.symbol
++  @threadUnsafe lazy val WitUnsigned_ULongType: TypeRef = requiredClassRef("scala.scalajs.wit.unsigned.ULong")
++  def WitUnsigned_ULong(using Context) = WitUnsigned_ULongType.symbol
++
+   @threadUnsafe lazy val ScalaRunTime_isArrayR = defn.ScalaRuntimeModule.requiredMethodRef("isArray", List(???, ???))
+   def ScalaRunTime_isArray(using Context): Symbol = ScalaRunTime_isArrayR.symbol
+ 
+diff --git a/compiler/src/dotty/tools/backend/sjs/JSEncoding.scala b/compiler/src/dotty/tools/backend/sjs/JSEncoding.scala
+index f0d4ae51ebc03fb426c4ea9d3e715f07e36a82cd..e1e61acbb60c2446b9f7c7ea96fa12999880e45f 100644
+--- a/compiler/src/dotty/tools/backend/sjs/JSEncoding.scala
++++ b/compiler/src/dotty/tools/backend/sjs/JSEncoding.scala
+@@ -334,6 +334,9 @@ object JSEncoding {
+ 
+       case typeRef: jstpe.TransientTypeRef =>
+         throw AssertionError(s"Unexpected transient type ref $typeRef for ${typeRefInternal._2}")
++
++      case typeRef: jstpe.WitResourceTypeRef =>
++        jstpe.WitResourceType(typeRef.className)
+     }
+   }
+ 
+@@ -355,6 +358,8 @@ object JSEncoding {
+         else if (sym == defn.FloatClass) jstpe.FloatRef
+         else if (sym == defn.DoubleClass) jstpe.DoubleRef
+         else throw new Exception(s"unknown primitive value class $sym")
++      } else if (sym.isWitResourceType) {
++        jstpe.WitResourceTypeRef(encodeClassName(sym))
+       } else {
+         encodeClassRef(sym)
+       }
+@@ -431,4 +436,14 @@ object JSEncoding {
+     if (originalName == name.mangledString) NoOriginalName
+     else OriginalName(originalName)
+   }
++
++  // WIT (Wasm Component Model) type encoding methods
++
++  /** Encodes a WIT resource type reference for use in type signatures. */
++  def encodeWitResourceTypeRef(sym: Symbol)(using Context): jstpe.WitResourceTypeRef =
++    jstpe.WitResourceTypeRef(encodeClassName(sym))
++
++  /** Encodes a WIT resource type. */
++  def encodeWitResourceType(sym: Symbol)(using Context): jstpe.WitResourceType =
++    jstpe.WitResourceType(encodeClassName(sym))
+ }
+diff --git a/compiler/src/dotty/tools/backend/sjs/WitCodeGen.scala b/compiler/src/dotty/tools/backend/sjs/WitCodeGen.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..5dc0d1a5cf3aa8eef6d5d6bfcab602dfbde2423e
+--- /dev/null
++++ b/compiler/src/dotty/tools/backend/sjs/WitCodeGen.scala
+@@ -0,0 +1,474 @@
++package dotty.tools.backend.sjs
++
++import scala.language.unsafeNulls
++
++import scala.collection.mutable
++
++import dotty.tools.dotc.ast.tpd
++import dotty.tools.dotc.core.*
++import Contexts.*
++import Decorators.*
++import Flags.*
++import Names.*
++import Phases.*
++import Types.*
++import Symbols.*
++import StdNames.*
++
++import dotty.tools.dotc.util.SourcePosition
++
++import dotty.tools.sjs.ir
++import dotty.tools.sjs.ir.{ClassKind, Position, Trees => js, Types => jstpe, WellKnownNames => jswkn}
++import dotty.tools.sjs.ir.{WasmInterfaceTypes => wit}
++import dotty.tools.sjs.ir.Names.{ClassName, FieldName, LocalName, MethodName, SimpleFieldName, SimpleMethodName}
++import dotty.tools.sjs.ir.OriginalName
++
++import dotty.tools.dotc.transform.sjs.JSSymUtils.*
++
++import JSEncoding.*
++
++/** Code generation for Wasm Component Model (WIT) interop.
++ *
++ *  This class encapsulates all WIT-specific code generation logic,
++ *  including detection of WIT annotations, type conversion to WIT types,
++ *  and generation of WIT IR nodes.
++ */
++class WitCodeGen(jsCodeGen: JSCodeGen)(using Context) {
++  import tpd.*
++  import jsCodeGen.positionConversions.span2irPos
++
++  private val jsdefn = JSDefinitions.jsdefn
++
++  // State tracking for WIT exports and function types
++  private val witExports = mutable.Map.empty[Symbol, WitExportInfo]
++  private val witFunctionTypes = mutable.Map.empty[Symbol, WitFunctionType]
++  private val witVariantValueTypes = mutable.Map.empty[Symbol, Type]
++
++  // Detection methods
++
++  /** Is this type a WIT resource type? */
++  def isWasmWitResourceType(tpe: Type): Boolean =
++    isWasmWitResourceType(tpe.typeSymbol)
++
++  /** Is this symbol a WIT resource type? */
++  def isWasmWitResourceType(sym: Symbol): Boolean =
++    sym.hasAnnotation(jsdefn.WitResourceImportAnnot)
++
++  /** Is this a WIT record class? */
++  def isWasmWitRecordClass(sym: Symbol): Boolean =
++    sym.hasAnnotation(jsdefn.WitRecordAnnot) && sym.is(Final)
++
++  /** Is this a WIT resource static method? */
++  def isWasmWitResourceStaticMethod(sym: Symbol): Boolean =
++    sym.isWitResourceStaticMethod
++
++  /** Is this a WIT resource constructor? */
++  def isWasmWitResourceConstructor(sym: Symbol): Boolean =
++    sym.isWitResourceConstructor
++
++  /** Is this a WIT component tuple class? */
++  def isWasmComponentTupleClass(sym: Symbol): Boolean =
++    sym.isWitComponentTupleClass
++
++  /** Is this a WIT flags type? */
++  def isWasmWitFlags(sym: Symbol): Boolean =
++    sym.isWitFlags
++
++  /** Check if this tree is a call to a WIT native member (method annotated with @WitImport or similar). */
++  def isWitNativeMemberCall(tree: Tree): Boolean = tree match {
++    case Apply(fun, _) =>
++      val sym = fun.symbol
++      sym.hasAnnotation(jsdefn.WitImportAnnot) ||
++      sym.hasAnnotation(jsdefn.WitResourceMethodAnnot) ||
++      sym.hasAnnotation(jsdefn.WitResourceDropAnnot) ||
++      sym.hasAnnotation(jsdefn.WitResourceStaticMethodAnnot) ||
++      sym.hasAnnotation(jsdefn.WitResourceConstructorAnnot)
++    case _ => false
++  }
++
++  /** Check if this symbol has any WIT native annotation. */
++  def hasWitNativeAnnotation(sym: Symbol): Boolean =
++    sym.hasAnnotation(jsdefn.WitImportAnnot) ||
++    sym.hasAnnotation(jsdefn.WitResourceMethodAnnot) ||
++    sym.hasAnnotation(jsdefn.WitResourceDropAnnot) ||
++    sym.hasAnnotation(jsdefn.WitResourceStaticMethodAnnot) ||
++    sym.hasAnnotation(jsdefn.WitResourceConstructorAnnot)
++
++  // Code generation methods
++
++  /** Generate a WitFunctionApply node for a call to a WIT native member. */
++  def genWitNativeMemberCall(method: Symbol, tree: Apply, receiver: Option[Tree], isStat: Boolean)(
++      using codeGen: JSCodeGen, localNames: LocalNameGenerator): js.Tree = {
++    implicit val pos: Position = span2irPos(tree.span)
++
++    val methodIdent = encodeMethodSym(method)
++    val className = encodeClassName(method.owner)
++
++    js.WitFunctionApply(
++      receiver.map(codeGen.genExpr(_)),
++      className,
++      methodIdent,
++      tree.args.map(codeGen.genExpr(_))
++    )(toIRType(tree.tpe))
++  }
++
++  /** Generate a ClassDef for a WIT resource class (trait annotated with @WitResourceImport). */
++  def genWasmComponentResourceClassData(td: TypeDef)(using localNames: LocalNameGenerator): js.ClassDef = {
++    val sym = td.symbol
++    implicit val pos: Position = span2irPos(sym.span)
++
++    val classIdent = encodeClassNameIdent(sym)
++    val kind = ClassKind.NativeWasmComponentResourceClass
++
++    val annot = sym.getAnnotation(jsdefn.WitResourceImportAnnot).get
++    val moduleName = annot.argumentConstantString(0).get
++    val resourceName = annot.argumentConstantString(1).get
++
++    val flags = js.MemberFlags.empty.withNamespace(js.MemberNamespace.Public)
++    val witNativeMembersBuilder = List.newBuilder[js.WitNativeMemberDef]
++
++    td.rhs match {
++      case impl: Template =>
++        for (stat <- impl.body) {
++          stat match {
++            case dd: DefDef if dd.symbol.hasAnnotation(jsdefn.WitResourceMethodAnnot) =>
++              for {
++                annot <- dd.symbol.getAnnotation(jsdefn.WitResourceMethodAnnot)
++                functionName <- annot.argumentConstantString(0)
++              } {
++                witNativeMembersBuilder +=
++                  genWitNativeMemberDef(flags, dd, moduleName,
++                    js.WitFunctionName.ResourceMethod(functionName, resourceName))
++              }
++
++            case dd: DefDef if dd.symbol.hasAnnotation(jsdefn.WitResourceDropAnnot) =>
++              for {
++                _ <- dd.symbol.getAnnotation(jsdefn.WitResourceDropAnnot)
++              } {
++                witNativeMembersBuilder +=
++                  genWitNativeMemberDef(flags, dd, moduleName,
++                    js.WitFunctionName.ResourceDrop(resourceName))
++              }
++
++            case _ =>
++          }
++        }
++      case _ =>
++    }
++
++    js.ClassDef(
++      classIdent,
++      originalNameOfClass(sym),
++      kind,
++      jsClassCaptures = None,
++      superClass = None,
++      interfaces = Nil,
++      jsSuperClass = None,
++      jsNativeLoadSpec = None,
++      fields = Nil,
++      methods = Nil,
++      jsConstructor = None,
++      jsMethodProps = Nil,
++      jsNativeMembers = Nil,
++      witNativeMembers = witNativeMembersBuilder.result(),
++      topLevelExportDefs = Nil
++    )(js.OptimizerHints.empty)
++  }
++
++  /** Generate a WitNativeMemberDef for a WIT imported function. */
++  def genWitNativeMemberDef(flags: js.MemberFlags, dd: DefDef, moduleName: String,
++      name: js.WitFunctionName)(using localNames: LocalNameGenerator): js.WitNativeMemberDef = {
++    implicit val pos: Position = span2irPos(dd.span)
++    val sym = dd.symbol
++
++    val funcType = witFunctionTypeOf(sym)
++    val baseParams = funcType.params.map(toWIT(_))
++
++    val params = name match {
++      case _: js.WitFunctionName.Function |
++           _: js.WitFunctionName.ResourceConstructor |
++           _: js.WitFunctionName.ResourceStaticMethod =>
++        baseParams
++      case _: js.WitFunctionName.ResourceMethod |
++           _: js.WitFunctionName.ResourceDrop =>
++        wit.ResourceType(encodeClassName(sym.owner)) +: baseParams
++    }
++
++    val witFuncType = wit.FuncType(
++      params,
++      toResultWIT(funcType.resultType)
++    )
++
++    js.WitNativeMemberDef(flags, moduleName, name, encodeMethodSym(sym), witFuncType)
++  }
++
++  /** Generate a WitNativeMemberDef for a WIT resource static method. */
++  def genWitResourceStaticMethodDef(dd: DefDef)(using localNames: LocalNameGenerator): Option[js.WitNativeMemberDef] = {
++    implicit val pos: Position = span2irPos(dd.span)
++    val sym = dd.symbol
++
++    val flags = js.MemberFlags.empty.withNamespace(js.MemberNamespace.PublicStatic)
++    val funcType = witFunctionTypeOf(sym)
++
++    for {
++      methodAnnot <- sym.getAnnotation(jsdefn.WitResourceStaticMethodAnnot)
++      resourceAnnot <- sym.owner.companionClass.getAnnotation(jsdefn.WitResourceImportAnnot)
++      methodName <- methodAnnot.argumentConstantString(0)
++      moduleName <- resourceAnnot.argumentConstantString(0)
++      resourceName <- resourceAnnot.argumentConstantString(1)
++    } yield {
++      val name = js.WitFunctionName.ResourceStaticMethod(
++        func = methodName, resource = resourceName)
++      val params = funcType.params.map(p => toWIT(p))
++      val ft = wit.FuncType(params, toResultWIT(funcType.resultType))
++      js.WitNativeMemberDef(flags, moduleName, name, encodeMethodSym(sym), ft)
++    }
++  }
++
++  /** Generate a WitNativeMemberDef for a WIT resource constructor. */
++  def genWitResourceConstructor(dd: DefDef)(using localNames: LocalNameGenerator): Option[js.WitNativeMemberDef] = {
++    implicit val pos: Position = span2irPos(dd.span)
++    val sym = dd.symbol
++
++    val flags = js.MemberFlags.empty.withNamespace(js.MemberNamespace.PublicStatic)
++    val funcType = witFunctionTypeOf(sym)
++
++    for {
++      _ <- sym.getAnnotation(jsdefn.WitResourceConstructorAnnot)
++      resourceAnnot <- sym.owner.companionClass.getAnnotation(jsdefn.WitResourceImportAnnot)
++      moduleName <- resourceAnnot.argumentConstantString(0)
++      resourceName <- resourceAnnot.argumentConstantString(1)
++    } yield {
++      val name = js.WitFunctionName.ResourceConstructor(resourceName)
++      val params = funcType.params.map(p => toWIT(p))
++      val ft = wit.FuncType(params, toResultWIT(funcType.resultType))
++      js.WitNativeMemberDef(flags, moduleName, name, encodeMethodSym(sym), ft)
++    }
++  }
++
++  /** Generate a WitExportDef for a method annotated with @WitExport. */
++  def genWitExportDef(info: WitExportInfo, methodDef: js.MethodDef)(
++      using localNames: LocalNameGenerator): js.WitExportDef = {
++    val signature = wit.FuncType(
++      info.signature.params.map(toWIT(_)),
++      toResultWIT(info.signature.resultType)
++    )
++    js.WitExportDef(
++      info.moduleName,
++      js.WitFunctionName.Function(info.name),
++      methodDef,
++      signature
++    )(using methodDef.pos)
++  }
++
++  // Type conversion methods
++
++  /** Convert a Scala type to a WIT ValType.
++   *
++   *  Uses pre-erasure phase context because the types may come from
++   *  `witFunctionTypeOf` / `witVariantValueTypeOf` which capture types
++   *  at `atPhase(erasurePhase)`. Type aliases (e.g., `Predef.String`)
++   *  can only be resolved via `widenDealias` in that phase context.
++   *
++   *  This method uses symbol-based checks instead of `toIRType` because
++   *  `toIRType` (in JSEncoding) does not handle pre-erasure `AppliedType`.
++   */
++  def toWIT(tpe: Type): wit.ValType = atPhase(erasurePhase) {
++    val widened = tpe.widenDealias
++    val tsym = widened.typeSymbol
++
++    // First check for unsigned types
++    unsigned2WIT.get(tsym).orElse {
++      // Check for array types
++      toWITMaybeArray(widened)
++    }.orElse {
++      // Check for primitive types and String via symbol
++      primitiveSymbolWIT.get(tsym)
++    }.getOrElse {
++      if (isWasmComponentTupleClass(tsym)) {
++        val args = widened match {
++          case AppliedType(_, args) => args
++          case _ => Nil
++        }
++        wit.TupleType(args.map(toWIT(_)))
++      } else if (tsym.hasAnnotation(jsdefn.WitFlagsAnnot)) {
++        // Read numFlags from annotation parameter
++        val numFlags = tsym.getAnnotation(jsdefn.WitFlagsAnnot)
++          .flatMap(_.argumentConstant(0).map(_.intValue))
++          .getOrElse {
++            throw new AssertionError(s"@WitFlags on $tsym missing numFlags parameter")
++          }
++        val className = encodeClassNamePostFlatten(tsym)
++        wit.FlagsType(className, numFlags)
++      } else if (isWasmWitRecordClass(tsym)) {
++        val className = encodeClassNamePostFlatten(tsym)
++        // At the erasure phase, val fields are represented as accessor methods
++        // (they have both ParamAccessor and Method flags). Use the primary
++        // constructor parameters to get the field types with full generic info.
++        val primaryCtor = tsym.primaryConstructor
++        val ctorParams = if (primaryCtor.exists) primaryCtor.info.firstParamTypes else Nil
++        val accessors = tsym.info.decls.toList.filter(f =>
++          f.is(ParamAccessor) && f.is(Accessor) && f.is(StableRealizable))
++        val fields: List[wit.FieldType] = accessors.zip(ctorParams).map { case (f, paramTpe) =>
++          implicit val pos: Position = span2irPos(f.span)
++          // Construct FieldName manually since encodeFieldSym requires non-method
++          // symbols, but at erasure phase all ParamAccessors have Method flag
++          val fieldName = FieldName(className, SimpleFieldName(f.name.toString))
++          val valueType = toWIT(paramTpe)
++          wit.FieldType(fieldName, valueType)
++        }
++        wit.RecordType(className, fields)
++      } else if (isWasmWitResourceType(tsym)) {
++        wit.ResourceType(encodeClassNamePostFlatten(tsym))
++      } else if (tsym.derivesFrom(jsdefn.ComponentResultClass) && tsym.is(Sealed)) {
++        val args = widened match {
++          case AppliedType(_, args) => args
++          case _ => Nil
++        }
++        val (ok, err) = (args.headOption.getOrElse(defn.UnitType), args.lift(1).getOrElse(defn.UnitType))
++        wit.ResultType(toResultWIT(ok), toResultWIT(err))
++      } else if (tsym.fullName.toString == "java.util.Optional") {
++        val args = widened match {
++          case AppliedType(_, args) => args
++          case _ => Nil
++        }
++        val t = args.headOption.getOrElse(defn.AnyType)
++        wit.OptionType(toWIT(t))
++      } else if (tsym.hasAnnotation(jsdefn.WitVariantAnnot) && tsym.is(Sealed)) {
++        // Sort by declaration order
++        // children returns source module (term symbol) for case objects,
++        // normalize to module class for encodeClassName and witVariantValueTypeOf
++        val cases = tsym.children.toList.sortBy(_.span.start).map { rawChild =>
++          val child = if (rawChild.is(Module) && !rawChild.isClass) rawChild.moduleClass else rawChild
++          val valueType = witVariantValueTypeOf(child)
++          val caseTyp = if (isWitUnitType(valueType)) {
++            None
++          } else {
++            Some(toWIT(valueType))
++          }
++          wit.CaseType(encodeClassNamePostFlatten(child), caseTyp)
++        }
++        wit.VariantType(encodeClassNamePostFlatten(tsym), cases)
++      } else {
++        throw new AssertionError(s"invalid type for toWIT: $tpe (symbol: $tsym)")
++      }
++    }
++  }
++
++  /** Convert a Scala type to an optional WIT ValType (None for void/Unit). */
++  def toResultWIT(tpe: Type): Option[wit.ValType] = atPhase(erasurePhase) {
++    if (isWitUnitType(tpe)) None
++    else Some(toWIT(tpe))
++  }
++
++  /** Check if a type represents Unit/void for WIT purposes.
++   *  Uses symbol check instead of `toIRType` to work in pre-erasure context.
++   */
++  private def isWitUnitType(tpe: Type): Boolean =
++    tpe.widenDealias.typeSymbol == defn.UnitClass
++
++  /** Try to convert an array type to a WIT ListType. */
++  private def toWITMaybeArray(tpe: Type): Option[wit.ValType] = {
++    tpe match {
++      case defn.ArrayOf(elem) =>
++        Some(wit.ListType(toWIT(elem), None))
++      case _ => None
++    }
++  }
++
++  // Registration methods for tracking WIT exports and function types
++
++  def registerWitExport(sym: Symbol, info: WitExportInfo): Unit =
++    witExports(sym) = info
++
++  def registerWitFunctionType(sym: Symbol, funcType: WitFunctionType): Unit =
++    witFunctionTypes(sym) = funcType
++
++  def registerWitVariantValueType(sym: Symbol, valueType: Type): Unit =
++    witVariantValueTypes(sym) = valueType
++
++  def witExportOf(sym: Symbol): Option[WitExportInfo] =
++    witExports.get(sym)
++
++  def witFunctionTypeOf(sym: Symbol): WitFunctionType = {
++    witFunctionTypes.getOrElse(sym, {
++      // Use pre-erasure types to preserve generic type arguments
++      // (e.g., Optional[RequestOptions] instead of just Optional)
++      atPhase(erasurePhase) {
++        val paramTypes = sym.info.firstParamTypes
++        val resultType = sym.info.resultType
++        WitFunctionType(paramTypes, resultType)
++      }
++    })
++  }
++
++  def witVariantValueTypeOf(sym: Symbol): Type = {
++    witVariantValueTypes.getOrElse(sym, {
++      // Use pre-erasure types to preserve generic type arguments
++      atPhase(erasurePhase) {
++        // For case class fields, get the field type
++        // For variant cases, get the primary constructor parameter type or Unit
++        if (sym.isClass) {
++          val primaryCtor = sym.asClass.primaryConstructor
++          if (primaryCtor.exists) {
++            val paramTypes = primaryCtor.info.firstParamTypes
++            if (paramTypes.size == 1) paramTypes.head
++            else defn.UnitType
++          } else {
++            defn.UnitType
++          }
++        } else {
++          sym.info.widenDealias
++        }
++      }
++    })
++  }
++
++  /** Encode a class name at the post-flatten phase.
++   *
++   *  `encodeClassName` relies on `fullName.mangledString` which produces different
++   *  results depending on the compiler phase. Before flatten, inner classes use `.`
++   *  separators (e.g., `package$.Method`), but after flatten they use `$`
++   *  (e.g., `package$Method`). Since `toWIT` runs at `erasurePhase` (before flatten),
++   *  we must step forward to the post-flatten phase for class name encoding.
++   */
++  private def encodeClassNamePostFlatten(sym: Symbol): ClassName =
++    atPhase(flattenPhase.next) { encodeClassName(sym) }
++
++  // Mapping tables for type conversion
++
++  private lazy val unsigned2WIT: Map[Symbol, wit.ValType] = Map(
++    jsdefn.WitUnsigned_UByte -> wit.U8Type,
++    jsdefn.WitUnsigned_UShort -> wit.U16Type,
++    jsdefn.WitUnsigned_UInt -> wit.U32Type,
++    jsdefn.WitUnsigned_ULong -> wit.U64Type
++  )
++
++  /** Maps Scala type symbols to WIT value types for primitives and String.
++   *  Uses symbols instead of IR types to work in pre-erasure phase context.
++   */
++  private lazy val primitiveSymbolWIT: Map[Symbol, wit.ValType] = Map(
++    defn.BooleanClass -> wit.BoolType,
++    defn.ByteClass -> wit.S8Type,
++    defn.ShortClass -> wit.S16Type,
++    defn.IntClass -> wit.S32Type,
++    defn.LongClass -> wit.S64Type,
++    defn.FloatClass -> wit.F32Type,
++    defn.DoubleClass -> wit.F64Type,
++    defn.CharClass -> wit.CharType,
++    defn.StringClass -> wit.StringType
++  )
++}
++
++/** Information about a WIT export. */
++case class WitExportInfo(
++    moduleName: String,
++    name: String,
++    signature: WitFunctionType
++)(val pos: SourcePosition)
++
++/** Function type information for WIT. */
++case class WitFunctionType(
++    params: List[Type],
++    resultType: Type
++)
+diff --git a/compiler/src/dotty/tools/dotc/transform/sjs/JSSymUtils.scala b/compiler/src/dotty/tools/dotc/transform/sjs/JSSymUtils.scala
+index 6042d06d2cf86c1efff2b5e2ca311e2d734aae03..ed22d5370c21147d9396fd662dc25112798d849d 100644
+--- a/compiler/src/dotty/tools/dotc/transform/sjs/JSSymUtils.scala
++++ b/compiler/src/dotty/tools/dotc/transform/sjs/JSSymUtils.scala
+@@ -235,6 +235,54 @@ object JSSymUtils {
+           || sym.hasAnnotation(jsdefn.JSExportStaticAnnot)
+       )
+     end sjsNeedsField
++
++    // WIT (Wasm Component Model) related extensions
++
++    /** Is this symbol a WIT resource type (annotated with @WitResourceImport)? */
++    def isWitResourceType(using Context): Boolean =
++      sym.hasAnnotation(jsdefn.WitResourceImportAnnot)
++
++    /** Is this symbol a WIT record class (annotated with @WitRecord and final)? */
++    def isWitRecordClass(using Context): Boolean =
++      sym.hasAnnotation(jsdefn.WitRecordAnnot) && sym.is(Final)
++
++    /** Is this symbol a WIT variant trait (annotated with @WitVariant and sealed)? */
++    def isWitVariantTrait(using Context): Boolean =
++      sym.hasAnnotation(jsdefn.WitVariantAnnot) && sym.is(Sealed)
++
++    /** Is this symbol annotated with @WitFlags? */
++    def isWitFlags(using Context): Boolean =
++      sym.hasAnnotation(jsdefn.WitFlagsAnnot)
++
++    /** Does this symbol have @WitImport annotation? */
++    def hasWitImport(using Context): Boolean =
++      sym.hasAnnotation(jsdefn.WitImportAnnot)
++
++    /** Does this symbol have @WitExport annotation? */
++    def hasWitExport(using Context): Boolean =
++      sym.hasAnnotation(jsdefn.WitExportAnnot)
++
++    /** Is this a WIT resource static method?
++     *  Must be annotated with @WitResourceStaticMethod and be in a companion object
++     *  of a @WitResourceImport annotated trait.
++     */
++    def isWitResourceStaticMethod(using Context): Boolean =
++      sym.hasAnnotation(jsdefn.WitResourceStaticMethodAnnot) &&
++      sym.owner.is(ModuleClass) &&
++      sym.owner.companionClass.hasAnnotation(jsdefn.WitResourceImportAnnot)
++
++    /** Is this a WIT resource constructor?
++     *  Must be annotated with @WitResourceConstructor and be in a companion object
++     *  of a @WitResourceImport annotated trait.
++     */
++    def isWitResourceConstructor(using Context): Boolean =
++      sym.hasAnnotation(jsdefn.WitResourceConstructorAnnot) &&
++      sym.owner.is(ModuleClass) &&
++      sym.owner.companionClass.hasAnnotation(jsdefn.WitResourceImportAnnot)
++
++    /** Is this a WIT component tuple class (scala.scalajs.wit.Tuple*)? */
++    def isWitComponentTupleClass(using Context): Boolean =
++      sym.fullName.toString.startsWith("scala.scalajs.wit.Tuple")
+   }
+ 
+   /** Extractor for a `TermName` that *may* be a JS unary operator.
+diff --git a/compiler/src/dotty/tools/dotc/transform/sjs/PrepJSInterop.scala b/compiler/src/dotty/tools/dotc/transform/sjs/PrepJSInterop.scala
+index 77950d21ab5800980c14c3698e79a8e9ce92ec4c..b82ff1c37815f64b4b028d9547a8ed165a95c885 100644
+--- a/compiler/src/dotty/tools/dotc/transform/sjs/PrepJSInterop.scala
++++ b/compiler/src/dotty/tools/dotc/transform/sjs/PrepJSInterop.scala
+@@ -155,6 +155,7 @@ class PrepJSInterop extends MacroTransform with IdentityDenotTransformer { thisP
+ 
+       checkJSNameAnnots(sym)
+       constantFoldJSAnnotations(sym)
++      checkWitAnnotations(tree)
+ 
+       markExposedIfRequired(tree.symbol)
+ 
+@@ -1089,18 +1090,28 @@ class PrepJSInterop extends MacroTransform with IdentityDenotTransformer { thisP
+       }
+     }
+ 
+-    /** Constant-folds arguments to `@JSName`, `@JSExportTopLevel` and `@JSExportStatic`.
++    /** Constant-folds arguments to `@JSName`, `@JSExportTopLevel`, `@JSExportStatic`,
++     *  and WIT annotations.
+      *
+      *  Unlike scalac, dotc does not constant-fold expressions in annotations.
+-     *  Our back-end needs to have access to the arguments to those two
++     *  Our back-end needs to have access to the arguments to those
+      *  annotations as literal strings, so we specifically constant-fold them
+      *  here.
+      */
+     private def constantFoldJSAnnotations(sym: Symbol)(using Context): Unit = {
++      def isWitAnnotation(sym: Symbol): Boolean =
++        sym == jsdefn.WitImportAnnot ||
++        sym == jsdefn.WitExportAnnot ||
++        sym == jsdefn.WitResourceImportAnnot ||
++        sym == jsdefn.WitResourceMethodAnnot ||
++        sym == jsdefn.WitResourceStaticMethodAnnot ||
++        sym == jsdefn.WitResourceConstructorAnnot ||
++        sym == jsdefn.WitFlagsAnnot
++
+       val annots = sym.annotations
+       val newAnnots = annots.mapConserve { annot =>
+         if (annot.symbol == jsdefn.JSExportTopLevelAnnot || annot.symbol == jsdefn.JSExportStaticAnnot ||
+-            annot.symbol == jsdefn.JSNameAnnot) {
++            annot.symbol == jsdefn.JSNameAnnot || isWitAnnotation(annot.symbol)) {
+           annot.tree match {
+             case app @ Apply(fun, args) =>
+               val newArgs = args.mapConserve { arg =>
+@@ -1129,6 +1140,378 @@ class PrepJSInterop extends MacroTransform with IdentityDenotTransformer { thisP
+         sym.annotations = newAnnots
+     }
+ 
++    /** Check WIT annotations for validity. */
++    private def checkWitAnnotations(tree: MemberDef)(using Context): Unit = {
++      val sym = tree.symbol
++
++      if (sym.hasAnnotation(jsdefn.WitVariantAnnot))
++        checkWitVariantTrait(tree, sym)
++      else if (sym.hasAnnotation(jsdefn.WitRecordAnnot))
++        checkWitRecord(tree, sym)
++      else if (sym.hasAnnotation(jsdefn.WitFlagsAnnot))
++        checkWitFlags(tree, sym)
++      else if (sym.hasAnnotation(jsdefn.WitResourceImportAnnot))
++        checkWitResourceImport(tree, sym)
++      else if (sym.hasAnnotation(jsdefn.WitResourceMethodAnnot)
++          || sym.hasAnnotation(jsdefn.WitResourceStaticMethodAnnot)
++          || sym.hasAnnotation(jsdefn.WitResourceConstructorAnnot)
++          || sym.hasAnnotation(jsdefn.WitResourceDropAnnot))
++        checkWitResourceAnnotationContext(tree, sym)
++
++      // Check @WitImport on methods
++      for (annot <- sym.getAnnotation(jsdefn.WitImportAnnot))
++        checkWitComponentFunction(tree, sym, annot)
++    }
++
++    /** Check that a type is compatible with the WebAssembly Component Model. */
++    private def isComponentModelCompatible(tpe: Type)(using Context): Boolean = {
++      val widened = tpe.widenDealias
++      val sym = widened.typeSymbol
++      val fullName = sym.fullName.toString
++
++      // Primitives
++      if (sym == defn.UnitClass || sym == defn.ByteClass || sym == defn.ShortClass
++          || sym == defn.IntClass || sym == defn.LongClass || sym == defn.FloatClass
++          || sym == defn.DoubleClass || sym == defn.CharClass || sym == defn.BooleanClass)
++        true
++      // String
++      else if (fullName == "java.lang.String")
++        true
++      // Unsigned types
++      else if (fullName == "scala.scalajs.wit.unsigned.UByte"
++          || fullName == "scala.scalajs.wit.unsigned.UShort"
++          || fullName == "scala.scalajs.wit.unsigned.UInt"
++          || fullName == "scala.scalajs.wit.unsigned.ULong")
++        true
++      // Array (recursive check on element type)
++      else if (fullName == "scala.Array")
++        widened.argInfos.headOption.forall(isComponentModelCompatible)
++      // Optional (recursive check)
++      else if (fullName == "java.util.Optional")
++        widened.argInfos.headOption.forall(isComponentModelCompatible)
++      // WIT Tuple types (recursive check on all type args)
++      else if (fullName.startsWith("scala.scalajs.wit.Tuple"))
++        widened.argInfos.forall(isComponentModelCompatible)
++      // WIT Result types (recursive check on type args)
++      else if (fullName.startsWith("scala.scalajs.wit.Result"))
++        widened.argInfos.forall(isComponentModelCompatible)
++      // Types annotated with WIT annotations
++      else if (sym.hasAnnotation(jsdefn.WitRecordAnnot)
++          || sym.hasAnnotation(jsdefn.WitVariantAnnot)
++          || sym.hasAnnotation(jsdefn.WitFlagsAnnot)
++          || sym.hasAnnotation(jsdefn.WitResourceImportAnnot))
++        true
++      else
++        false
++    }
++
++    /** Validate @WitRecord: must be a final class (not trait, not module).
++     *  All constructor parameter types must be component model compatible.
++     */
++    private def checkWitRecord(tree: MemberDef, sym: Symbol)(using Context): Unit = {
++      if (!sym.isClass || sym.is(Trait) || sym.is(ModuleClass)) {
++        report.error("@WitRecord can only be used on classes.", tree)
++      } else if (!sym.is(Final)) {
++        report.error("@WitRecord class must be final.", tree)
++      } else {
++        val primaryCtor = sym.primaryConstructor
++        val params = primaryCtor.paramSymss.flatten.filterNot(_.isType)
++        for (param <- params) {
++          val fieldType = param.info
++          if (!isComponentModelCompatible(fieldType))
++            report.error(
++                em"Field '${param.name}' has type '${fieldType}' which is not compatible with the Component Model.",
++                param.srcPos)
++        }
++      }
++    }
++
++    /** Validate @WitVariant: must be sealed (trait or abstract class).
++     *  Must have at least one case.
++     */
++    private def checkWitVariantTrait(tree: MemberDef, sym: Symbol)(using Context): Unit = {
++      if (!sym.is(Sealed)) {
++        report.error("@WitVariant can only be used on sealed traits or sealed abstract classes.", tree)
++        return
++      }
++
++      val cases = sym.children
++      if (cases.isEmpty) {
++        report.error(em"@WitVariant '${sym.name}' must have at least one case.", tree)
++      } else {
++        cases.foreach(validateWitVariantCase(_))
++      }
++    }
++
++    /** Validate a single variant case. */
++    private def validateWitVariantCase(caseSym: Symbol)(using Context): Unit = {
++      if (caseSym.is(Module)) {
++        // Object case (enum case without payload) - valid
++      } else if (caseSym.isClass && caseSym.is(Final) && !caseSym.is(Trait)) {
++        // Final class case (variant case with payload)
++        val primaryCtor = caseSym.primaryConstructor
++        if (!primaryCtor.exists) {
++          report.error(
++              em"@WitVariant case '${caseSym.name}' has no primary constructor.",
++              caseSym.srcPos)
++          return
++        }
++
++        val params = primaryCtor.paramSymss.flatten.filterNot(_.isType)
++
++        if (params.length > 1) {
++          report.error(
++              em"@WitVariant case '${caseSym.name}' must have at most one field, found ${params.length}.",
++              caseSym.srcPos)
++        } else if (params.length == 1) {
++          val param = params.head
++          val fieldName = param.name.toString
++          val fieldType = param.info
++
++          if (fieldName != "value") {
++            report.error(
++                em"@WitVariant case '${caseSym.name}' field must be named 'value', found '${fieldName}'.",
++                param.srcPos)
++          } else if (!isComponentModelCompatible(fieldType)) {
++            report.error(
++                em"Field '${param.name}' has type '${fieldType}' which is not compatible with the Component Model.",
++                param.srcPos)
++          }
++        }
++        // Zero parameters is valid (enum case defined as a class)
++      } else {
++        report.error(
++            em"@WitVariant case '${caseSym.name}' must be a final class or object.",
++            caseSym.srcPos)
++      }
++    }
++
++    /** Validate @WitFlags: must be a final class, not AnyVal, exactly one Int param named "value",
++     *  and numFlags annotation argument must be positive.
++     */
++    private def checkWitFlags(tree: MemberDef, sym: Symbol)(using Context): Unit = {
++      if (!sym.isClass || sym.is(Trait) || sym.is(ModuleClass)) {
++        report.error("@WitFlags can only be used on classes.", tree)
++      } else if (!sym.is(Final)) {
++        report.error("@WitFlags class must be final.", tree)
++      } else if (sym.derivesFrom(defn.AnyValClass)) {
++        report.error("@WitFlags class must not extend AnyVal. Use a regular class instead.", tree)
++      } else {
++        val primaryCtor = sym.primaryConstructor
++        val params = primaryCtor.paramSymss.flatten.filterNot(_.isType)
++        if (params.length != 1) {
++          report.error(
++              em"@WitFlags class must have exactly one parameter, found ${params.length}.",
++              tree)
++          return
++        }
++
++        val param = params.head
++        if (!param.info.isRef(defn.IntClass)) {
++          report.error(
++              em"@WitFlags class parameter must be of type Int, found '${param.info}'.",
++              param.srcPos)
++        }
++        if (param.name.toString != "value") {
++          report.error(
++              em"@WitFlags class parameter must be named 'value', found '${param.name}'.",
++              param.srcPos)
++        }
++
++        sym.getAnnotation(jsdefn.WitFlagsAnnot).flatMap(_.argumentConstant(0)) match {
++          case Some(Constant(numFlags: Int)) if numFlags > 0 =>
++            // valid
++          case Some(Constant(numFlags: Int)) =>
++            report.error(
++                em"@WitFlags numFlags parameter must be positive, found $numFlags.",
++                tree)
++          case _ =>
++            report.error(
++                "@WitFlags annotation must specify the number of flags as a parameter.",
++                tree)
++        }
++      }
++    }
++
++    /** Validate @WitResourceImport: must be a non-sealed trait.
++     *  Validates methods in the trait and its companion object.
++     */
++    private def checkWitResourceImport(tree: MemberDef, sym: Symbol)(using Context): Unit = {
++      if (!sym.is(Trait)) {
++        report.error("@WitResourceImport can only be used on traits.", tree)
++        return
++      }
++
++      if (sym.is(Sealed)) {
++        report.error("@WitResourceImport traits cannot be sealed.", tree)
++        return
++      }
++
++      var dropMethodCount = 0
++      for (member <- sym.info.decls) {
++        if (member.is(Method) && !member.isConstructor && !member.is(Synthetic)) {
++          val hasResourceMethod = member.hasAnnotation(jsdefn.WitResourceMethodAnnot)
++          val hasResourceDrop = member.hasAnnotation(jsdefn.WitResourceDropAnnot)
++          val hasResourceConstructor = member.hasAnnotation(jsdefn.WitResourceConstructorAnnot)
++          val hasResourceStaticMethod = member.hasAnnotation(jsdefn.WitResourceStaticMethodAnnot)
++
++          // @WitResourceConstructor and @WitResourceStaticMethod are not allowed in trait body
++          if (hasResourceConstructor)
++            report.error("@WitResourceConstructor can only be used on apply method in companion object.", member.srcPos)
++          if (hasResourceStaticMethod)
++            report.error("@WitResourceStaticMethod can only be used in companion object.", member.srcPos)
++
++          val hasResourceMethodAnnotation = hasResourceMethod || hasResourceDrop
++          if (!hasResourceMethodAnnotation) {
++            report.error(
++                em"Method '${member.name}' in @WitResourceImport trait must be annotated with @WitResourceMethod or @WitResourceDrop.",
++                member.srcPos)
++          }
++
++          if (hasResourceDrop) {
++            dropMethodCount += 1
++            val paramInfos = member.info.paramInfoss.flatten
++            if (paramInfos.nonEmpty)
++              report.error("@WitResourceDrop method must take no parameters.", member.srcPos)
++            if (!member.info.finalResultType.isRef(defn.UnitClass))
++              report.error("@WitResourceDrop method must return Unit.", member.srcPos)
++          }
++
++          if (hasResourceMethodAnnotation) {
++            // Validate param/return types
++            val paramTypes = member.info.paramInfoss.flatten
++            for (paramType <- paramTypes) {
++              if (!isComponentModelCompatible(paramType))
++                report.error(
++                    em"Parameter type '${paramType}' in method '${member.name}' is not compatible with the Component Model.",
++                    member.srcPos)
++            }
++            val returnType = member.info.finalResultType
++            if (!isComponentModelCompatible(returnType))
++              report.error(
++                  em"Return type '${returnType}' in method '${member.name}' is not compatible with the Component Model.",
++                  member.srcPos)
++
++            // Check for overriding inherited members
++            val overriddenSymbols = member.allOverriddenSymbols
++            if (overriddenSymbols.hasNext) {
++              val overridden = overriddenSymbols.next()
++              val verb = if (overridden.is(Deferred)) "implement" else "override"
++              report.error(
++                  em"A @WitResourceMethod or @WitResourceDrop member cannot $verb the inherited member ${overridden.fullName}.",
++                  member.srcPos)
++            }
++          }
++        }
++      }
++
++      // At most one @WitResourceDrop method
++      if (dropMethodCount > 1) {
++        report.error(
++            em"@WitResourceImport trait can have at most one @WitResourceDrop method, found $dropMethodCount.",
++            tree)
++      }
++
++      // Check companion object
++      val companion = sym.companionModule
++      if (companion.exists) {
++        val companionClass = companion.moduleClass
++        for (member <- companionClass.info.decls) {
++          if (member.is(Method) && !member.isConstructor) {
++            val hasConstructorAnnot = member.hasAnnotation(jsdefn.WitResourceConstructorAnnot)
++            val hasStaticMethodAnnot = member.hasAnnotation(jsdefn.WitResourceStaticMethodAnnot)
++
++            // @WitResourceConstructor must be on apply method
++            if (hasConstructorAnnot && member.name != nme.apply)
++              report.error("@WitResourceConstructor can only be used on apply method.", member.srcPos)
++
++            // Public methods in companion must have annotation
++            if (!hasConstructorAnnot && !hasStaticMethodAnnot && !member.is(Synthetic))
++              report.error(
++                  em"Public method '${member.name}' in companion object of @WitResourceImport trait must be annotated with @WitResourceConstructor or @WitResourceStaticMethod.",
++                  member.srcPos)
++          }
++        }
++      }
++    }
++
++    /** Check that resource method annotations are used in the correct context.
++     *  - @WitResourceMethod/@WitResourceDrop: must be in trait with @WitResourceImport
++     *  - @WitResourceStaticMethod/@WitResourceConstructor: must be in companion object of @WitResourceImport trait
++     */
++    private def checkWitResourceAnnotationContext(tree: MemberDef, sym: Symbol)(using Context): Unit = {
++      for (annot <- sym.annotations) {
++        val annotSym = annot.symbol
++        val isResourceMethod = annotSym == jsdefn.WitResourceMethodAnnot
++        val isDrop = annotSym == jsdefn.WitResourceDropAnnot
++        val isStaticMethod = annotSym == jsdefn.WitResourceStaticMethodAnnot
++        val isConstructor = annotSym == jsdefn.WitResourceConstructorAnnot
++
++        if ((isResourceMethod || isDrop)
++            && (!sym.owner.is(Trait) || !sym.owner.hasAnnotation(jsdefn.WitResourceImportAnnot))) {
++          report.error(
++              em"${annot.symbol.name} can only be used in a trait annotated with @WitResourceImport.",
++              annot.tree)
++        } else if ((isStaticMethod || isConstructor)
++            && (!sym.owner.is(ModuleClass)
++                || !sym.owner.companionClass.hasAnnotation(jsdefn.WitResourceImportAnnot))) {
++          report.error(
++              em"${annot.symbol.name} can only be used in a companion object of a trait annotated with @WitResourceImport.",
++              annot.tree)
++        }
++      }
++    }
++
++    /** Validate @WitImport/@WitExport annotated methods. */
++    private def checkWitComponentFunction(tree: MemberDef, sym: Symbol, annot: Annotation)(using Context): Unit = {
++      val annotName = annot.symbol.name
++
++      if (sym.isLocalToBlock) {
++        report.error(em"@$annotName is not allowed on local definitions.", annot.tree)
++      } else if (!sym.is(Method)) {
++        report.error(em"@$annotName can only be used on methods.", annot.tree)
++      } else if (sym.isConstructor) {
++        report.error(em"@$annotName is not allowed on constructors.", annot.tree)
++      } else if (!sym.owner.is(ModuleClass)) {
++        report.error(em"@$annotName methods must be defined in an object.", annot.tree)
++      } else if (!sym.isPublic) {
++        report.error(em"@$annotName methods must be public.", annot.tree)
++      } else if (sym.info.typeParams.nonEmpty) {
++        report.error(em"@$annotName methods cannot have type parameters.", annot.tree)
++      } else {
++        // Check for overriding inherited members
++        val overriddenSymbols = sym.allOverriddenSymbols
++        if (overriddenSymbols.hasNext) {
++          val overridden = overriddenSymbols.next()
++          val verb = if (overridden.is(Deferred)) "implement" else "override"
++          report.error(
++              em"An @$annotName member cannot $verb the inherited member ${overridden.fullName}.",
++              annot.tree)
++        }
++
++        // Validate parameter types
++        if (sym.info.paramInfoss.flatten.exists(_.isRepeatedParam))
++          report.error(em"@$annotName methods may not have repeated parameters.", annot.tree)
++        if (sym.hasDefaultParams)
++          report.error(em"@$annotName methods may not have default parameters.", annot.tree)
++
++        val paramTypes = sym.info.paramInfoss.flatten
++        for (paramType <- paramTypes) {
++          if (!paramType.isRepeatedParam && !isComponentModelCompatible(paramType))
++            report.error(
++                em"Parameter type '${paramType}' is not compatible with the Component Model.",
++                annot.tree)
++        }
++
++        // Validate return type
++        val returnType = sym.info.finalResultType
++        if (!isComponentModelCompatible(returnType))
++          report.error(
++              em"Return type '${returnType}' is not compatible with the Component Model.",
++              annot.tree)
++      }
++    }
++
+     /** Mark the symbol as exposed if it is a non-private term member of a
+      *  non-native JS class.
+      *
+diff --git a/library-js/src/scala/Symbol.scala b/library-js/src/scala/Symbol.scala
+index a5bbd615ef36fc89244e2b4d021e2ac3e6b43175..23b64753a139362d6633585fbad349379b4a3ee2 100644
+--- a/library-js/src/scala/Symbol.scala
++++ b/library-js/src/scala/Symbol.scala
+@@ -15,6 +15,7 @@ package scala
+ import scala.language.`2.13`
+ 
+ import scala.scalajs.js
++import scala.scalajs.LinkingInfo.{linkTimeIf, isWebAssembly}
+ 
+ /** This class provides a simple way to get unique objects for equal strings.
+  *  Since symbols are interned, they can be compared using reference equality.
+@@ -47,13 +48,32 @@ object Symbol extends UniquenessCache[String, Symbol] {
+ 
+ // Modified to use Scala.js specific cache
+ private[scala] abstract class UniquenessCache[K, V] {
+-  private val cache = js.Dictionary.empty[V]
++  private val cacheJS = {
++    linkTimeIf(!isWebAssembly) {
++      js.Dictionary.empty[V]
++    } {
++      null
++    }
++  }
++
++  private val cacheWasm = {
++    linkTimeIf(isWebAssembly) {
++      new java.util.HashMap[String, V]()
++    } {
++      null
++    }
++  }
+ 
+   protected def valueFromKey(k: String): V
+   protected def keyFromValue(v: V): Option[String]
+ 
+-  def apply(name: String): V =
+-    cache.getOrElseUpdate(name, valueFromKey(name))
++  def apply(name: String): V = {
++    linkTimeIf(isWebAssembly) {
++      cacheWasm.nn.computeIfAbsent(name, _ => valueFromKey(name))
++    } {
++      cacheJS.nn.getOrElseUpdate(name, valueFromKey(name))
++    }
++  }
+ 
+   def unapply(other: V): Option[String] = keyFromValue(other)
+ }
+\ No newline at end of file
+diff --git a/library-js/src/scala/scalajs/wit/Result.scala b/library-js/src/scala/scalajs/wit/Result.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..95828ba51d6d7384cb64836ab22519de2797208f
+--- /dev/null
++++ b/library-js/src/scala/scalajs/wit/Result.scala
+@@ -0,0 +1,55 @@
++/*
++ * Scala.js (https://www.scala-js.org/)
++ *
++ * Copyright EPFL.
++ *
++ * Licensed under Apache License 2.0
++ * (https://www.apache.org/licenses/LICENSE-2.0).
++ *
++ * See the NOTICE file distributed with this work for
++ * additional information regarding copyright ownership.
++ */
++
++package scala.scalajs.wit
++
++sealed trait Result[+A, +B]
++
++final class Ok[A](val value: A) extends Result[A, Nothing] {
++  override def equals(other: Any): Boolean = {
++    other match {
++      case that: Ok[_] =>
++        if (this.value == null) that.value == null
++        else this.value == that.value
++      case _ => false
++    }
++  }
++
++  override def hashCode(): Int =
++    if (value == null) 0 else value.hashCode()
++
++  override def toString(): String = "Ok(" + value + ")"
++}
++
++object Ok {
++  def apply[A](value: A): Ok[A] = new Ok(value)
++}
++
++final class Err[B](val value: B) extends Result[Nothing, B] {
++  override def equals(other: Any): Boolean = {
++    other match {
++      case that: Err[_] =>
++        if (this.value == null) that.value == null
++        else this.value == that.value
++      case _ => false
++    }
++  }
++
++  override def hashCode(): Int =
++    if (value == null) 0 else value.hashCode()
++
++  override def toString(): String = "Err(" + value + ")"
++}
++
++object Err {
++  def apply[B](value: B): Err[B] = new Err(value)
++}
+diff --git a/library-js/src/scala/scalajs/wit/Tuple.scala b/library-js/src/scala/scalajs/wit/Tuple.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..a59dc54461b4f5eabccf0a5cc65c8b1a39aebc06
+--- /dev/null
++++ b/library-js/src/scala/scalajs/wit/Tuple.scala
+@@ -0,0 +1,255 @@
++/*
++ * Scala.js (https://www.scala-js.org/)
++ *
++ * Copyright EPFL.
++ *
++ * Licensed under Apache License 2.0
++ * (https://www.apache.org/licenses/LICENSE-2.0).
++ *
++ * See the NOTICE file distributed with this work for
++ * additional information regarding copyright ownership.
++ */
++
++package scala.scalajs.wit
++
++import scala.language.implicitConversions
++
++final class Tuple1[+T1](val _1: T1)
++
++object Tuple1 {
++  def apply[T1](_1: T1): Tuple1[T1] = new Tuple1(_1)
++
++  @inline implicit def fromScalaTuple1[T1](t: Tuple1[T1]): Tuple1[T1] =
++    apply(t._1)
++
++  @inline implicit def toScalaTuple1[T1](t: Tuple1[T1]): Tuple1[T1] =
++    Tuple1(t._1)
++}
++
++final class Tuple2[+T1, +T2](val _1: T1, val _2: T2)
++
++object Tuple2 {
++  def apply[T1, T2](_1: T1, _2: T2): Tuple2[T1, T2] = new Tuple2(_1, _2)
++
++  @inline implicit def fromScalaTuple2[T1, T2](t: (T1, T2)): Tuple2[T1, T2] =
++    apply(t._1, t._2)
++
++  @inline implicit def toScalaTuple2[T1, T2](t: Tuple2[T1, T2]): (T1, T2) =
++    (t._1, t._2)
++}
++
++final class Tuple3[+T1, +T2, +T3](val _1: T1, val _2: T2, val _3: T3)
++
++object Tuple3 {
++  def apply[T1, T2, T3](_1: T1, _2: T2, _3: T3): Tuple3[T1, T2, T3] = new Tuple3(_1, _2, _3)
++
++  @inline implicit def fromScalaTuple3[T1, T2, T3](t: (T1, T2, T3)): Tuple3[T1, T2, T3] =
++    apply(t._1, t._2, t._3)
++
++  @inline implicit def toScalaTuple3[T1, T2, T3](t: Tuple3[T1, T2, T3]): (T1, T2, T3) =
++    (t._1, t._2, t._3)
++}
++
++final class Tuple4[+T1, +T2, +T3, +T4](val _1: T1, val _2: T2, val _3: T3, val _4: T4)
++
++object Tuple4 {
++  def apply[T1, T2, T3, T4](_1: T1, _2: T2, _3: T3, _4: T4): Tuple4[T1, T2, T3, T4] =
++    new Tuple4(_1, _2, _3, _4)
++
++  @inline implicit def fromScalaTuple4[T1, T2, T3, T4](
++      t: (T1, T2, T3, T4)): Tuple4[T1, T2, T3, T4] = {
++    apply(t._1, t._2, t._3, t._4)
++  }
++
++  @inline implicit def toScalaTuple4[T1, T2, T3, T4](t: Tuple4[T1, T2, T3, T4]): (T1, T2, T3, T4) =
++    (t._1, t._2, t._3, t._4)
++}
++
++final class Tuple5[+T1, +T2, +T3, +T4, +T5](val _1: T1, val _2: T2, val _3: T3, val _4: T4,
++    val _5: T5)
++
++object Tuple5 {
++  def apply[T1, T2, T3, T4, T5](_1: T1, _2: T2, _3: T3, _4: T4, _5: T5): Tuple5[T1, T2, T3, T4,
++      T5] = {
++    new Tuple5(_1, _2, _3, _4, _5)
++  }
++
++  @inline implicit def fromScalaTuple5[T1, T2, T3, T4, T5](
++      t: (T1, T2, T3, T4, T5)): Tuple5[T1, T2, T3, T4, T5] = {
++    apply(t._1, t._2, t._3, t._4, t._5)
++  }
++
++  @inline implicit def toScalaTuple5[T1, T2, T3, T4, T5](t: Tuple5[T1, T2, T3, T4, T5]): (T1, T2, T3,
++      T4, T5) = {
++    (t._1, t._2, t._3, t._4, t._5)
++  }
++}
++
++final class Tuple6[+T1, +T2, +T3, +T4, +T5, +T6](val _1: T1, val _2: T2, val _3: T3, val _4: T4,
++    val _5: T5, val _6: T6)
++
++object Tuple6 {
++  def apply[T1, T2, T3, T4, T5, T6](_1: T1, _2: T2, _3: T3, _4: T4, _5: T5, _6: T6): Tuple6[T1, T2,
++      T3, T4, T5, T6] = {
++    new Tuple6(_1, _2, _3, _4, _5, _6)
++  }
++
++  @inline implicit def fromScalaTuple6[T1, T2, T3, T4, T5, T6](
++      t: (T1, T2, T3, T4, T5, T6)): Tuple6[T1, T2, T3, T4, T5, T6] = {
++    apply(t._1, t._2, t._3, t._4, t._5, t._6)
++  }
++
++  @inline implicit def toScalaTuple6[T1, T2, T3, T4, T5, T6](t: Tuple6[T1, T2, T3, T4, T5, T6]): (T1,
++      T2, T3, T4, T5, T6) = {
++    (t._1, t._2, t._3, t._4, t._5, t._6)
++  }
++}
++
++final class Tuple7[+T1, +T2, +T3, +T4, +T5, +T6, +T7](
++    val _1: T1,
++    val _2: T2,
++    val _3: T3,
++    val _4: T4,
++    val _5: T5,
++    val _6: T6,
++    val _7: T7
++)
++
++object Tuple7 {
++  def apply[T1, T2, T3, T4, T5, T6, T7](
++      _1: T1,
++      _2: T2,
++      _3: T3,
++      _4: T4,
++      _5: T5,
++      _6: T6,
++      _7: T7
++  ): Tuple7[T1, T2, T3, T4, T5, T6, T7] = {
++    new Tuple7(_1, _2, _3, _4, _5, _6, _7)
++  }
++
++  @inline implicit def fromScalaTuple7[T1, T2, T3, T4, T5, T6, T7](t: (T1, T2, T3, T4, T5, T6,
++          T7)): Tuple7[T1, T2, T3, T4, T5, T6, T7] = {
++    apply(t._1, t._2, t._3, t._4, t._5, t._6, t._7)
++  }
++
++  @inline implicit def toScalaTuple7[T1, T2, T3, T4, T5, T6, T7](
++      t: Tuple7[T1, T2, T3, T4, T5, T6, T7]): (T1, T2, T3, T4, T5, T6, T7) = {
++    (t._1, t._2, t._3, t._4, t._5, t._6, t._7)
++  }
++}
++
++final class Tuple8[+T1, +T2, +T3, +T4, +T5, +T6, +T7, +T8](
++    val _1: T1,
++    val _2: T2,
++    val _3: T3,
++    val _4: T4,
++    val _5: T5,
++    val _6: T6,
++    val _7: T7,
++    val _8: T8
++)
++
++object Tuple8 {
++  def apply[T1, T2, T3, T4, T5, T6, T7, T8](
++      _1: T1,
++      _2: T2,
++      _3: T3,
++      _4: T4,
++      _5: T5,
++      _6: T6,
++      _7: T7,
++      _8: T8
++  ): Tuple8[T1, T2, T3, T4, T5, T6, T7, T8] = {
++    new Tuple8(_1, _2, _3, _4, _5, _6, _7, _8)
++  }
++
++  @inline implicit def fromScalaTuple8[T1, T2, T3, T4, T5, T6, T7, T8](t: (T1, T2, T3, T4, T5, T6,
++          T7, T8)): Tuple8[T1, T2, T3, T4, T5, T6, T7, T8] = {
++    apply(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8)
++  }
++
++  @inline implicit def toScalaTuple8[T1, T2, T3, T4, T5, T6, T7, T8](
++      t: Tuple8[T1, T2, T3, T4, T5, T6, T7, T8]): (T1, T2, T3, T4, T5, T6, T7, T8) = {
++    (t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8)
++  }
++}
++
++final class Tuple9[+T1, +T2, +T3, +T4, +T5, +T6, +T7, +T8, +T9](
++    val _1: T1,
++    val _2: T2,
++    val _3: T3,
++    val _4: T4,
++    val _5: T5,
++    val _6: T6,
++    val _7: T7,
++    val _8: T8,
++    val _9: T9
++)
++
++object Tuple9 {
++  def apply[T1, T2, T3, T4, T5, T6, T7, T8, T9](
++      _1: T1,
++      _2: T2,
++      _3: T3,
++      _4: T4,
++      _5: T5,
++      _6: T6,
++      _7: T7,
++      _8: T8,
++      _9: T9
++  ): Tuple9[T1, T2, T3, T4, T5, T6, T7, T8, T9] = {
++    new Tuple9(_1, _2, _3, _4, _5, _6, _7, _8, _9)
++  }
++
++  @inline implicit def fromScalaTuple9[T1, T2, T3, T4, T5, T6, T7, T8, T9](t: (T1, T2, T3, T4, T5,
++          T6, T7, T8, T9)): Tuple9[T1, T2, T3, T4, T5, T6, T7, T8, T9] = {
++    apply(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9)
++  }
++
++  @inline implicit def toScalaTuple9[T1, T2, T3, T4, T5, T6, T7, T8, T9](
++      t: Tuple9[T1, T2, T3, T4, T5, T6, T7, T8, T9]): (T1, T2, T3, T4, T5, T6, T7, T8, T9) = {
++    (t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9)
++  }
++}
++
++final class Tuple10[+T1, +T2, +T3, +T4, +T5, +T6, +T7, +T8, +T9, +T10](
++    val _1: T1,
++    val _2: T2,
++    val _3: T3,
++    val _4: T4,
++    val _5: T5,
++    val _6: T6,
++    val _7: T7,
++    val _8: T8,
++    val _9: T9,
++    val _10: T10
++)
++
++object Tuple10 {
++  def apply[T1, T2, T3, T4, T5, T6, T7, T8, T9, T10](
++      _1: T1,
++      _2: T2,
++      _3: T3,
++      _4: T4,
++      _5: T5,
++      _6: T6,
++      _7: T7,
++      _8: T8,
++      _9: T9,
++      _10: T10
++  ): Tuple10[T1, T2, T3, T4, T5, T6, T7, T8, T9, T10] = {
++    new Tuple10(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10)
++  }
++
++  @inline implicit def fromScalaTuple10[T1, T2, T3, T4, T5, T6, T7, T8, T9, T10](t: (T1, T2, T3, T4,
++          T5, T6, T7, T8, T9, T10)): Tuple10[T1, T2, T3, T4, T5, T6, T7, T8, T9, T10] = {
++    apply(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10)
++  }
++
++  @inline implicit def toScalaTuple10[T1, T2, T3, T4, T5, T6, T7, T8, T9, T10](
++      t: Tuple10[T1, T2, T3, T4, T5, T6, T7, T8, T9, T10]): (T1, T2, T3, T4, T5, T6, T7, T8, T9,
++      T10) = {
++    (t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10)
++  }
++}
+diff --git a/library-js/src/scala/scalajs/wit/annotation/WitExport.scala b/library-js/src/scala/scalajs/wit/annotation/WitExport.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..f85d9da5139191cd446edf4df1c5102d38b59e96
+--- /dev/null
++++ b/library-js/src/scala/scalajs/wit/annotation/WitExport.scala
+@@ -0,0 +1,20 @@
++/*
++ * Scala.js (https://www.scala-js.org/)
++ *
++ * Copyright EPFL.
++ *
++ * Licensed under Apache License 2.0
++ * (https://www.apache.org/licenses/LICENSE-2.0).
++ *
++ * See the NOTICE file distributed with this work for
++ * additional information regarding copyright ownership.
++ */
++
++package scala.scalajs.wit.annotation
++
++import scala.annotation.meta._
++
++@field @getter @setter
++class WitExport private () extends scala.annotation.StaticAnnotation {
++  def this(moduleName: String, name: String) = this()
++}
+diff --git a/library-js/src/scala/scalajs/wit/annotation/WitExportInterface.scala b/library-js/src/scala/scalajs/wit/annotation/WitExportInterface.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..29bcc92230de1529ce5fb17b061a572f091dac86
+--- /dev/null
++++ b/library-js/src/scala/scalajs/wit/annotation/WitExportInterface.scala
+@@ -0,0 +1,42 @@
++/*
++ * Scala.js (https://www.scala-js.org/)
++ *
++ * Copyright EPFL.
++ *
++ * Licensed under Apache License 2.0
++ * (https://www.apache.org/licenses/LICENSE-2.0).
++ *
++ * See the NOTICE file distributed with this work for
++ * additional information regarding copyright ownership.
++ */
++
++package scala.scalajs.wit.annotation
++
++import scala.annotation.meta._
++
++/** Marks a trait as a Wasm Component Model export interface.
++ *
++ *  Traits annotated with this annotation must:
++ *  - Only contain abstract methods (no concrete implementations)
++ *  - All methods must be annotated with @WitExport
++ *  - Be implemented in objects marked with @WitImplementation.
++ *
++ *  Example:
++ *  {{{
++ *  @WitExportInterface
++ *  trait Run {
++ *    @WitExport("wasi:cli/run@0.2.0", "run")
++ *    def run(): Result[Unit, Unit]
++ *  }
++ *
++ *  @WitImplementation
++ *  object RunImpl extends Run {
++ *    def run(): Result[Unit, Unit] = {
++ *      println("Hello!")
++ *      new Ok(())
++ *    }
++ *  }
++ *  }}}
++ */
++@getter
++class WitExportInterface extends scala.annotation.StaticAnnotation
+diff --git a/library-js/src/scala/scalajs/wit/annotation/WitFlags.scala b/library-js/src/scala/scalajs/wit/annotation/WitFlags.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..a9eb7b18c6caf85b9c1585e34c29cd65817d5271
+--- /dev/null
++++ b/library-js/src/scala/scalajs/wit/annotation/WitFlags.scala
+@@ -0,0 +1,35 @@
++/*
++ * Scala.js (https://www.scala-js.org/)
++ *
++ * Copyright EPFL.
++ *
++ * Licensed under Apache License 2.0
++ * (https://www.apache.org/licenses/LICENSE-2.0).
++ *
++ * See the NOTICE file distributed with this work for
++ * additional information regarding copyright ownership.
++ */
++
++package scala.scalajs.wit.annotation
++
++import scala.annotation.meta._
++
++/** Represents bitflags in the Component Model
++ *
++ *  Must be used on a final case class with a single Int parameter named "value".
++ *
++ *  Example:
++ *  {{{
++ *  @WitFlags(3)
++ *  final case class MyFlags(value: Int) { ... }
++ *  object MyFlags {
++ *    val Flag0 = MyFlags(1 << 0)
++ *    val Flag1 = MyFlags(1 << 1)
++ *    val Flag2 = MyFlags(1 << 2)
++ *  }
++ *  }}}
++ *
++ *  @param numFlags The number of flags in this flags type
++ */
++@field @getter @setter
++class WitFlags(val numFlags: Int) extends scala.annotation.StaticAnnotation
+diff --git a/library-js/src/scala/scalajs/wit/annotation/WitImplementation.scala b/library-js/src/scala/scalajs/wit/annotation/WitImplementation.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..752c87e0059b2887ca510d6773ab7f5b4c87f1fc
+--- /dev/null
++++ b/library-js/src/scala/scalajs/wit/annotation/WitImplementation.scala
+@@ -0,0 +1,40 @@
++/*
++ * Scala.js (https://www.scala-js.org/)
++ *
++ * Copyright EPFL.
++ *
++ * Licensed under Apache License 2.0
++ * (https://www.apache.org/licenses/LICENSE-2.0).
++ *
++ * See the NOTICE file distributed with this work for
++ * additional information regarding copyright ownership.
++ */
++
++package scala.scalajs.wit.annotation
++
++import scala.annotation.meta._
++
++/** Marks a static object as an implementation of Wasm component exports.
++ *
++ *  The annotated object must:
++ *  - Be a static object (top-level or nested in another static object)
++ *  - Extend a trait that is annotated with @WitExportInterface
++ *
++ *  Example:
++ *  {{{
++ *  trait Run {
++ *    @WitExport("wasi:cli/run@0.2.0", "run")
++ *    def run(): Result[Unit, Unit]
++ *  }
++ *
++ *  @WitImplementation
++ *  object RunImpl extends Run {
++ *    def run(): Result[Unit, Unit] = {
++ *      println("Hello!")
++ *      new Ok(())
++ *    }
++ *  }
++ *  }}}
++ */
++@getter
++class WitImplementation extends scala.annotation.StaticAnnotation
+diff --git a/library-js/src/scala/scalajs/wit/annotation/WitImport.scala b/library-js/src/scala/scalajs/wit/annotation/WitImport.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..9e84a759af4a4d7e461fbe18ddf09af810a0c2a6
+--- /dev/null
++++ b/library-js/src/scala/scalajs/wit/annotation/WitImport.scala
+@@ -0,0 +1,20 @@
++/*
++ * Scala.js (https://www.scala-js.org/)
++ *
++ * Copyright EPFL.
++ *
++ * Licensed under Apache License 2.0
++ * (https://www.apache.org/licenses/LICENSE-2.0).
++ *
++ * See the NOTICE file distributed with this work for
++ * additional information regarding copyright ownership.
++ */
++
++package scala.scalajs.wit.annotation
++
++import scala.annotation.meta._
++
++@field @getter @setter
++class WitImport private () extends scala.annotation.StaticAnnotation {
++  def this(moduleName: String, name: String) = this()
++}
+diff --git a/library-js/src/scala/scalajs/wit/annotation/WitRecord.scala b/library-js/src/scala/scalajs/wit/annotation/WitRecord.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..bbc7951b43430ed52b0d410134ebd0b2b1bae905
+--- /dev/null
++++ b/library-js/src/scala/scalajs/wit/annotation/WitRecord.scala
+@@ -0,0 +1,18 @@
++/*
++ * Scala.js (https://www.scala-js.org/)
++ *
++ * Copyright EPFL.
++ *
++ * Licensed under Apache License 2.0
++ * (https://www.apache.org/licenses/LICENSE-2.0).
++ *
++ * See the NOTICE file distributed with this work for
++ * additional information regarding copyright ownership.
++ */
++
++package scala.scalajs.wit.annotation
++
++import scala.annotation.meta._
++
++@field @getter @setter
++class WitRecord extends scala.annotation.StaticAnnotation
+diff --git a/library-js/src/scala/scalajs/wit/annotation/WitResourceConstructor.scala b/library-js/src/scala/scalajs/wit/annotation/WitResourceConstructor.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..9a9a6d4ffcae929a9781a80cecaa56404764b74f
+--- /dev/null
++++ b/library-js/src/scala/scalajs/wit/annotation/WitResourceConstructor.scala
+@@ -0,0 +1,18 @@
++/*
++ * Scala.js (https://www.scala-js.org/)
++ *
++ * Copyright EPFL.
++ *
++ * Licensed under Apache License 2.0
++ * (https://www.apache.org/licenses/LICENSE-2.0).
++ *
++ * See the NOTICE file distributed with this work for
++ * additional information regarding copyright ownership.
++ */
++
++package scala.scalajs.wit.annotation
++
++import scala.annotation.meta._
++
++@field @getter @setter
++class WitResourceConstructor() extends scala.annotation.StaticAnnotation
+diff --git a/library-js/src/scala/scalajs/wit/annotation/WitResourceDrop.scala b/library-js/src/scala/scalajs/wit/annotation/WitResourceDrop.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..3565c99693d3c0943b871e7ed798e16373fc9979
+--- /dev/null
++++ b/library-js/src/scala/scalajs/wit/annotation/WitResourceDrop.scala
+@@ -0,0 +1,18 @@
++/*
++ * Scala.js (https://www.scala-js.org/)
++ *
++ * Copyright EPFL.
++ *
++ * Licensed under Apache License 2.0
++ * (https://www.apache.org/licenses/LICENSE-2.0).
++ *
++ * See the NOTICE file distributed with this work for
++ * additional information regarding copyright ownership.
++ */
++
++package scala.scalajs.wit.annotation
++
++import scala.annotation.meta._
++
++@field @getter @setter
++class WitResourceDrop() extends scala.annotation.StaticAnnotation
+diff --git a/library-js/src/scala/scalajs/wit/annotation/WitResourceImport.scala b/library-js/src/scala/scalajs/wit/annotation/WitResourceImport.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..caacba18854f8cc7e5c4a8edf14e91189974eae1
+--- /dev/null
++++ b/library-js/src/scala/scalajs/wit/annotation/WitResourceImport.scala
+@@ -0,0 +1,20 @@
++/*
++ * Scala.js (https://www.scala-js.org/)
++ *
++ * Copyright EPFL.
++ *
++ * Licensed under Apache License 2.0
++ * (https://www.apache.org/licenses/LICENSE-2.0).
++ *
++ * See the NOTICE file distributed with this work for
++ * additional information regarding copyright ownership.
++ */
++
++package scala.scalajs.wit.annotation
++
++import scala.annotation.meta._
++
++@field @getter @setter
++class WitResourceImport private () extends scala.annotation.StaticAnnotation {
++  def this(moduleName: String, name: String) = this()
++}
+diff --git a/library-js/src/scala/scalajs/wit/annotation/WitResourceMethod.scala b/library-js/src/scala/scalajs/wit/annotation/WitResourceMethod.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..0699f994421acb7901514817ed929ff7a2f5a3b3
+--- /dev/null
++++ b/library-js/src/scala/scalajs/wit/annotation/WitResourceMethod.scala
+@@ -0,0 +1,20 @@
++/*
++ * Scala.js (https://www.scala-js.org/)
++ *
++ * Copyright EPFL.
++ *
++ * Licensed under Apache License 2.0
++ * (https://www.apache.org/licenses/LICENSE-2.0).
++ *
++ * See the NOTICE file distributed with this work for
++ * additional information regarding copyright ownership.
++ */
++
++package scala.scalajs.wit.annotation
++
++import scala.annotation.meta._
++
++@field @getter @setter
++class WitResourceMethod private () extends scala.annotation.StaticAnnotation {
++  def this(name: String) = this()
++}
+diff --git a/library-js/src/scala/scalajs/wit/annotation/WitResourceStaticMethod.scala b/library-js/src/scala/scalajs/wit/annotation/WitResourceStaticMethod.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..34bfef4d8c048a6bf919d5eb2e5f60caddffbd8f
+--- /dev/null
++++ b/library-js/src/scala/scalajs/wit/annotation/WitResourceStaticMethod.scala
+@@ -0,0 +1,20 @@
++/*
++ * Scala.js (https://www.scala-js.org/)
++ *
++ * Copyright EPFL.
++ *
++ * Licensed under Apache License 2.0
++ * (https://www.apache.org/licenses/LICENSE-2.0).
++ *
++ * See the NOTICE file distributed with this work for
++ * additional information regarding copyright ownership.
++ */
++
++package scala.scalajs.wit.annotation
++
++import scala.annotation.meta._
++
++@field @getter @setter
++class WitResourceStaticMethod private () extends scala.annotation.StaticAnnotation {
++  def this(name: String) = this()
++}
+diff --git a/library-js/src/scala/scalajs/wit/annotation/WitVariant.scala b/library-js/src/scala/scalajs/wit/annotation/WitVariant.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..0e6a4582685650396826ec6dc4ec1ac0c5327f36
+--- /dev/null
++++ b/library-js/src/scala/scalajs/wit/annotation/WitVariant.scala
+@@ -0,0 +1,49 @@
++/*
++ * Scala.js (https://www.scala-js.org/)
++ *
++ * Copyright EPFL.
++ *
++ * Licensed under Apache License 2.0
++ * (https://www.apache.org/licenses/LICENSE-2.0).
++ *
++ * See the NOTICE file distributed with this work for
++ * additional information regarding copyright ownership.
++ */
++
++package scala.scalajs.wit.annotation
++
++import scala.annotation.meta._
++
++/** Marks a sealed trait as a WebAssembly Component Model variant type.
++ *
++ *  The sealed trait must have only case classes or case objects as direct
++ *  children. Each case class must have at most one field `value`, and that
++ *  field must be a type compatible with the Component Model.
++ *  Case objects represent variant cases with no payload (unit variants).
++ *
++ *  The order of case declaration determines the discriminant indices assigned
++ *  to each variant case.
++ *
++ *  Example:
++ *  {{{
++ *  @WitVariant
++ *  sealed trait Result
++ *  object Result {
++ *    final case class Ok(value: Int) extends Result
++ *    final case class Err(message: String) extends Result
++ *  }
++ *  }}}
++ *
++ *  Example with case object (enum-like):
++ *  {{{
++ *  @WitVariant
++ *  sealed trait Status
++ *  object Status {
++ *    case object Pending extends Status
++ *    case object Running extends Status
++ *    case object Done extends Status
++ *  }
++ *  }}}
++ */
++@field @getter @setter
++class WitVariant extends scala.annotation.StaticAnnotation
+diff --git a/library-js/src/scala/scalajs/wit/package.scala b/library-js/src/scala/scalajs/wit/package.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..228761f309605890f2ba237f3e9fd1a7f1fd3647
+--- /dev/null
++++ b/library-js/src/scala/scalajs/wit/package.scala
+@@ -0,0 +1,36 @@
++/*
++ * Scala.js (https://www.scala-js.org/)
++ *
++ * Copyright EPFL.
++ *
++ * Licensed under Apache License 2.0
++ * (https://www.apache.org/licenses/LICENSE-2.0).
++ *
++ * See the NOTICE file distributed with this work for
++ * additional information regarding copyright ownership.
++ */
++
++package scala.scalajs
++
++import scala.annotation.meta._
++
++/** Types, methods and values for interoperability with Wasm Component Model libraries. */
++package object wit {
++
++  /** Denotes a method body as imported from Wasm Component. For use in facade types:
++   *
++   *  {{{
++   *  class MyJSClass extends js.Object {
++   *    def myMethod(x: String): Int = wit.native
++   *  }
++   *  }}}
++   */
++  def native: Nothing = {
++    throw new java.lang.Error(
++        "A method defined in a native JavaScript type of a Scala.js library " +
++        "has been called. This is most likely because you tried to run " +
++        "Scala.js binaries on the JVM. Make sure you are using the JVM " +
++        "version of the libraries.")
++  }
++
++}
+diff --git a/library-js/src/scala/scalajs/wit/unsigned/package.scala b/library-js/src/scala/scalajs/wit/unsigned/package.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..a5cdbcba4b3ad85fe6a3f41ecb770056302e18a2
+--- /dev/null
++++ b/library-js/src/scala/scalajs/wit/unsigned/package.scala
+@@ -0,0 +1,8 @@
++package scala.scalajs.wit
++
++package object unsigned {
++  type UByte = Byte
++  type UShort = Short
++  type UInt = Int
++  type ULong = Long
++}

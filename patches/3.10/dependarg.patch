@@ -1,0 +1,78 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 8 Aug 2026 13:09:53 +0200
+Subject: Conserve stable argument paths in dependent-application rechecking
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Rechecking a dependent application substituted the capture-adapted rechecked
+argument type into later formals; box adaptation can widen a stable argument's
+singleton type, and substituting the widened type turns a later formal's
+`x.Result` selection into a type projection that the actual argument no longer
+conforms to. A method whose using evidence selects a member of an earlier
+using parameter through a doubly-nested refining alias (Soundness's
+`value is Multiplicable by value` with `multiplicable.Result =:= value`,
+issue #1411) fails at every non-inline call site under capture checking —
+including the synthesized export forwarders of the soundness package.
+Substituting the argument's stable path (as the typer did) mirrors the
+singleton conservation recheckApplication#instArgs already performs for
+dependent result types.
+
+Developed with LLM assistance (Claude); 8-line reproduction in the feature
+documentation.
+
+The same conservation is applied on the result side: recheckApplication's
+instArgs previously conserved stable paths only for unboxed capturing
+rechecked types, so a stable argument widened to a plain non-capturing type
+still turned a dependent result's member selection into a projection.
+
+Proscala-Patch: dependarg
+---
+ compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala |  9 +++++++++
+ .../src/dotty/tools/dotc/transform/Recheck.scala     | 12 ++++++++++--
+ 2 files changed, 19 insertions(+), 2 deletions(-)
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala b/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
+index da67b78d10ccea99f62ef6fcd283d15ada5ca301..954ed0f2b5410e8678a7be159d8b01ecc55e0916 100644
+--- a/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
++++ b/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
+@@ -908,6 +908,15 @@ class CheckCaptures extends Recheck, SymTransformer:
+                && arg.tpe.isTrackableRef   // isTrackableRef --> we can get back original capture set by adaptation
+                && !nuType.hasBoxedCapset // !isBoxed --> no risk of losing uses when unboxing in result
+               => arg.tpe
++            case (nuType @ CapturingType(_, _), _) => nuType
++            case (nuType, arg: Tree)
++            // Rechecking widened a stable argument to a plain non-capturing type
++            // (e.g. box adaptation dealiasing a doubly-nested refining alias): keep
++            // the path, or a dependent result selecting a member through this
++            // parameter becomes a projection the call result no longer matches.
++            // No captures can be lost: the rechecked type has no capture set.
++            if !nuType.isSingleton && arg.tpe.isStable
++              => arg.tpe
+             case (nuType, _) => nuType
+           if argTypes1 ne argTypes then
+             capt.println(i"improve $argTypes to $argTypes1 in $tree")
+diff --git a/compiler/src/dotty/tools/dotc/transform/Recheck.scala b/compiler/src/dotty/tools/dotc/transform/Recheck.scala
+index 2c50cb2b33615125781c9d105eaed0ce4a31afc7..dd7a514c2cdab0bb8df90dff090c0c5a7fedc451 100644
+--- a/compiler/src/dotty/tools/dotc/transform/Recheck.scala
++++ b/compiler/src/dotty/tools/dotc/transform/Recheck.scala
+@@ -364,8 +364,16 @@ abstract class Recheck extends Phase, SymTransformer:
+             case arg :: args1 =>
+               val argType = recheckArg(arg, normalizeByName(formals.head), prefs.head, tree)
+               val formals1 =
+-                if fntpe.isParamDependent
+-                then formals.tail.map(_.substParam(prefs.head, argType))
++                if fntpe.isParamDependent then
++                  // Substitute the argument's stable path type (as Typer did) rather than
++                  // the capture-adapted rechecked type: box adaptation can widen/dealias a
++                  // singleton argument, and substituting the widened type turns a later
++                  // formal's `x.Result` selection into a type projection that the actual
++                  // argument no longer conforms to. This mirrors the singleton conservation
++                  // recheckApplication#instArgs already performs for dependent results.
++                  val substArg =
++                    if !argType.isSingleton && arg.tpe.isStable then arg.tpe else argType
++                  formals.tail.map(_.substParam(prefs.head, substArg))
+                 else formals.tail
+               argType :: recheckArgs(args1, formals1, prefs.tail)
+             case Nil =>

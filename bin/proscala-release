@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+#
+# proscala-release — cut a release of a stream by tagging `main`.
+#
+# Usage:
+#   bin/proscala-release <stream>                 # check, tag HEAD, push the tag
+#   bin/proscala-release <stream> --dry-run       # check and say what it would do
+#   bin/proscala-release <stream> --next-version  # print the next version only
+#
+# A release is the tag: pushing it runs .github/workflows/release.yml, which
+# builds the stream from this commit's patches/<stream>/series on UPSTREAM_SHA,
+# creates the GitHub release and publishes to Maven Central. Maven Central is
+# append-only, so the tag is the point of no return.
+#
+# The version is <base>-p<n>: <base> is VERSION in mk/<stream>.mk without its
+# -propensive suffix, and <n> is one more than the highest -p<n> of any release
+# of the stream so far (the counter runs per stream, across upstream bases, so
+# 3.10.0-dev-p15 is followed by 3.10.1-dev-p16). Tags are read from origin.
+#
+# It refuses unless HEAD is origin/main, the checkout has no uncommitted changes
+# to tracked files, and bin/proscala-check passes.
+
+set -euo pipefail
+PROSCALA_PROG=proscala-release
+# shellcheck source=proscala-lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/proscala-lib.sh"
+
+stream="" mode=release
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dry-run)      mode=dry; shift ;;
+    --next-version) mode=version; shift ;;
+    -h|--help)      sed -n '3,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -*) die "unknown option $1" ;;
+    *)  [ -z "$stream" ] || die "too many arguments"; stream="$1"; shift ;;
+  esac
+done
+require_stream "$stream"
+cd "$PROSCALA_ROOT"
+
+# next_version — from VERSION and the stream's release tags on origin
+base="$(mkvar "$stream" VERSION)"
+base="${base%-propensive}"
+[[ "$base" =~ ^${stream//./\\.}\.[0-9]+ ]] || die "mk/$stream.mk VERSION '$base' does not belong to stream $stream"
+re="^refs/tags/${stream//./\\.}\\.[0-9]+(-[A-Za-z0-9]+)*-p([0-9]+)$"
+prev="$(git ls-remote --tags --refs origin \
+          | awk '{ print $2 }' \
+          | { grep -E "$re" || true; } \
+          | sed -E 's/.*-p([0-9]+)$/\1/' | sort -n | tail -1)"
+version="$base-p$(( ${prev:-0} + 1 ))"
+
+if [ "$mode" = version ]; then echo "$version"; exit 0; fi
+
+# --- preconditions -------------------------------------------------------------
+[ -z "$(git status --porcelain --untracked-files=no)" ] || die "the checkout has uncommitted changes"
+git fetch --quiet origin main
+[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] \
+  || die "HEAD is not origin/main; a release is cut from exactly what is on main"
+git ls-remote --exit-code --tags origin "refs/tags/$version" >/dev/null 2>&1 \
+  && die "tag $version already exists on origin"
+note "checking"
+bin/proscala-check >/dev/null || { bin/proscala-check | tail -20; die "bin/proscala-check fails; fix that first"; }
+
+sha="$(upstream_sha "$stream")"
+msg="Proscala $version: stream $stream, patches/$stream/series onto scala/scala3 $sha"
+if [ "$mode" = dry ]; then
+  note "would tag $(git rev-parse --short HEAD) as $version and push it ($msg)"
+  exit 0
+fi
+git tag -a "$version" -m "$msg"
+git push --quiet origin "refs/tags/$version"
+note "tagged and pushed $version; the Release workflow now builds and publishes it:"
+echo "   https://github.com/propensive/proscala/actions/workflows/release.yml"

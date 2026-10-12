@@ -1,0 +1,66 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Wed, 19 Aug 2026 09:53:28 +0200
+Subject: Do not force completion when filtering prunable inline methods
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+PruneInlinedMethods is an InfoTransformer with no feature gate: its
+transformInfo filters the declarations of every class denotation brought
+forward past it, and the filter predicate began with symbol-flag tests, so
+every declaration of every such class was completed — and merely reading
+`sym.denot` replays the intervening info transforms — at whatever point the
+denotation happened to advance. In the second run of a compilation-suspension
+restart (a macro dependency on a -sourcepath-loaded symbol suspends the unit;
+Driver.finish recompiles it in a fresh run), that reaches completers which
+resolve symbols created in the first run, and compilation crashes with
+StaleSymbolException. Building the Scala.js scalalib overlay
+(library-js-aux with -sourcepath library/src) crashed on
+scala.annotation.compileTimeOnly exactly this way; the step compiles cleanly
+under -Yskip:pruneInlinedMethods,pruneInlineTraits.
+
+isDeletable now pre-filters on the last known denotation without advancing
+it: an uncompleted symbol, or one whose flags do not spell an inline method,
+cannot be a specialized inline method awaiting pruning, since those are
+created and completed earlier in the same run. Only genuine candidates reach
+Specialization.isSpecializedMethod. Introduced upstream by #26156 (Inline
+Traits & Specialized Traits); upstream candidate.
+
+Developed with LLM assistance (Claude).
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Proscala-Patch: prunecomplete
+---
+ .../dotc/transform/PruneInlinedMethods.scala   | 18 ++++++++++++++++--
+ 1 file changed, 16 insertions(+), 2 deletions(-)
+
+diff --git a/compiler/src/dotty/tools/dotc/transform/PruneInlinedMethods.scala b/compiler/src/dotty/tools/dotc/transform/PruneInlinedMethods.scala
+index a630eb8cfa993636d281adf1e5fc52cc50f7338a..aeca9341dfd1eb23405d76c7300e75c03e711cdf 100644
+--- a/compiler/src/dotty/tools/dotc/transform/PruneInlinedMethods.scala
++++ b/compiler/src/dotty/tools/dotc/transform/PruneInlinedMethods.scala
+@@ -41,8 +41,22 @@ class PruneInlinedMethods extends MiniPhase with InfoTransformer { thisTransform
+       }
+     )
+ 
+-  private def isDeletable(sym: Symbol)(using Context): Boolean = 
+-    Specialization.isSpecializedMethod(sym)
++  private def isDeletable(sym: Symbol)(using Context): Boolean =
++    // Pre-filter on the last known denotation, without advancing it: this
++    // transform runs on every class denotation brought forward past it, so an
++    // ordinary `sym.denot` access here replays the intervening info
++    // transforms and runs completers at arbitrary points — including, in the
++    // second run of a compilation-suspension restart, completers that resolve
++    // symbols of the first run, which fails with a StaleSymbolException. A
++    // symbol that is uncompleted, or not an inline method, cannot be a
++    // specialized inline method awaiting pruning (those are created and
++    // completed earlier in the same run), so only genuine candidates reach
++    // the full check.
++    val lastDenot = sym.lastKnownDenotation
++    lastDenot.isCompleted
++    && lastDenot.flagsUNSAFE.isAllOf(InlineMethod)
++    && !lastDenot.flagsUNSAFE.is(JavaDefined)
++    && Specialization.isSpecializedMethod(sym)
+ }
+ 
+ object PruneInlinedMethods {

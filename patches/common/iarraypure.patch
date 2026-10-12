@@ -1,0 +1,87 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sun, 12 Jul 2026 17:30:55 +0200
+Subject: Treat IArray as pure under capture checking
+
+IArray dealiases to (mutable, and under strict mutability
+capability-classified) Array, so every stdlib IArray factory or
+extension result was decorated ^{fresh} through the opaque alias,
+although the interface exposes no mutation: constructing an IArray is
+semantically caps.freeze. derivesFromCapTrait now stops at the IArray
+head, which removes the spurious freshness from classification, freeze
+and Setup alike. Mutable Array itself is unaffected.
+
+Enabled by `-Z:pure-iarrays`; without it, upstream's code runs at every site this
+patch touches.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: iarraypure
+---
+ .../src/dotty/tools/dotc/cc/CaptureOps.scala   | 15 +++++++++++++--
+ .../dotty/tools/dotc/core/Definitions.scala    |  1 +
+ .../pos-custom-args/captures/iarray-pure.scala | 18 ++++++++++++++++++
+ 3 files changed, 32 insertions(+), 2 deletions(-)
+ create mode 100644 tests/pos-custom-args/captures/iarray-pure.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala b/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala
+index a5e91ec216402b59d9e312fba6f39ee1c1edd7e6..cef29d1a9169a393c06eb29752a6e2e6fa03343e 100644
+--- a/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala
++++ b/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala
+@@ -404,8 +404,19 @@ extension (tp: Type)
+         this(acc, upperBound)
+     accumulate(true, tp)
+ 
+-  /** Tests whether the type derives from capability class `cls`. */
+-  def derivesFromCapTrait(cls: ClassSymbol)(using Context): Boolean = tp.dealiasKeepAnnots match
++  /** Tests whether the type derives from capability class `cls`.
++   *  `IArray` derives from none: although it dealiases to (mutable, and under
++   *  strict mutability capability-classified) `Array`, its interface exposes no
++   *  mutation, so a fresh `IArray` is immutable from birth — construction is
++   *  semantically `caps.freeze`. Without this, every stdlib `IArray` factory
++   *  result is spuriously `^{fresh}` through the opaque alias.
++   */
++  def derivesFromCapTrait(cls: ClassSymbol)(using Context): Boolean =
++    (tp.typeSymbol != defn.IArrayAlias || !config.Proscala.enabled(config.Proscala.PureIArrays))
++    && derivesFromCapTraitDealiased(cls)
++
++  private def derivesFromCapTraitDealiased(cls: ClassSymbol)(using Context): Boolean =
++    tp.dealiasKeepAnnots match
+     case tp: (TypeRef | AppliedType) =>
+       val sym = tp.typeSymbol
+       if sym.isClass
+diff --git a/compiler/src/dotty/tools/dotc/core/Definitions.scala b/compiler/src/dotty/tools/dotc/core/Definitions.scala
+index 16c6388bb8f87e2d85fd776f20d3355253623053..07cedd20c7baaf11c528d3e3023a3e279fa1d451 100644
+--- a/compiler/src/dotty/tools/dotc/core/Definitions.scala
++++ b/compiler/src/dotty/tools/dotc/core/Definitions.scala
+@@ -645,6 +645,7 @@ class Definitions {
+ 
+   @tu lazy val IArrayModule: Symbol = requiredModule("scala.IArray")
+   def IArrayModuleClass: Symbol = IArrayModule.moduleClass
++  @tu lazy val IArrayAlias: Symbol = ScalaPackageClass.requiredType("IArray")
+ 
+   @tu lazy val UnitType: TypeRef = valueTypeRef("scala.Unit", java.lang.Void.TYPE, UnitEnc, nme.specializedTypeNames.Void)
+   def UnitClass(using Context): ClassSymbol = UnitType.symbol.asClass
+diff --git a/tests/pos-custom-args/captures/iarray-pure.scala b/tests/pos-custom-args/captures/iarray-pure.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..58c61323df5f430062f32c908befe519160639b8
+--- /dev/null
++++ b/tests/pos-custom-args/captures/iarray-pure.scala
+@@ -0,0 +1,18 @@
++import language.experimental.captureChecking
++
++// `IArray` results are pure: although the opaque alias dealiases to (mutable)
++// `Array`, the interface exposes no mutation, so construction is semantically
++// `caps.freeze`. Each of these previously produced `IArray[...]^{fresh}`.
++object Test:
++  val literal: IArray[Int] = IArray(1, 2, 3)
++  val empty: IArray[String] = IArray.empty[String]
++
++  def fromList(xs: List[Int]): IArray[Int] = IArray.from(xs)
++  def slicePure(a: IArray[Int]): IArray[Int] = a.slice(0, 1)
++  def dropPure(a: IArray[Int]): IArray[Int] = a.drop(1)
++  def appendPure(a: IArray[Int], b: IArray[Int]): IArray[Int] = a ++ b
++  def tabulated(n: Int): IArray[Int] = IArray.tabulate(n)(identity)
++
++  // A pure class may hold an IArray field built from fresh parts.
++  class Holder(parts: List[Int]):
++    val data: IArray[Int] = IArray.from(parts)

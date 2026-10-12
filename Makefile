@@ -19,15 +19,22 @@ GSON_VERSION       := 2.11.0
 JAVA_TARGET        := 17
 
 # ---- Directories -------------------------------------------------------------
-# Build artefacts and the release tree are laid out per git branch, so switching
-# branches never clobbers another branch's output and each branch's build
-# survives a checkout. The paths mirror the branch name — building
-# feature/3.9/sambox writes release/feature/3.9/sambox/ and .build/feature/3.9/sambox/.
-# Detached HEAD falls back to the short commit; override with `make BRANCH=<name>`.
+# Build artefacts and the release tree are laid out per tree, under a name
+# BRANCH. In a tree made by bin/proscala-tree (which writes .proscala-stream)
+# that is the tree's directory name — worktrees/3.10 builds into release/3.10/
+# and .build/3.10/; in any other checkout it is the git branch, falling back to
+# the short commit. Override with `make BRANCH=<name>`.
 # Downloaded Maven jars are shared (.build/jars): they are version-keyed and
 # identical across branches, so there is no need to re-download them per branch.
 ROOT     := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
-BRANCH   := $(shell git -C $(ROOT) symbolic-ref --quiet --short HEAD 2>/dev/null || git -C $(ROOT) rev-parse --short HEAD 2>/dev/null || echo detached)
+STREAM_FILE := $(wildcard $(ROOT)/.proscala-stream)
+ifneq ($(origin BRANCH),command line)
+  ifneq ($(STREAM_FILE),)
+    BRANCH := $(notdir $(ROOT))
+  else
+    BRANCH := $(shell git -C $(ROOT) symbolic-ref --quiet --short HEAD 2>/dev/null || git -C $(ROOT) rev-parse --short HEAD 2>/dev/null || echo detached)
+  endif
+endif
 JARS     := $(ROOT)/.build/jars
 BUILD    := $(ROOT)/.build/$(BRANCH)
 CLASSES  := $(BUILD)/classes
@@ -43,8 +50,11 @@ DEPS     := $(RELEASE)/deps
 # The settings that differ between streams (versions, reference compiler, per-tree
 # extra deps) live in mk/<stream>.mk; everything else here is shared and, where a
 # tree genuinely differs, auto-detected (e.g. HAS_DIRECTIVES, WIT_SRC). STREAM is
-# derived from the branch name (feature/<s>/*, trunk/<s>, release/<s>); pass it
-# explicitly (make STREAM=3.10 ...) from a detached checkout such as CI.
+# read from .proscala-stream, written by bin/proscala-tree; elsewhere pass it
+# explicitly (make STREAM=3.10 ...).
+ifneq ($(STREAM_FILE),)
+  STREAM ?= $(strip $(shell cat $(STREAM_FILE)))
+endif
 STREAM ?= $(word 2,$(subst /, ,$(BRANCH)))
 STREAM_MK := $(ROOT)/mk/$(STREAM).mk
 ifeq ($(wildcard $(STREAM_MK)),)

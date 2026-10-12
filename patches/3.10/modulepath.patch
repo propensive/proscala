@@ -1,0 +1,97 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 4 Aug 2026 14:12:28 +0200
+Subject: Give an inline accessor for a module the module's TermRef
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+A module val's info is a TypeRef to its module class. An inline accessor
+carrying that info is not a legal path, so any type selected through it —
+`Positional.Profile`, where `Positional` is a qualified-private object used
+from an inline method — is rejected by PostTyper's realizability check as
+soon as the accessor cannot be final, which is the case whenever it lands in
+a trait.
+
+Remapping the accessor's info to the module's TermRef makes it stable again.
+This restores the fix for scala/scala3#22593, which 5321891783 ("Don't infer
+implicits from non-accessible companion", #25367) removed after its own
+tests stopped needing it: that PR made the inaccessible-companion cases fail
+earlier, for an unrelated reason, and dropped the remap along with them. The
+type-selection case it also covered was left broken.
+
+tests/pos/i22593c is that case: a type reached through an accessor for a
+qualified-private module, expanded outside the defining package, with the
+accessor hosted in a trait so it cannot be final. Soundness's `stratiform`
+hits it in `Tel2.DecodableDerivation.conjunction`.
+
+The tests touched by 5321891783 (tests/pos/i22593a, tests/pos/i22593b,
+tests/pos/i25347, tests/neg/i22593a, tests/neg/i22593b, tests/neg/i25347,
+tests/neg/i25347b) all still behave as marked under this patch.
+
+Assisted-by: Claude Opus 5 (see LLM_POLICY.md)
+Proscala-Patch: modulepath
+---
+ .../tools/dotc/transform/AccessProxies.scala  | 10 +++++++++-
+ tests/pos/i22593c/Main.scala                  | 19 +++++++++++++++++++
+ tests/pos/i22593c/Test.scala                  |  3 +++
+ 3 files changed, 31 insertions(+), 1 deletion(-)
+ create mode 100644 tests/pos/i22593c/Main.scala
+ create mode 100644 tests/pos/i22593c/Test.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/transform/AccessProxies.scala b/compiler/src/dotty/tools/dotc/transform/AccessProxies.scala
+index 93d227937f6f3336035c1268beafa4e9e1f140a2..0b2fccc0bcd04a7a078988c8c42307d2fe3f6096 100644
+--- a/compiler/src/dotty/tools/dotc/transform/AccessProxies.scala
++++ b/compiler/src/dotty/tools/dotc/transform/AccessProxies.scala
+@@ -154,8 +154,16 @@ abstract class AccessProxies {
+         if accessorClass.is(Package) then
+           accessorClass = ctx.owner.topLevelClass
+         val accessorName = accessorNameOf(accessed.name, accessorClass)
++        val mappedInfo = accessed.info match
++          // A module val's info is a TypeRef to its module class, and an accessor
++          // returning that is not a legal path — so any type selected through the
++          // accessor (`Priv.Thing`) is rejected as unrealizable. Remap it to the
++          // module's TermRef, which is stable. See test i22593.scala (issue #22593).
++          case tref @ TypeRef(prefix, _) if tref.symbol.is(Module) =>
++            TermRef(prefix, tref.symbol.companionModule)
++          case other => other
+         val accessorInfo =
+-          accessed.info.ensureMethodic.asSeenFrom(accessorClass.thisType, accessed.owner)
++          mappedInfo.ensureMethodic.asSeenFrom(accessorClass.thisType, accessed.owner)
+         val accessor = accessorSymbol(accessorClass, accessorName, accessorInfo, accessed)
+         rewire(reference, accessor)
+       }
+diff --git a/tests/pos/i22593c/Main.scala b/tests/pos/i22593c/Main.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..13ed91adac6bf7f2ff197570e81ab6ba54489df5
+--- /dev/null
++++ b/tests/pos/i22593c/Main.scala
+@@ -0,0 +1,19 @@
++// A type selected through an inline accessor for a qualified-private module.
++// The accessor's result type must be the module's TermRef; if it is the module
++// class's TypeRef instead, the accessor is not a legal path and every type
++// selected through it (`Positional.Profile`) is rejected as unrealizable.
++//
++// The accessor lands in `Host`, a trait, so it cannot be final — which is what
++// makes the realizability check depend on the result type being stable.
++package p
++
++private[p] object Positional:
++  class Profile(val name: String)
++
++trait Host:
++  object Derivation:
++    inline def make(): Int =
++      val profiles: Array[Positional.Profile] = Array(Positional.Profile("a"))
++      profiles.length
++
++object Instance extends Host
+diff --git a/tests/pos/i22593c/Test.scala b/tests/pos/i22593c/Test.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..1412f5a9d1c20af732a3497aee4a87fa9788402d
+--- /dev/null
++++ b/tests/pos/i22593c/Test.scala
+@@ -0,0 +1,3 @@
++// Expanded outside `p`, so the accessor is really needed.
++object Test:
++  def run(): Int = p.Instance.Derivation.make()

@@ -1,0 +1,77 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Wed, 7 Oct 2026 17:06:48 +0200
+Subject: Give a differently-classified fresh capability its own root
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+`VarInTypeTree.normalizeLocalCaps` hides every fresh capability that reached
+an inferred value type in the type's declaration root, asserting that each can
+be classified like that root. Two fresh capabilities of unrelated classifiers
+— a shared strategy from a polymorphic given beside an unscoped sink from an
+inline given, bound into one inlined proxy — therefore crashed the compiler
+with "attempting to add any to {any} of value x$proxy1" instead of producing a
+diagnostic or a type.
+
+A classifier mismatch means the capability cannot be hidden here, which the
+method already expresses for level failures by returning false; the caller
+then mints a further declaration root for it. The inferred type carries one
+root per classifier, which `inDeclRoots` already allows.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: rootclassify
+---
+ .../src/dotty/tools/dotc/cc/CaptureSet.scala  | 10 ++++++++--
+ .../captures/rootclassify.scala               | 19 +++++++++++++++++++
+ 2 files changed, 27 insertions(+), 2 deletions(-)
+ create mode 100644 tests/pos-custom-args/captures/rootclassify.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/CaptureSet.scala b/compiler/src/dotty/tools/dotc/cc/CaptureSet.scala
+index 880dfe0e1e54956fedf4e462ef86e11265312a79..1c3e94f0de9a787d8d9607f96525471d44053dcb 100644
+--- a/compiler/src/dotty/tools/dotc/cc/CaptureSet.scala
++++ b/compiler/src/dotty/tools/dotc/cc/CaptureSet.scala
+@@ -1073,8 +1073,14 @@ object CaptureSet:
+           def fail = i"attempting to add $elem to $this"
+ 
+           def hideIn(ac: LocalCap): Boolean =
+-            assert(elem.tryClassifyAs(ac.hiddenSet.classifier), fail)
+-            if isRefining then
++            if !elem.tryClassifyAs(ac.hiddenSet.classifier) then
++              // The root is already classified incompatibly with `elem` (e.g. an Unscoped
++              // root and a SharedCapability element): `elem` cannot be hidden here and
++              // gets a root of its own below. This used to be an assertion, which made a
++              // capture set mixing differently-classified fresh capabilities a crash.
++              capt.println(i"classifier mismatch when subsuming in a LocalCap, cannot add $elem to $ac / $fail")
++              false
++            else if isRefining then
+               // If a variable is added by addCaptureRefinements in a synthetic
+               // refinement of a class type, don't do level checking. The problem is
+               // that the variable might be matched against a type that does not have
+diff --git a/tests/pos-custom-args/captures/rootclassify.scala b/tests/pos-custom-args/captures/rootclassify.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..60a038257881b93d91390aaf7e88410ae072d5df
+--- /dev/null
++++ b/tests/pos-custom-args/captures/rootclassify.scala
+@@ -0,0 +1,19 @@
++import language.experimental.separationChecking
++import language.experimental.captureChecking
++import language.experimental.separationChecking
++import scala.caps
++
++trait Tactic extends caps.SharedCapability
++class Throwing[E] extends Tactic
++given throwing: [E] => (Throwing[E]^) = Throwing()
++
++class Sink extends caps.Unscoped
++inline given sink: (Sink^) = Sink()
++
++class Holder(val tactic: Tactic, val sink: Sink^)
++
++given holder: (tactic: Tactic, sink: Sink^) => (Holder^{tactic, sink, caps.any}) = Holder(tactic, sink)
++
++def use(): Int =
++  val h = summon[Holder^]
++  1

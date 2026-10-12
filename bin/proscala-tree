@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+#
+# proscala-tree — build a stream's source tree from upstream plus its patch files.
+#
+# Usage:
+#   bin/proscala-tree <stream> [<dir>] [--only <patch>] [--reset] [--3way]
+#   bin/proscala-tree <stream> [<dir>] --continue [--3way]
+#
+# Creates a git worktree at <dir> (default worktrees/<stream>), detached at the
+# stream's pinned scala/scala3 commit (UPSTREAM_SHA in mk/<stream>.mk), applies
+# every patch in patches/<stream>/series as one commit each with `git am`, and
+# overlays the build from this checkout's HEAD so `make` works there directly.
+#
+#   --only <patch>  apply just `zflags` and <patch>, to build one patch alone
+#   --reset         replace an existing <dir>; refused if it holds work that has
+#                   not been exported back to patches/ (see bin/proscala-export)
+#   --continue      after fixing a patch that did not apply (and `git am
+#                   --continue`), apply the rest of the series
+#   --3way          let `git am` fall back to a three-way merge (interactive use
+#                   only: the series counts as applying only if it applies without)
+#
+# The scala/scala3 commit is fetched on its own if it is not already present (from
+# the `upstream` remote, else directly from GitHub), so a fresh or shallow clone
+# of this repository suffices.
+
+set -euo pipefail
+PROSCALA_PROG=proscala-tree
+# shellcheck source=proscala-lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/proscala-lib.sh"
+
+stream="" dir="" only="" reset=0 cont=0 threeway=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --only)     only="${2:-}"; [ -n "$only" ] || die "--only needs a patch name"; shift 2 ;;
+    --reset)    reset=1; shift ;;
+    --continue) cont=1; shift ;;
+    --3way)     threeway=(--3way); shift ;;
+    -h|--help)  sed -n '3,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -*) die "unknown option $1" ;;
+    *)  if [ -z "$stream" ]; then stream="$1"
+        elif [ -z "$dir" ]; then dir="$1"
+        else die "too many arguments"; fi
+        shift ;;
+  esac
+done
+require_stream "$stream"
+sha="$(upstream_sha "$stream")"
+dir="${dir:-$PROSCALA_ROOT/worktrees/$stream}"
+case "$dir" in /*) ;; *) dir="$PWD/$dir" ;; esac
+if [ -n "$only" ]; then
+  in_series "$stream" "$only" || die "'$only' is not in patches/$stream/series"
+fi
+
+# apply_rest <dir> — `git am` every series entry the tree does not yet hold, in order
+apply_rest() {
+  local d="$1" base p f c n=0
+  local -A have=()
+  base="$(tree_base "$d" "$stream")"
+  while IFS= read -r c; do
+    p="$(commit_patch_name "$d" "$c")"
+    if [ -n "$p" ]; then have["$p"]=1; fi
+  done < <(git -C "$d" rev-list "$base..HEAD")
+  while IFS= read -r p; do
+    if [ -n "$only" ] && [ "$p" != zflags ] && [ "$p" != "$only" ]; then continue; fi
+    [ -n "${have[$p]:-}" ] && continue
+    f="$(patch_file "$stream" "$p")"
+    [ -n "$f" ] || die "patches/$stream/series lists '$p' but no patch file exists for it"
+    if ! git -C "$d" am --quiet -k --committer-date-is-author-date ${threeway[@]+"${threeway[@]}"} "$f"; then
+      echo >&2
+      echo >&2 "$PROSCALA_PROG: ${f#"$PROSCALA_ROOT"/} ($p) does not apply on stream $stream."
+      echo >&2 "The tree is stopped mid-'git am'. To fix it:"
+      echo >&2 "    cd $d"
+      echo >&2 "    git am --show-current-patch=diff      # what the patch wanted"
+      echo >&2 "    # edit the files, then"
+      echo >&2 "    git add <files> && git am --continue"
+      echo >&2 "    $PROSCALA_ROOT/bin/proscala-tree $stream $d --continue"
+      echo >&2 "    $PROSCALA_ROOT/bin/proscala-export $stream $d"
+      exit 1
+    fi
+    manifest_set "$d" "$p" "$(patch_id "$f")"
+    n=$((n + 1))
+  done < <(series "$stream")
+  note "applied $n patch$([ "$n" = 1 ] || echo es)"
+}
+
+# overlay <dir> — the build from this checkout's HEAD, plus the stream marker
+overlay() {
+  printf '%s\n' "$stream" > "$1/.proscala-stream"
+  (cd "$1" && PROSCALA_MAIN="$(git -C "$PROSCALA_ROOT" rev-parse HEAD)" \
+     "$PROSCALA_ROOT/bin/proscala-overlay" "$stream" >/dev/null)
+  note "done. Build with:  cd $1 && make"
+}
+
+# --- --continue --------------------------------------------------------------
+if [ "$cont" = 1 ]; then
+  [ "$reset" = 0 ] || die "--continue and --reset do not combine"
+  [ -d "$dir" ] || die "$dir does not exist; nothing to continue"
+  op="$(in_progress "$dir")"
+  [ -z "$op" ] || die "$dir is still mid-operation ($op); finish it with 'git am --continue' (or --skip / --abort) first"
+  apply_rest "$dir"
+  overlay "$dir"
+  exit 0
+fi
+
+# --- an existing tree --------------------------------------------------------
+if [ -e "$dir" ]; then
+  [ "$reset" = 1 ] || die "$dir already exists (--reset rebuilds it, --continue finishes it)"
+  git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+    || die "$dir exists and is not a git worktree; remove it by hand"
+  op="$(in_progress "$dir")"
+  [ -z "$op" ] || die "$dir is in the middle of an operation ($op); finish or abort it first"
+  [ -z "$(git -C "$dir" status --porcelain --untracked-files=no)" ] \
+    || die "$dir has uncommitted changes; commit and export them, or discard them, first"
+  # Discarding the tree must lose nothing: every commit above its base has to be
+  # exactly what its patch file already says.
+  old_stream="$(stream_file "$dir" || true)"
+  old_stream="${old_stream:-$stream}"
+  base="$(tree_base "$dir" "$old_stream")"
+  while IFS= read -r c; do
+    short="$(git -C "$dir" rev-parse --short "$c")"
+    name="$(commit_patch_name "$dir" "$c")"
+    [ -n "$name" ] || die "$dir: commit $short has no Proscala-Patch trailer, so no patch file holds it; export or drop it first"
+    # untouched since the tool applied it (even if its file has moved on since),
+    # or exactly what its file now says: either way nothing would be lost
+    cid="$(export_commit "$dir" "$c" | patch_id)"
+    [ "$cid" = "$(manifest_get "$dir" "$name")" ] && continue
+    f="$(patch_file "$old_stream" "$name")"
+    [ -n "$f" ] || die "$dir: patch '$name' (commit $short) has no patch file; run bin/proscala-export $old_stream first"
+    [ "$cid" = "$(patch_id "$f")" ] \
+      || die "$dir: commit $short ($name) has changes not in ${f#"$PROSCALA_ROOT"/}; run bin/proscala-export $old_stream first"
+  done < <(git -C "$dir" rev-list --reverse "$base..HEAD")
+  # Keep the old commits reachable: a later `git am --3way` may want their blobs,
+  # and a mistaken reset can be undone from here.
+  git -C "$PROSCALA_ROOT" update-ref -m "proscala-tree --reset" \
+    "refs/proscala/$old_stream/prev" "$(git -C "$dir" rev-parse HEAD)"
+  note "removing $dir (its HEAD is kept as refs/proscala/$old_stream/prev)"
+  git -C "$PROSCALA_ROOT" worktree remove --force "$dir"
+fi
+
+# --- build it ----------------------------------------------------------------
+ensure_commit "$sha"
+mkdir -p "$(dirname "$dir")"
+note "creating $dir at scala/scala3 $(git -C "$PROSCALA_ROOT" rev-parse --short "$sha") (stream $stream)"
+git -C "$PROSCALA_ROOT" worktree add --quiet --detach "$dir" "$sha"
+git -C "$PROSCALA_ROOT" rev-parse "$sha" > "$(git -C "$dir" rev-parse --absolute-git-dir)/proscala-base"
+: > "$(manifest_path "$dir")"
+
+# `git am` makes commits, so it needs an identity; CI runners have none.
+if ! git -C "$dir" config user.email >/dev/null 2>&1; then
+  git -C "$dir" config extensions.worktreeConfig true
+  git -C "$dir" config --worktree user.name  "Proscala build"
+  git -C "$dir" config --worktree user.email "build@proscala.invalid"
+fi
+
+apply_rest "$dir"
+overlay "$dir"

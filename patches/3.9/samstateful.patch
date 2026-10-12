@@ -1,0 +1,71 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 17 Jul 2026 15:22:51 +0200
+Subject: cc: let a constant method-result capture set be viewed read-only
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+`adaptMutability` widens a read-only capture set to conform to an exclusive one by
+asking the exclusive (writer) set to become a reader via `toReader()`. A `Var` records
+this by mutating its mutability to `Reader`; a constant set cannot, and so failed
+unconditionally with a `MutAdaptFailure`.
+
+That is too strict for a constant set whose every element is the existential capability
+of a *method result* — a `ResultCap`, or a `LocalCap` localised from `caps.any` whose
+origin is a method declaration. Such a capability stands for whatever the concrete
+result captures and occurs only in covariant result position, so a read-only result
+conforms to it. `Const.toReader` now succeeds for such sets. It remains an error to
+widen an empty or read-only capture to a genuine exclusive requirement such as
+`caps.any` in a value type ascription (see `mut-widen-empty`), because that origin is a
+value, not a method.
+
+This surfaces when a SAM literal over a stateful-returning method is expanded to an
+anonymous class before capture checking — which happens under `-scalajs`, whose `isSam`
+rejects arbitrary traits — so the override is checked against the inherited constant
+`ResultCap`. On the JVM the SAM stays a closure carrying a fresh mutable result
+capability, so this path is not exercised there.
+
+Validated against the full `neg-custom-args/captures` suite (223 tests with expected
+errors): none is newly accepted.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Proscala-Patch: samstateful
+---
+ .../src/dotty/tools/dotc/cc/CaptureSet.scala  | 23 ++++++++++++++++++-
+ 1 file changed, 22 insertions(+), 1 deletion(-)
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/CaptureSet.scala b/compiler/src/dotty/tools/dotc/cc/CaptureSet.scala
+index 0f051834e57fbb95be77bc26100f8c7424a4bbe4..880dfe0e1e54956fedf4e462ef86e11265312a79 100644
+--- a/compiler/src/dotty/tools/dotc/cc/CaptureSet.scala
++++ b/compiler/src/dotty/tools/dotc/cc/CaptureSet.scala
+@@ -632,7 +632,28 @@ object CaptureSet:
+         false
+       }
+ 
+-    def toReader()(using Context) = failWith(MutAdaptFailure(this))
++    def toReader()(using Context) =
++      // A constant set whose every element is the existential capability of a *method
++      // result* can be viewed read-only: such a capability stands for whatever the
++      // concrete result captures and occurs in covariant result position, so a read-only
++      // result conforms to it. The JVM reaches the same conclusion via the equivalent
++      // fresh `Var` (whose `toReader` mutates it to `Reader`); a constant cannot record
++      // that mutation and would otherwise fail. This is deliberately restricted to a
++      // method-result root — a `ResultCap`, or a `LocalCap` localised from `caps.any`
++      // with a method declaration as its origin — and does NOT cover a genuine exclusive
++      // requirement such as `caps.any` in a value type ascription, where widening an
++      // empty or read-only capture stays an error (see `mut-widen-empty`). It surfaces
++      // when a SAM anonymous class (Scala.js) overrides a stateful-returning method: the
++      // inherited result capability is a constant, whereas the JVM closure carries a
++      // fresh mutable one.
++      def isMethodResultRoot(elem: Capability): Boolean = elem.core match
++        case _: ResultCap => true
++        case lc: LocalCap => lc.origin match
++          case Origin.InDecl(sym, _) => sym.is(Method)
++          case _ => false
++        case _ => false
++      if !elems.isEmpty && elems.forall(isMethodResultRoot) then true
++      else failWith(MutAdaptFailure(this))
+ 
+     def addDependent(cs: CaptureSet)(using Context, VarState) = true
+ 

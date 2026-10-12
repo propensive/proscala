@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 18 Aug 2026 09:18:16 +0200
+Subject: Seal package-object prefixes on implicit candidate references
+
+An extension method or conversion provided by a top-level given, found via
+implicit search, is referenced with a bare-package prefix. asSeenFrom then
+leaves the defining package object's ThisType in the method's result type,
+and a ThisType prefix is exactly what makes a top-level opaque alias
+transparent, so the underlying type's members leak wherever the result
+flows: proscenium's chained cons on its opaque List resolved the outer ::
+to the underlying sci.List member (soundness#1809). Upstream #21527 fixed
+this family for identifiers by sealing prefixes in findRef; typedImplicit
+now does the same for search candidates. Present in stock Scala 3.7.4 and
+3.8.3; upstream candidate.
+
+Developed with LLM assistance (Claude); two-polarity reproduction in the
+feature documentation.
+
+Enabled by `-Z:given-prefixes`; without it, upstream's code runs at every site this
+patch touches.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: givenprefix
+---
+ compiler/src/dotty/tools/dotc/typer/Implicits.scala | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/compiler/src/dotty/tools/dotc/typer/Implicits.scala b/compiler/src/dotty/tools/dotc/typer/Implicits.scala
+index 67f94ef192a4dffa042b6541b20a2ad62522edd8..17f23ee05a105e39d87a5120ac1c848d0765de5d 100644
+--- a/compiler/src/dotty/tools/dotc/typer/Implicits.scala
++++ b/compiler/src/dotty/tools/dotc/typer/Implicits.scala
+@@ -1170,7 +1170,17 @@ trait Implicits:
+     if ctx.run.nn.isCancelled then NoMatchingImplicitsFailure
+     else
+       record("typedImplicit")
+-      val ref = cand.ref
++      // Give the ref an explicit package-object prefix so that asSeenFrom
++      // rewrites the package object's ThisType in its member types. Otherwise
++      // an extension method or conversion defined in a package object and
++      // returning an opaque type of that package object would have a result
++      // type in which the opaque alias stays transparent. `findRef` does the
++      // same for identifiers.
++      val ref =
++        if !config.Proscala.enabled(config.Proscala.GivenPrefixes) then cand.ref
++        else cand.ref.makePackageObjPrefixExplicit match
++          case ref: TermRef => ref
++          case _ => cand.ref
+       val generated: Tree = tpd.ref(ref).withSpan(span.startPos)
+       val locked = ctx.typerState.ownedVars
+       val adapted =

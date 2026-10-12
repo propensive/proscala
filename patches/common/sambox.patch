@@ -1,0 +1,119 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sun, 12 Jul 2026 10:18:51 +0200
+Subject: cc: keep capability-implied captures on SAM anon-class type members
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Under capture checking, a SAM literal whose target is an ordinary trait (not
+a `FunctionN`/`js.Function`) is expanded to an anonymous class by `ExpandSAMs`,
+which runs *before* `cc.Setup`/`cc.CheckCaptures`. On the JVM such a SAM stays a
+closure typed verbatim as the expected refinement, so it is never re-checked
+member-by-member. Under `-scalajs`, `SJSPlatform.isSam` rejects arbitrary traits,
+so the same SAM becomes an anonymous class ahead of capture checking, and its
+synthesised type members are then checked against the declared SAM refinement.
+
+Two things went wrong for a member `type Self = C` whose right-hand side `C`
+derives from `Capability` (so its declared spelling is boxed to `C^{any}` by
+`transformExplicitType`):
+
+1. `transformExplicitType` stripped the capability-implied capture from the
+   member's own info (the `sym.isType` branch), leaving it bare `C`. That is the
+   canonical spelling of a standalone `type X = C`, but here it breaks internal
+   consistency of the anon class: its abstract method's parameter, typed `C^`,
+   no longer conforms to the inherited `stream(value: Self)` seen through the
+   bare member. We now keep the implied set for a synthetic type member of an
+   anonymous class.
+
+2. Even with both spellings boxed, the two universal roots differ — `caps.any`
+   on the freshly synthesised member vs the declared method's `ResultCap`. For a
+   capability type the capture is implied and not independently meaningful, so
+   `hasMatchingMember` now treats two type-alias members whose right-hand sides
+   both derive from `Capability`, and whose capture sets are empty or purely
+   root capabilities, as matching when their capture-stripped forms are equal.
+
+The `hasMatchingMember` relaxation only adds an acceptance branch, so it cannot
+turn a previously-accepted program into a rejected one; both changes are inert
+on the JVM, where the SAM stays a closure with no separate member symbols.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Proscala-Patch: sambox
+---
+ compiler/src/dotty/tools/dotc/cc/Setup.scala  | 16 ++++++++++-
+ .../dotty/tools/dotc/core/TypeComparer.scala  | 28 ++++++++++++++++++-
+ 2 files changed, 42 insertions(+), 2 deletions(-)
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/Setup.scala b/compiler/src/dotty/tools/dotc/cc/Setup.scala
+index 82e0817df14e3d0f5093fde77e2dada7a47eec17..99b82c33c86baa8c916e48e05387104e9891f52b 100644
+--- a/compiler/src/dotty/tools/dotc/cc/Setup.scala
++++ b/compiler/src/dotty/tools/dotc/cc/Setup.scala
+@@ -591,7 +591,21 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
+ 
+     val tp1 = ccState.withNoVarsMapped(toCapturing(tp))
+     if tp1 ne tp then capt.println(i"expanded explicit in ${ctx.owner}: $tp  -->  $tp1")
+-    val tp2 = if sym.isType then stripImpliedCaptureSet(tp1) else tp1
++    // A type member's own info normally drops the universal capture set implied by a
++    // capability parent (`type X = C` rather than `type X = C^{any}`), matching the
++    // canonical spelling of a standalone type alias. But a synthetic type member of an
++    // anonymous class synthesised for a SAM conversion (`ExpandSAMs`) must stay boxed so
++    // that the class is internally consistent: its abstract method's parameter, typed
++    // `C^`, has to conform to the inherited `stream(value: Self)` seen through this very
++    // member. Leaving it bare makes `C^ <: C` fail. The declared SAM refinement it must
++    // ultimately match keeps the implied set too (as a method result), and the two root
++    // flavours (`caps.any` here vs a method `ResultCap` there) are reconciled by the
++    // capability-alias relaxation in `TypeComparer.hasMatchingMember`. This only arises
++    // on platforms that expand such SAMs to classes before capture checking (e.g.
++    // Scala.js, whose `isSam` rejects arbitrary traits); on the JVM the SAM stays a
++    // closure with no separate type-member symbol.
++    val keepImplied = sym.is(Synthetic) && sym.owner.isAnonymousClass
++    val tp2 = if sym.isType && !keepImplied then stripImpliedCaptureSet(tp1) else tp1
+     if tp2.containsGlobalFreshDirectly then
+       fail(
+         em"""`fresh` occurs outside function result in $tp2.
+diff --git a/compiler/src/dotty/tools/dotc/core/TypeComparer.scala b/compiler/src/dotty/tools/dotc/core/TypeComparer.scala
+index 0149e1650379a74f5086118ea1f695e3f4906ee3..6810645398ea35906f6b4c2b0711c4130004bfdc 100644
+--- a/compiler/src/dotty/tools/dotc/core/TypeComparer.scala
++++ b/compiler/src/dotty/tools/dotc/core/TypeComparer.scala
+@@ -2343,6 +2343,30 @@ class TypeComparer(@constructorOnly initctx: Context) extends ConstraintHandling
+       // but under the condition that signatures might have to match (see sigsOK)
+       // This relaxed version is needed to correctly compare dependent function types.
+       // See pos/i12211.scala.
++      // Under capture checking, two type-alias members whose right-hand sides both
++      // derive from `Capability` denote the same type even if one carries a universal
++      // (root) capture set and the other is bare: for a capability type the capture is
++      // implied, so `type X = C`, `type X = C^{any}` and `type X = C^{fresh}` are
++      // interchangeable. Without this, a SAM anonymous class synthesised before capture
++      // checking — whose `type Self = C` member is left bare — fails to conform to the
++      // corresponding refinement of the SAM's declared (method-result) type, which
++      // carries the implied `^{cap}`/`ResultCap`. That only arises on platforms which
++      // expand such SAMs to classes before capture checking (e.g. Scala.js, whose
++      // `isSam` rejects arbitrary traits); on the JVM the SAM stays a closure whose
++      // type is the expected refinement verbatim, so no member comparison happens.
++      def capabilityAliasesMatch(info1: Type, info2: Type): Boolean =
++        isCaptureCheckingOrSetup && {
++          def universalOrEmpty(t: Type): Boolean =
++            val cs = t.captureSet
++            cs.isAlwaysEmpty || cs.isConst && cs.elems.forall(_.isTerminalCapability)
++          (info1, info2) match
++            case (TypeAlias(alias1), TypeAlias(alias2)) =>
++              alias1.derivesFromCapability && alias2.derivesFromCapability
++              && universalOrEmpty(alias1) && universalOrEmpty(alias2)
++              && isSameType(alias1.stripCapturing, alias2.stripCapturing)
++            case _ => false
++        }
++
+       def isSubInfo(info1: Type, info2: Type, symInfo: Type): Boolean =
+         info2 match
+           case info2: MethodType =>
+@@ -2353,7 +2377,9 @@ class TypeComparer(@constructorOnly initctx: Context) extends ConstraintHandling
+                 && isSubInfo(info1.resultType, info2.resultType.subst(info2, info1), symInfo1.resultType)
+                 && sigsOK(symInfo1, info2)
+               case _ => inFrozenGadtIf(tp1IsSingleton) { isSubType(info1, info2) }
+-          case _ => inFrozenGadtIf(tp1IsSingleton) { isSubType(info1, info2) }
++          case _ =>
++            capabilityAliasesMatch(info1, info2)
++            || inFrozenGadtIf(tp1IsSingleton) { isSubType(info1, info2) }
+ 
+       def qualifies(m: SingleDenotation): Boolean =
+         val info2 = tp2.refinedInfo

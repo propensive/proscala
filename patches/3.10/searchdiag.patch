@@ -1,0 +1,300 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 25 Aug 2026 06:26:35 +0200
+Subject: Preserve an @internal.diagnostic candidate's errors as the
+ search-failure message
+
+Squashed from 3 commits, oldest first:
+
+* Preserve diagnostics from `@internal.diagnostic` implicit candidates
+
+A given marked `@scala.annotation.internal.diagnostic` whose macro aborts
+while tried as an implicit candidate now fails the search normally, but its
+reported errors become the authoritative message if the overall search
+fails, bypassing `@implicitNotFound`. This lets a diagnostic catch-all
+(Frontier) abort with a rendered search tree without corrupting `NotGiven`,
+`summonFrom` or default `using` arguments.
+
+Enabled by `-Z:diagnostic-givens`; without it, upstream's code runs at every site this
+patch touches.
+
+* Ship diagnostic in the supplementary proscala-library jar
+
+The standard library additions of the fork live under library-proscala/src and
+are built into their own jar (proscala-library, plus a Scala.js variant), so the
+scala-library and scalajs-scalalib jars are byte-identical to what upstream
+builds from the same tree. The compiler looks the class up by name and runs
+without it.
+
+* Do not invert a diagnostic candidate's failure under NotGiven
+
+`NotGiven[X]` is resolved by inverting each candidate's result, and an
+`@internal.diagnostic` catch-all is itself a candidate for `NotGiven[X]`.
+Its failure said nothing about `X`, yet it was inverted into a success
+before `NotGiven`'s own instances were reached, so `NotGiven[X]` held for
+every `X` (propensive/soundness#2123). A failing candidate that carries
+the annotation is now left as a failure. The failure's type is not the
+test: when `X` is absent, the nested diagnostic failure propagates into
+`amb1`'s failure, which must still invert.
+
+Written with Claude Code; the change and tests were reviewed and run
+locally by the author.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: searchdiag
+---
+ .../dotty/tools/dotc/core/Definitions.scala   |  4 ++
+ .../dotty/tools/dotc/reporting/messages.scala | 14 +++++--
+ .../dotty/tools/dotc/typer/Implicits.scala    | 38 +++++++++++++++++--
+ .../annotation/internal/diagnostic.scala      |  9 +++++
+ .../neg-macros/diagnostic-given/Macro_1.scala | 12 ++++++
+ .../diagnostic-given/NotGiven_2.scala         |  9 +++++
+ .../neg-macros/diagnostic-given/Test_2.scala  |  7 ++++
+ .../pos-macros/diagnostic-given/Macro_1.scala | 12 ++++++
+ .../pos-macros/diagnostic-given/Test_2.scala  | 18 +++++++++
+ 9 files changed, 116 insertions(+), 7 deletions(-)
+ create mode 100644 library-proscala/src/scala/annotation/internal/diagnostic.scala
+ create mode 100644 tests/neg-macros/diagnostic-given/Macro_1.scala
+ create mode 100644 tests/neg-macros/diagnostic-given/NotGiven_2.scala
+ create mode 100644 tests/neg-macros/diagnostic-given/Test_2.scala
+ create mode 100644 tests/pos-macros/diagnostic-given/Macro_1.scala
+ create mode 100644 tests/pos-macros/diagnostic-given/Test_2.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/core/Definitions.scala b/compiler/src/dotty/tools/dotc/core/Definitions.scala
+index 568d1fd9c91c350c1a7437ea4967c8f3f5420c0e..66f62900e0778d92c6f3fe70ad061ff9cedf8071 100644
+--- a/compiler/src/dotty/tools/dotc/core/Definitions.scala
++++ b/compiler/src/dotty/tools/dotc/core/Definitions.scala
+@@ -1136,6 +1136,10 @@ class Definitions {
+   @tu lazy val ProvisionalSuperClassAnnot: ClassSymbol = requiredClass("scala.annotation.internal.ProvisionalSuperClass")
+   @tu lazy val DeprecatedAnnot: ClassSymbol = requiredClass("scala.deprecated")
+   @tu lazy val DeprecatedOverridingAnnot: ClassSymbol = requiredClass("scala.deprecatedOverriding")
++  // Looked up leniently: the annotation ships in Proscala's supplementary library
++  // (proscala-library), which need not be on the classpath; without it no given
++  // can carry the annotation, so the search-failure logic never engages.
++  @tu lazy val DiagnosticAnnot: Symbol = getClassIfDefined("scala.annotation.internal.diagnostic")
+   @tu lazy val DeprecatedInheritanceAnnot: ClassSymbol = requiredClass("scala.deprecatedInheritance")
+   @tu lazy val DeprecatedNameAnnot: ClassSymbol = requiredClass("scala.deprecatedName")
+   @tu lazy val ImplicitAmbiguousAnnot: ClassSymbol = requiredClass("scala.annotation.implicitAmbiguous")
+diff --git a/compiler/src/dotty/tools/dotc/reporting/messages.scala b/compiler/src/dotty/tools/dotc/reporting/messages.scala
+index 4013735ced49bdd4b3250880d5f8e182c4b98b80..78e34ce0997f3fdc09ecb28ee6aec35314a79a49 100644
+--- a/compiler/src/dotty/tools/dotc/reporting/messages.scala
++++ b/compiler/src/dotty/tools/dotc/reporting/messages.scala
+@@ -3243,6 +3243,11 @@ class MissingImplicitArgument(
+      *  def foo(implicit foo: Foo): Any = ???
+      */
+     arg.tpe match
++      case fail: DiagnosticFailure =>
++        // The errors reported by an `@internal.diagnostic` candidate are the
++        // authoritative account of the failure; render them verbatim, bypassing
++        // any `@implicitNotFound` message on the expected type.
++        fail.explanation
+       case ambi: AmbiguousImplicits if !ambi.nested =>
+         (ambi.alt1, ambi.alt2) match
+           case (alt @ AmbiguousImplicitMsg(msg), _) =>
+@@ -3262,6 +3267,8 @@ class MissingImplicitArgument(
+ 
+   override def msgPostscript(using Context) =
+     arg.tpe match
++      case _: DiagnosticFailure =>
++        ""  // the diagnostic candidate's message is complete; no addenda
+       case _: AmbiguousImplicits =>
+         ""  // show no disambiguation
+       case _: TooUnspecific =>
+@@ -3292,9 +3299,10 @@ class MissingImplicitArgument(
+             .orElse(noChainConversionsNote(ignoredConvertibleImplicits))
+             .getOrElse(importSuggestionAddendum)
+ 
+-  def explain(using Context) = userDefinedImplicitNotFoundMessage(explain = true)
+-    .getOrElse("")
+-    + noteTrailingContextOfExtension(explain = true).getOrElse("")
++  def explain(using Context) =
++    if arg.tpe.isInstanceOf[DiagnosticFailure] then ""
++    else userDefinedImplicitNotFoundMessage(explain = true).getOrElse("")
++      + noteTrailingContextOfExtension(explain = true).getOrElse("")
+ end MissingImplicitArgument
+ 
+ class CannotBeAccessed(tpe: NamedType, superAccess: Boolean)(using Context)
+diff --git a/compiler/src/dotty/tools/dotc/typer/Implicits.scala b/compiler/src/dotty/tools/dotc/typer/Implicits.scala
+index 17f23ee05a105e39d87a5120ac1c848d0765de5d..a64042ae6bb6642065d635bfde266b67a97d3e3a 100644
+--- a/compiler/src/dotty/tools/dotc/typer/Implicits.scala
++++ b/compiler/src/dotty/tools/dotc/typer/Implicits.scala
+@@ -624,6 +624,11 @@ object Implicits:
+     def msg(using Context): Message =
+       em"${errors.map(_.msg).mkString("\n")}"
+   }
++
++  /** A `MacroErrorsFailure` from a candidate marked `@internal.diagnostic`: preferred
++   *  over other failures, and rendered verbatim as the missing-implicit message. */
++  class DiagnosticFailure(errors: List[Diagnostic.Error], expectedType: Type, argument: Tree)
++    extends MacroErrorsFailure(errors, expectedType, argument)
+ end Implicits
+ 
+ import Implicits.*
+@@ -1247,6 +1252,14 @@ trait Implicits:
+       then
+         val res = adapted.tpe match {
+           case _: SearchFailureType => SearchFailure(adapted)
++          case _ if ctx.reporter.hasErrors
++                    && config.Proscala.enabled(config.Proscala.DiagnosticGivens)
++                    && cand.ref.symbol.hasAnnotation(defn.DiagnosticAnnot) =>
++            // An `@internal.diagnostic` candidate errored (typically an aborted macro
++            // expansion): keep its reported errors as the authoritative failure message.
++            // This case must precede the `PreviousErrorType` one, which would discard
++            // the buffered errors in favour of a generic "macro expansion was stopped".
++            SearchFailure(adapted.withType(new DiagnosticFailure(ctx.reporter.allErrors.reverse, pt, argument)))
+           case error: PreviousErrorType if !adapted.symbol.isAccessibleFrom(cand.ref.prefix) =>
+             SearchFailure(adapted.withType(new NestedFailure(error.msg, pt)))
+           case tpe =>
+@@ -1486,7 +1499,7 @@ trait Implicits:
+                 case _ => fail
+             end healAmbiguous
+ 
+-            negateIfNot(tryImplicit(cand, contextual)) match {
++            negateIfNot(cand, tryImplicit(cand, contextual)) match {
+               case fail: SearchFailure =>
+                 if fail eq ImplicitSearchTooLargeFailure then
+                   fail
+@@ -1523,12 +1536,26 @@ trait Implicits:
+             }
+           case nil =>
+             if (rfailures.isEmpty) found
+-            else found.recoverWith(_ => rfailures.reverse.maxBy(_.tree.treeSize))
++            else found.recoverWith: _ =>
++              // A DiagnosticFailure carries a candidate's own account of why the search
++              // failed; prefer it (first in try order) over the largest failure tree.
++              val ordered = rfailures.reverse
++              ordered.find(_.reason.isInstanceOf[DiagnosticFailure])
++                .getOrElse(ordered.maxBy(_.tree.treeSize))
+         }
+ 
+-      def negateIfNot(result: SearchResult) =
++      def negateIfNot(cand: Candidate, result: SearchResult) =
+         if (isNotGiven)
+           result match {
++            case fail: SearchFailure
++            if config.Proscala.enabled(config.Proscala.DiagnosticGivens)
++               && cand.ref.symbol.hasAnnotation(defn.DiagnosticAnnot) =>
++              // The failure of an `@internal.diagnostic` candidate for `NotGiven[X]` is
++              // not evidence that `X` is absent, so it is not inverted into a success;
++              // `NotGiven`'s own instances decide. (The failure *type* cannot be the
++              // test: a nested diagnostic failure propagates into `amb1`'s failure when
++              // `X` is genuinely absent, and that one must still invert.)
++              fail
+             case _: SearchFailure =>
+               SearchSuccess(ref(defn.NotGiven_value), defn.NotGiven_value.termRef, 0)(
+                 ctx.typerState.fresh().setCommittable(true),
+@@ -1799,7 +1826,10 @@ trait Implicits:
+                         case _ =>
+                           reason match
+                             case (_: DivergingImplicit) => failure
+-                            case _ => List(failure, failure2).maxBy(_.tree.treeSize)
++                            case _ =>
++                              if failure.reason.isInstanceOf[DiagnosticFailure] then failure
++                              else if failure2.reason.isInstanceOf[DiagnosticFailure] then failure2
++                              else List(failure, failure2).maxBy(_.tree.treeSize)
+                   else failure
+     end searchImplicit
+ 
+diff --git a/library-proscala/src/scala/annotation/internal/diagnostic.scala b/library-proscala/src/scala/annotation/internal/diagnostic.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..9b89ba1367ec41f071b4bf86ab630b8e30410631
+--- /dev/null
++++ b/library-proscala/src/scala/annotation/internal/diagnostic.scala
+@@ -0,0 +1,9 @@
++package scala.annotation
++package internal
++
++/** Marks a `given` whose macro-implemented right-hand side may abort expansion with
++ *  `report.errorAndAbort` while being tried as an implicit candidate. The candidate
++ *  then fails the search normally, but its reported errors become the authoritative
++ *  message if the overall search fails.
++ */
++final class diagnostic extends StaticAnnotation
+diff --git a/tests/neg-macros/diagnostic-given/Macro_1.scala b/tests/neg-macros/diagnostic-given/Macro_1.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..c30c6ee937f3fd3093c8c42c397f49bf74a197dd
+--- /dev/null
++++ b/tests/neg-macros/diagnostic-given/Macro_1.scala
+@@ -0,0 +1,12 @@
++import scala.quoted.*
++import scala.annotation.internal.diagnostic
++
++object Macros:
++  transparent inline def explanation[T]: T = ${explanationImpl[T]}
++
++  def explanationImpl[T: Type](using Quotes): Expr[T] =
++    quotes.reflect.report.errorAndAbort("CUSTOM DIAGNOSTIC: " + Type.show[T])
++
++object Givens:
++  @diagnostic
++  transparent inline given explain: [T] => T = Macros.explanation[T]
+diff --git a/tests/neg-macros/diagnostic-given/NotGiven_2.scala b/tests/neg-macros/diagnostic-given/NotGiven_2.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..9f22cec306b59d8badba7cfe754312a6486b6b93
+--- /dev/null
++++ b/tests/neg-macros/diagnostic-given/NotGiven_2.scala
+@@ -0,0 +1,9 @@
++//> using options -Zdiagnostic-givens
++
++import scala.util.NotGiven
++import Givens.given
++
++trait Present
++given Present = new Present {}
++
++def notGivenOfPresent = summon[NotGiven[Present]] // error
+diff --git a/tests/neg-macros/diagnostic-given/Test_2.scala b/tests/neg-macros/diagnostic-given/Test_2.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..f70bd07a5419432fe130924264ca4cbf65da903e
+--- /dev/null
++++ b/tests/neg-macros/diagnostic-given/Test_2.scala
+@@ -0,0 +1,7 @@
++import scala.annotation.implicitNotFound
++import Givens.given
++
++@implicitNotFound("annotation message")
++trait Missing
++
++def test = summon[Missing] // error
+diff --git a/tests/pos-macros/diagnostic-given/Macro_1.scala b/tests/pos-macros/diagnostic-given/Macro_1.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..c30c6ee937f3fd3093c8c42c397f49bf74a197dd
+--- /dev/null
++++ b/tests/pos-macros/diagnostic-given/Macro_1.scala
+@@ -0,0 +1,12 @@
++import scala.quoted.*
++import scala.annotation.internal.diagnostic
++
++object Macros:
++  transparent inline def explanation[T]: T = ${explanationImpl[T]}
++
++  def explanationImpl[T: Type](using Quotes): Expr[T] =
++    quotes.reflect.report.errorAndAbort("CUSTOM DIAGNOSTIC: " + Type.show[T])
++
++object Givens:
++  @diagnostic
++  transparent inline given explain: [T] => T = Macros.explanation[T]
+diff --git a/tests/pos-macros/diagnostic-given/Test_2.scala b/tests/pos-macros/diagnostic-given/Test_2.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..8002e7ed2cb813cd3fc746daa638cb1e28883503
+--- /dev/null
++++ b/tests/pos-macros/diagnostic-given/Test_2.scala
+@@ -0,0 +1,18 @@
++import scala.util.NotGiven
++import scala.compiletime.summonFrom
++import Givens.given
++
++trait Missing
++class Cfg
++
++def withDefault(using c: Cfg = new Cfg) = c
++
++inline def choose: Int =
++  summonFrom:
++    case _: Missing => 1
++    case _ => 2
++
++def test =
++  summon[NotGiven[Missing]]
++  withDefault
++  assert(choose == 2)

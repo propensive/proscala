@@ -1,0 +1,46 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 8 Aug 2026 12:28:58 +0200
+Subject: Avoid only pattern-bound term symbols in rechecked returns
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+recheckReturn's AvoidMap exists to avoid pattern-bound *singleton* (term)
+alternatives that PatternMatcher instantiates return types with. Case-flagged
+*type* symbols — notably quote-pattern type variables, which carry the Case
+flag too — were also avoided, but only on the found side: the label's recorded
+return prototype still mentions them through skolem infos, so conformance the
+typer already established fails during rechecking. Concretely, a macro that
+matches on quoted type variables and splices an Expr whose type refines over
+them cannot be capture-checked (Soundness #1428). Restricting the map to term
+symbols leaves the singleton avoidance intact.
+
+Developed with LLM assistance (Claude); the symmetric alternative (avoiding
+the expected side too) was tried and rejected — it broke 17 places in the
+capture-checked standard library.
+
+Proscala-Patch: returnavoid
+---
+ compiler/src/dotty/tools/dotc/transform/Recheck.scala | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/compiler/src/dotty/tools/dotc/transform/Recheck.scala b/compiler/src/dotty/tools/dotc/transform/Recheck.scala
+index dd7a514c2cdab0bb8df90dff090c0c5a7fedc451..5f77d0ea917b59f77f3343a88faf89b665281758 100644
+--- a/compiler/src/dotty/tools/dotc/transform/Recheck.scala
++++ b/compiler/src/dotty/tools/dotc/transform/Recheck.scala
+@@ -462,7 +462,13 @@ abstract class Recheck extends Phase, SymTransformer:
+       // result type of a method with a return must be given explicitly.
+       val avoidMap = new TypeOps.AvoidMap:
+         def toAvoid(tp: NamedType) =
+-           tp.symbol.is(Case) && tp.symbol.owner.isContainedIn(ctx.owner)
++           // Only term symbols: this map exists to avoid pattern-bound *singleton*
++           // alternatives (see the comment below). Case-flagged *type* symbols —
++           // notably quote-pattern type variables — also appear in the label's
++           // recorded return prototype (through skolem infos), so avoiding them
++           // in the found type but not the expected type breaks conformance the
++           // typer already established.
++           tp.symbol.isTerm && tp.symbol.is(Case) && tp.symbol.owner.isContainedIn(ctx.owner)
+ 
+       // The pattern matching translation, which runs before this phase
+       // sometimes instantiates return types with singleton type alternatives
