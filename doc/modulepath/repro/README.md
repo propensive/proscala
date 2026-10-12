@@ -12,12 +12,11 @@ Without the patch, on the 3.10 stream, both occurrences of `Positional.Profile`
 inside the inline method fail:
 
 ```
--- Error: repro.scala:16:38
+-- Error: repro.scala:16:26
 16 |      val profiles: Array[Positional.Profile] = Array(Positional.Profile("a"))
    |                          ^^^^^^^^^^
-   |    (Host.this.p$Host$$inline$Positional : => object p.Positional)
-   |    is not a legal path
-   |    since it refers to nonfinal method p$Host$$inline$Positional
+   |(Host.this.p$Host$$inline$Positional : => object p.Positional) is not a legal path
+   |since it refers to nonfinal method p$Host$$inline$Positional
 ```
 
 With the patch, the files compile.

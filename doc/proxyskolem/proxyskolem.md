@@ -37,7 +37,7 @@ Under capture checking that precision is doubly wrong:
 
 Two, one per failure mode.
 
-**Resplice** (`repro/`, two-run compile, no flags). A macro library whose
+**Resplice** (`repro2/`, two-run compile, no flags). A macro library whose
 transparent inline `id` macro re-quotes its (already-inlined) argument, where
 `get` is a dependent inline extension method:
 
@@ -61,7 +61,7 @@ Found:    (?1 : ...)
 Required: (?2 : ...)
 ```
 
-**Capture flow** (`repro2/`, single file, `-Ycc-new
+**Capture flow** (`repro/`, single file, `-Ycc-new
 -language:experimental.captureChecking`). A Wisteria-shaped deriver whose
 `derivedOne` matches a summoned, capability-typed instance back to a pure
 declared result:

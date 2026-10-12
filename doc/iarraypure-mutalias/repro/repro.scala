@@ -1,4 +1,4 @@
-// Compile with: -experimental -Ycc-new -language:experimental.captureChecking
+// Compile with: -experimental -Ycc-new -language:experimental.separationChecking -Zopaque-mutability
 //
 // Unpatched: compiles silently -- the write through the read-only parameter
 // is not detected, because the opaque alias hides `Array`'s mutability

@@ -9,7 +9,10 @@ infer[context])`.
 
 Compile `repro.scala` with the compile classpath of Soundness's
 `ethereal.test` module (Soundness commit `211be67b5`, built with a patched
-toolchain):
+toolchain; Soundness has since renamed `javaEnvironment`/`javaSystem` to
+`javaBaseEnvironment`/`javaBaseSystem`, and `repro.scala` follows the rename —
+verified against Soundness `a5c6577d4c` on 2026-10-12, where the imports are now
+`-Yimports:java.lang,proscenium`; `test.sh` runs it given `SOUNDNESS=<checkout>`):
 
 ```
 cd <soundness>; ./mill show ethereal.test.compileClasspath   # → classpath

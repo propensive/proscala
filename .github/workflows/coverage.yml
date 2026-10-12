@@ -3,7 +3,8 @@ name: Coverage
 # How far the patches reach across upstream: which scala/scala3 releases, release
 # candidates and branch heads get every patch they should (bin/proscala-coverage),
 # and whether the heads of main and lts-3.9 — what the next nightlies will be —
-# still build with them. Weekly, and on demand. Gaps are reported in the job
+# still build with them, and pass the patches' reproductions and tests
+# (bin/proscala-test). Weekly, and on demand. Gaps are reported in the job
 # summary; covering them is described in AGENTS.md ("Covering a new target").
 on:
   schedule:
@@ -63,3 +64,5 @@ jobs:
       - name: Build the compiler
         working-directory: worktrees/head
         run: make
+      - name: Test the patches
+        run: bin/proscala-test worktrees/head

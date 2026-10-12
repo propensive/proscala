@@ -9,7 +9,8 @@ name: Release
 #
 #   plan     reads the targets (or, run by hand, works them out for a dry run)
 #   build    for each target, in parallel: builds the tree, the distribution and
-#            the Maven-layout repository — nothing leaves the runner yet
+#            the Maven-layout repository, and tests the patches against it
+#            (bin/proscala-test) — nothing leaves the runner yet
 #   publish  only once every target has built: creates the GitHub release, with
 #            every target's tarball, jars and repository
 #
@@ -97,6 +98,11 @@ jobs:
           make BRANCH=dist VERSION="$v" tarball release-jars maven-repo
           mkdir -p ../../out
           cp "release/dist/proscala-$v.tar.gz" "release/dist/proscala-$v-maven.zip" release/dist/jars/*.jar ../../out/
+
+      # Every patch's executable reproduction and its own tests, against the
+      # compiler just built: a target whose patches misbehave is not released.
+      - name: Test the patches
+        run: bin/proscala-test worktrees/dist
 
       - uses: actions/upload-artifact@v4
         with:

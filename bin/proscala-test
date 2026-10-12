@@ -1,0 +1,253 @@
+#!/usr/bin/env bash
+#
+# proscala-test — test a built tree's patches: their reproductions and their tests.
+#
+# Usage:
+#   bin/proscala-test <tree> [--only <patch>] [-v]
+#   bin/proscala-test <tree> --stock <scala version> [--only <patch>] [-v]
+#
+# <tree> is a tree made by bin/proscala-tree and built with `make` (its
+# distribution, release/<name>/, is found inside it). For every patch the tree
+# carries, in patches/series order:
+#
+#   reproductions  each doc/<patch>/repro*/test.sh — an executable spec (below)
+#                  — is run in a scratch copy of its directory
+#   tests          every upstream-style test the patch adds under tests/ is
+#                  compiled as upstream's test runner would: upstream's default
+#                  options, the directory's extra ones, and the file's own
+#                  `//> using options`; files named *_1, *_2, … compile in
+#                  separate runs, in order; `pos` tests must compile, and `neg`
+#                  tests must report errors on exactly the lines marked
+#                  `// error` (and as many unplaced ones as `// nopos-error`);
+#                  a gated patch's tests get its -Z flag (doc/README.md's Flag column)
+#
+# A test.sh defines what must happen, using the helpers below:
+#
+#   ZFLAG=-Zalias-captures          # the -Z flag enabling the feature, if gated
+#   with_feature() { … }            # must hold for Proscala, with $ZFLAG passed
+#   without_feature() { … }         # optional: what upstream does — the bug. Run
+#                                   # here only for a gated feature (on the same
+#                                   # compiler, without the flag), and with
+#                                   # --stock against upstream's own compiler
+#
+#   compiles <scalac args>          the compilation must succeed
+#   fails_with <regex> <args>       it must fail, with output matching <regex>
+#   reports <regex> <args>          its output must match <regex>, either way
+#   runs <regex> <classpath> <main> running <main> must print a match for <regex>
+#   skip <reason>                   this spec does not apply here
+#
+# scalac runs with -color:never; $DIST is the distribution directory, $TARGET
+# the upstream commit, $SCALA_VERSION the version the tree builds as, and
+# $COMPILER_CP the classpath of the compiler under test (upstream's, with --stock).
+#
+# --stock <version> runs every without_feature against the published upstream
+# compiler <version> (fetched with coursier, `cs`), which must show the bug: it
+# proves a reproduction reproduces. Exits 1 if anything fails.
+
+set -euo pipefail
+PROSCALA_PROG=proscala-test
+# shellcheck source=proscala-lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/proscala-lib.sh"
+
+tree="" only="" stock="" verbose=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --only)  only="${2:-}"; [ -n "$only" ] || die "--only needs a patch name"; shift 2 ;;
+    --stock) stock="${2:-}"; [ -n "$stock" ] || die "--stock needs a Scala version"; shift 2 ;;
+    -v)      verbose=1; shift ;;
+    -h|--help) sed -n '3,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -*) die "unknown option $1" ;;
+    *)  [ -z "$tree" ] || die "too many arguments"; tree="$1"; shift ;;
+  esac
+done
+[ -n "$tree" ] && [ -d "$tree" ] || die "which tree? (a directory made by bin/proscala-tree and built)"
+tree="$(cd "$tree" && pwd)"
+
+# --- the compiler under test ------------------------------------------------------
+dists=("$tree"/release/*/bin/scalac)
+[ -x "${dists[0]}" ] || die "$tree has no built distribution (run make in it)"
+[ "${#dists[@]}" = 1 ] || die "$tree holds several distributions: ${dists[*]}"
+DIST="$(cd "$(dirname "${dists[0]}")/.." && pwd)"
+TARGET="$(tree_base "$tree")"
+SCALA_VERSION="$(sed -nE 's/^version\.number=(.*)$/\1/p' <(unzip -p "$DIST"/lib/scala3-compiler*.jar compiler.properties 2>/dev/null) | head -1)"
+
+if [ -n "$stock" ]; then
+  command -v cs >/dev/null || die "--stock needs coursier (cs) to fetch upstream's compiler"
+  STOCK_CP="$(cs fetch -p "org.scala-lang:scala3-compiler_3:$stock")" || die "cannot fetch scala3-compiler $stock"
+  scalac_cmd() { java -cp "$STOCK_CP" dotty.tools.dotc.Main -usejavacp "$@"; }
+  JAVA_CP="$STOCK_CP"
+  COMPILER_CP="$STOCK_CP"
+else
+  scalac_cmd() { "$DIST/bin/scalac" "$@"; }
+  JAVA_CP="$DIST/lib/*:$DIST/deps/*"
+  COMPILER_CP="$(ls "$DIST"/lib/scala3-compiler*.jar | head -1)"
+fi
+export DIST TARGET SCALA_VERSION COMPILER_CP
+
+# --- spec helpers (run inside a spec's subshell) -------------------------------------
+LOG=""
+fail() { echo "FAILED: $*" >> "$LOG"; exit 1; }
+skip() { echo "SKIPPED: $*" >> "$LOG"; exit 77; }
+_scalac() { # _scalac <args> — run, log, and leave the output in $OUTPUT and status in $STATUS
+  echo "\$ scalac $*" >> "$LOG"
+  set +e; OUTPUT="$(scalac_cmd -color:never "$@" 2>&1)"; STATUS=$?; set -e
+  printf '%s\n' "$OUTPUT" >> "$LOG"
+}
+compiles()   { _scalac "$@"; [ "$STATUS" = 0 ] || fail "expected to compile: scalac $*"; }
+fails_with() { local re="$1"; shift; _scalac "$@"
+               [ "$STATUS" != 0 ] || fail "expected to fail: scalac $*"
+               printf '%s\n' "$OUTPUT" | grep -Eq -- "$re" || fail "expected the failure to match /$re/: scalac $*"; }
+reports()    { local re="$1"; shift; _scalac "$@"
+               printf '%s\n' "$OUTPUT" | grep -Eq -- "$re" || fail "expected output matching /$re/: scalac $*"; }
+runs()       { local re="$1" cp="$2"; shift 2
+               echo "\$ java $*" >> "$LOG"
+               set +e; OUTPUT="$(java -cp "$cp:$JAVA_CP" "$@" 2>&1)"; STATUS=$?; set -e
+               printf '%s\n' "$OUTPUT" >> "$LOG"
+               [ "$STATUS" = 0 ] || fail "expected to run: $*"
+               printf '%s\n' "$OUTPUT" | grep -Eq -- "$re" || fail "expected its output to match /$re/: $*"; }
+
+# run_spec <spec> <function> — 0 pass, 1 fail, 77 skipped, 78 no such function
+run_spec() {
+  local spec="$1" fn="$2" work
+  work="$(mktemp -d "${TMPDIR:-/tmp}/proscala-test.XXXXXX")"
+  cp -R "$(dirname "$spec")/." "$work/"
+  local rc=0
+  ( cd "$work"; ZFLAG=""; unset -f with_feature without_feature
+    # shellcheck disable=SC1090
+    . "$spec"
+    declare -F "$fn" >/dev/null || exit 78
+    set -e; "$fn" ) || rc=$?
+  rm -rf "$work"
+  return "$rc"
+}
+
+# --- upstream-style tests ------------------------------------------------------------
+# root <path> — the test-suite directory a file belongs to, and its kind and options
+test_root() {
+  case "$1" in
+    tests/pos-custom-args/captures/*) echo "tests/pos-custom-args/captures pos -language:experimental.captureChecking -language:experimental.separationChecking" ;;
+    tests/neg-custom-args/captures/*) echo "tests/neg-custom-args/captures neg -language:experimental.captureChecking -language:experimental.separationChecking" ;;
+    tests/explicit-nulls/unsafe-common/*) echo "tests/explicit-nulls/unsafe-common neg -Yexplicit-nulls -Yno-flexible-types" ;;
+    tests/explicit-nulls/pos/*) echo "tests/explicit-nulls/pos pos -Yexplicit-nulls" ;;
+    tests/explicit-nulls/neg/*) echo "tests/explicit-nulls/neg neg -Yexplicit-nulls" ;;
+    tests/pos-macros/*) echo "tests/pos-macros pos" ;;
+    tests/neg-macros/*) echo "tests/neg-macros neg" ;;
+    tests/pos/*)        echo "tests/pos pos -Wsafe-init" ;;
+    tests/neg/*)        echo "tests/neg neg" ;;
+    tests/run/*)        echo "tests/run run" ;;
+    *) echo "" ;;
+  esac
+}
+# upstream's defaultOptions (compiler/test/dotty/tools/vulpix/TestConfiguration.scala)
+DEFAULT_OPTS=(-indent -Yno-deep-subtypes -Yno-double-bindings -Yforce-sbt-phases -Xsemanticdb -Xverify-signatures -Ycheck:all -Wconf:id=E222:s -pagewidth 120)
+
+# run_unit <tree> <unit path> <kind> <options...> — one test: a file or a directory
+run_unit() {
+  local t="$1" unit="$2" kind="$3"; shift 3
+  local opts=("${DEFAULT_OPTS[@]}" "$@") files=() f out stage cp="" n
+  if [ -d "$t/$unit" ]; then
+    while IFS= read -r f; do files+=("$f"); done < <(cd "$t" && find "$unit" -name '*.scala' -o -name '*.java' | sort)
+  else
+    files=("$unit")
+  fi
+  for f in "${files[@]}"; do
+    # shellcheck disable=SC2207
+    opts+=($(sed -nE 's#^//> using options (.*)$#\1#p' "$t/$f" || true))
+  done
+  out="$(mktemp -d "${TMPDIR:-/tmp}/proscala-unit.XXXXXX")"
+  local all="" status=0 stages
+  stages="$(for f in "${files[@]}"; do if [[ "$f" =~ _([0-9]+)\.(scala|java)$ ]]; then echo "${BASH_REMATCH[1]}"; else echo 999; fi; done | sort -n -u)"
+  for stage in $stages; do
+    local group=()
+    for f in "${files[@]}"; do
+      if [[ "$f" =~ _([0-9]+)\.(scala|java)$ ]]; then n="${BASH_REMATCH[1]}"; else n=999; fi
+      [ "$n" = "$stage" ] && group+=("$t/$f")
+    done
+    mkdir -p "$out/$stage"
+    echo "\$ scalac ${opts[*]} -d $out/$stage ${cp:+-cp $cp} ${group[*]#$t/}" >> "$LOG"
+    local o rc=0
+    o="$(cd "$t" && scalac_cmd -color:never "${opts[@]}" -d "$out/$stage" ${cp:+-cp "$cp"} "${group[@]}" 2>&1)" || rc=$?
+    printf '%s\n' "$o" >> "$LOG"
+    all="$all"$'\n'"$o"
+    cp="${cp:+$cp:}$out/$stage"
+    if [ "$rc" != 0 ]; then status=1; [ "$kind" = neg ] || break; fi
+  done
+  rm -rf "$out"
+  case "$kind" in
+    pos|run)
+      [ "$status" = 0 ] || { echo "FAILED: expected $unit to compile" >> "$LOG"; return 1; } ;;
+    neg)
+      # expected: file:line for every `// error` (one per marker), plus nopos count
+      local want got
+      want="$(for f in "${files[@]}"; do { grep -n -o '// error' "$t/$f" || true; } | cut -d: -f1 | sed "s#^#$(basename "$f"):#"; done | sort)"
+      got="$(printf '%s\n' "$all" | sed -nE 's#^-- .*Error: (.*/)?([^/:]+):([0-9]+):[0-9]+ .*#\2:\3#p' | sort)"
+      local wantn gotn
+      wantn="$(for f in "${files[@]}"; do grep -o '// nopos-error' "$t/$f" || true; done | wc -l | tr -d ' ')"
+      gotn="$(printf '%s\n' "$all" | grep -cE '^-- .*Error: [^:]*$' || true)"
+      if [ "$want" != "$got" ] || [ "$wantn" != "$gotn" ]; then
+        { echo "FAILED: $unit's errors differ from its // error markers"
+          echo "  expected: $(echo $want) ${wantn:+(+$wantn unplaced)}"
+          echo "  reported: $(echo $got) ${gotn:+(+$gotn unplaced)}"; } >> "$LOG"
+        return 1
+      fi ;;
+  esac
+  return 0
+}
+
+# --- run everything ------------------------------------------------------------------
+pass=0 failn=0 skipn=0 failed=()
+report() { # report <status> <what> <log>
+  case "$1" in
+    0)  pass=$((pass + 1)); [ "$verbose" = 0 ] || echo "   ok    $2" ;;
+    77) skipn=$((skipn + 1)); echo "   skip  $2: $(sed -n 's/^SKIPPED: //p' "$3" | head -1)" ;;
+    *)  failn=$((failn + 1)); failed+=("$2"); echo "   FAIL  $2"; sed 's/^/         | /' "$3" | tail -25 ;;
+  esac
+}
+
+note "testing $(basename "$tree") (scala/scala3 $(g rev-parse --short "$TARGET"), ${SCALA_VERSION:-unknown version})${stock:+ — without_feature against stock Scala $stock}"
+while IFS= read -r c; do
+  p="$(commit_patch_name "$tree" "$c")"
+  [ -n "$p" ] || continue
+  if [ -n "$only" ] && [ "$p" != "$only" ]; then continue; fi
+  # reproductions
+  for spec in "$PROSCALA_ROOT"/doc/"$p"/repro*/test.sh; do
+    [ -f "$spec" ] || continue
+    what="$p: ${spec#"$PROSCALA_ROOT"/doc/}"; what="${what%/test.sh}"
+    flag="$(sed -nE 's/^ZFLAG=([^ #]*).*/\1/p' "$spec" | head -1)"
+    if [ -z "$stock" ]; then
+      LOG="$(mktemp)"; rc=0; run_spec "$spec" with_feature || rc=$?
+      report "$rc" "$what" "$LOG"; rm -f "$LOG"
+      if [ -n "$flag" ]; then
+        LOG="$(mktemp)"; rc=0; run_spec "$spec" without_feature || rc=$?
+        [ "$rc" = 78 ] || report "$rc" "$what (without $flag)" "$LOG"; rm -f "$LOG"
+      fi
+    else
+      LOG="$(mktemp)"; rc=0; run_spec "$spec" without_feature || rc=$?
+      [ "$rc" = 78 ] || report "$rc" "$what (stock $stock shows the bug)" "$LOG"; rm -f "$LOG"
+    fi
+  done
+  # the patch's own tests, with the patch's -Z flag if it is gated: they test
+  # the gated behaviour (the Flag column of doc/README.md names it)
+  [ -z "$stock" ] || continue
+  pflag="$(awk -F'|' -v p="[$p]" 'index($2, p) == 2 { f = $7; gsub(/[ `]/, "", f); if (f ~ /^-Z/) print f }' "$PROSCALA_ROOT/doc/README.md")"
+  declare -A units=()
+  while IFS= read -r f; do
+    read -r root kind opts <<<"$(test_root "$f")"
+    [ -n "$root" ] || continue
+    rest="${f#"$root"/}"
+    case "$rest" in */*) unit="$root/${rest%%/*}" ;; *) unit="$f" ;; esac
+    units["$unit"]="$kind $opts"
+  done < <(git -C "$tree" diff-tree --no-commit-id --name-only -r --diff-filter=AM "$c" -- tests/)
+  for unit in $(printf '%s\n' "${!units[@]}" | sort); do
+    read -r kind opts <<<"${units[$unit]}"
+    LOG="$(mktemp)"; rc=0
+    # shellcheck disable=SC2086
+    run_unit "$tree" "$unit" "$kind" $opts $pflag || rc=$?
+    report "$rc" "$p: $unit" "$LOG"; rm -f "$LOG"
+  done
+  unset units
+done < <(git -C "$tree" rev-list --reverse "$TARGET..HEAD")
+
+echo
+note "$pass passed, $failn failed, $skipn skipped"
+[ "$failn" = 0 ] || { printf '   failed: %s\n' "${failed[@]}"; exit 1; }

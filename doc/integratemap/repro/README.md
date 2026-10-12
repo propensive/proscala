@@ -17,3 +17,11 @@ java.lang.AssertionError: assertion failed:
 
 With the patch, both files compile. The snippets are extracted verbatim from
 [the feature doc](../integratemap.md).
+
+**Not a working reproduction.** Checked 2026-10-12, this pair compiles on
+stock 3.10.0 too (the suspension does happen — `-Xprint-suspension` shows
+`Amount.scala` retried — but no `LazyRef` built by `IntegrateMap` is forced in
+run 2). The crash needs such a lazy type, made in run 1 in a unit that is *not*
+suspended, to be forced after the retry; the Quantitative sources it was
+reduced from have that, this sketch does not. `test.sh` therefore checks only
+that the patched compiler accepts it.

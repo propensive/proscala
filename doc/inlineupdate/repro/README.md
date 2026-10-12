@@ -11,7 +11,7 @@ members referenced from `next()` are not classified as update methods, and the
 exclusivity check fails with:
 
 ```
-the access is in method inline$..., which is not an update method
+since the access is in method Counter$$inline$bump, which is not an update method.
 ```
 
 With the patch, the file compiles. The snippet is extracted verbatim from

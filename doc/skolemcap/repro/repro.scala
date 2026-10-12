@@ -3,8 +3,8 @@ package ethereal
 import soundness.*
 
 import classloaders.systemClassloader
-import environments.javaEnvironment
-import systems.javaSystem
+import environments.javaBaseEnvironment
+import systems.javaBaseSystem
 import temporaryDirectories.systemTemporaryDirectory
 import logging.silentLogging
 import strategies.throwUnsafely

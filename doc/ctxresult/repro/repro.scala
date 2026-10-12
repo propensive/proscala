@@ -1,6 +1,7 @@
+import language.experimental.erasedDefinitions
 import language.experimental.captureChecking
 
-class CT[-E <: Exception] extends caps.ExclusiveCapability
+class CT[-E <: Exception] extends caps.ExclusiveCapability, compiletime.Erased
 
 def Throw[Ex <: Exception](ex: Ex)(using CT[Ex]^): Nothing = ???
 

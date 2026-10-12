@@ -33,8 +33,10 @@ the way to 3.10. The 3.9 release branch predates the fix.
 
 ## Reproduction
 
-This is a performance defect, not a miscompilation, so there is no `repro/`
-directory. It is observable on any derivation-heavy, capture-checked module;
+This is a performance defect, not a miscompilation, so
+[`repro/`](repro/README.md) checks only that the backport is present and that a
+dependency-heavy method still compiles; the difference itself shows under
+profiling. It is observable on any derivation-heavy, capture-checked module;
 the measured case is Soundness's `exegesis.core` compiled with
 `-language:experimental.captureChecking` and separation checking. Under
 `-Yprofile-enabled`, the unpatched compiler reports a cc phase of ~60 s user

@@ -1,6 +1,7 @@
 # Reproduction: proxyskolem (capture flow)
 
-The second of two reproductions (see also [`repro/`](../repro/README.md)):
+One of two reproductions (the other, the macro resplice, is
+[`repro2/`](../repro2/README.md)):
 under capture checking, the skolem-typed inline proxy bakes a local capture
 into the expansion type, which cannot be avoided into the pure declared
 result.
