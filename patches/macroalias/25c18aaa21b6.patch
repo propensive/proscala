@@ -22,14 +22,14 @@ documentation.
 
 Proscala-Patch: macroalias
 ---
- compiler/src/dotty/tools/dotc/inlines/Inliner.scala | 7 ++++++-
- 1 file changed, 6 insertions(+), 1 deletion(-)
+ compiler/src/dotty/tools/dotc/inlines/Inliner.scala | 11 ++++++++---
+ 1 file changed, 8 insertions(+), 3 deletions(-)
 
 diff --git a/compiler/src/dotty/tools/dotc/inlines/Inliner.scala b/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
-index 8dd40330580906d7a85c8cd3bf5bade6e9f63243..581371f902e2f9fb206804dd9a9421def64bac3a 100644
+index 51016f50deafdd3ff366d7a7061c675d737a5f58..277121a7a2adf7f05ad71e4e492bd078ee921422 100644
 --- a/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
 +++ b/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
-@@ -1118,8 +1118,13 @@ class Inliner(val call: tpd.Tree)(using Context):
+@@ -1087,13 +1087,18 @@ class Inliner(val call: tpd.Tree)(using Context):
  
            // We dealias opaque types because their aliases might not be visible
            // at the expansion site. See `tests/run-macros/opaque-inline`.
@@ -44,3 +44,10 @@ index 8dd40330580906d7a85c8cd3bf5bade6e9f63243..581371f902e2f9fb206804dd9a9421de
                case tp: TypeRef if tp.typeSymbol.isOpaqueAlias =>
                  val sym = tp.typeSymbol
                  apply(sym.opaqueAlias.asSeenFrom(tp.prefix, sym.owner))
+-              case _ =>
+-                mapOver(tp)
++              case dealiased =>
++                mapOver(dealiased)
+ 
+           val actualTp = dealiasOpaques(res.tpe)
+           val expectedTp = dealiasOpaques(tree1.tpe)

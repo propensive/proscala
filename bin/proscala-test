@@ -12,6 +12,9 @@
 #
 #   reproductions  each doc/<patch>/repro*/test.sh — an executable spec (below)
 #                  — is run in a scratch copy of its directory
+#   (and for every patch the target does not carry because upstream fixed the
+#   problem — an obsolete-from bound — its reproductions' with_feature, which
+#   must then hold on upstream's code alone)
 #   tests          every upstream-style test the patch adds under tests/ is
 #                  compiled as upstream's test runner would: upstream's default
 #                  options, the directory's extra ones, and the file's own
@@ -247,6 +250,28 @@ while IFS= read -r c; do
   done
   unset units
 done < <(git -C "$tree" rev-list --reverse "$TARGET..HEAD")
+
+# Patches this target does not carry because upstream fixed the problem
+# (obsolete-from): their reproductions must hold on upstream's code alone, which
+# is the claim the bound makes. (Not with --only for another patch, or --stock.)
+if [ -z "$stock" ]; then
+  declare -A carried=()
+  while IFS= read -r c; do
+    p="$(commit_patch_name "$tree" "$c")"; [ -n "$p" ] && carried[$p]=1
+  done < <(git -C "$tree" rev-list "$TARGET..HEAD")
+  for p in $(series); do
+    [ -z "${carried[$p]:-}" ] || continue
+    if [ -n "$only" ] && [ "$p" != "$only" ]; then continue; fi
+    r="$(in_range "$p" "$TARGET")"
+    case "$r" in obsolete-from*) ;; *) continue ;; esac
+    for spec in "$PROSCALA_ROOT"/doc/"$p"/repro*/test.sh; do
+      [ -f "$spec" ] || continue
+      what="$p: ${spec#"$PROSCALA_ROOT"/doc/}"; what="${what%/test.sh}"
+      LOG="$(mktemp)"; rc=0; run_spec "$spec" with_feature || rc=$?
+      report "$rc" "$what — fixed upstream at ${r:14:10}, not carried" "$LOG"; rm -f "$LOG"
+    done
+  done
+fi
 
 echo
 note "$pass passed, $failn failed, $skipn skipped"

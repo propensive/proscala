@@ -79,8 +79,10 @@ while IFS=$'\t' read -r feat streams _ _; do
   done
   got="$(printf '%s' "$streams" | tr -d ' ')"
   want="$(printf '%s' "$expected" | tr -d ' ')"
-  if [ -z "$expected" ]; then
-    problem "doc/README.md lists '$feat', which no stream carries"
+  if [ -z "$expected" ] && [ "$got" = "—" ]; then
+    pass "$feat streams (none: carried only on other upstreams)"
+  elif [ -z "$expected" ]; then
+    problem "doc/README.md lists '$feat', which no stream carries (give it '—' in the Streams column if it applies only to other upstreams)"
   elif [ "$got" != "$want" ]; then
     problem "doc/README.md '$feat' Streams = '$streams', but the streams carry it in '$expected'"
   else
