@@ -1,6 +1,6 @@
 name: Release
 
-# A Proscala release is a tag v<x.y.z> on `main`, pushed by bin/proscala-release.
+# A Proscala release is a tag <x.y.z> on `main`, pushed by bin/proscala-release.
 # Its annotation lists the targets — every scala/scala3 final release 3.<y>.<z>
 # from 3.9 on, and a snapshot of each upstream branch developing an unreleased
 # version — each as
@@ -20,7 +20,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - '[0-9]+.[0-9]+.[0-9]+'
   workflow_dispatch:
     inputs:
       version:
@@ -37,6 +37,7 @@ jobs:
     outputs:
       version: ${{ steps.plan.outputs.version }}
       dry: ${{ steps.plan.outputs.dry }}
+      release: ${{ steps.plan.outputs.release }}
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
@@ -53,8 +54,17 @@ jobs:
             targets="$(bin/proscala-release "$version" --targets)"
             dry=true
           else
-            version="${GITHUB_REF_NAME#v}"
+            version="$GITHUB_REF_NAME"
             git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+            # This repository also holds scala/scala3's own tags (3.10.0, 0.26.0, ...), which
+            # look like versions too. A Proscala release is tagged on main's history; any
+            # other tag is not one, and there is nothing to do.
+            if ! git merge-base --is-ancestor "$GITHUB_REF_NAME^{commit}" origin/main; then
+              echo "release: tag $GITHUB_REF_NAME is not on main, so it is not a Proscala release" >&2
+              echo "release=false" >> "$GITHUB_OUTPUT"
+              echo "Tag \`$GITHUB_REF_NAME\` is not on \`main\`: not a Proscala release, nothing built." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
             targets="$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME" | awk '$1 == "target" { print $2, $3, $4 }')"
             [ -n "$targets" ] || { echo "release: tag $GITHUB_REF_NAME lists no targets (was it made by bin/proscala-release?)" >&2; exit 1; }
             dry=false
@@ -64,12 +74,14 @@ jobs:
             END { printf "]}" }')"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "dry=$dry"         >> "$GITHUB_OUTPUT"
+          echo "release=true"     >> "$GITHUB_OUTPUT"
           echo "matrix=$matrix"   >> "$GITHUB_OUTPUT"
           { echo "### Proscala $version"; echo; echo '| target | upstream commit | version |'; echo '| --- | --- | --- |'
             printf '%s\n' "$targets" | awk '{ printf "| %s | %s | %s |\n", $1, substr($2, 1, 10), $3 }'; } >> "$GITHUB_STEP_SUMMARY"
 
   build:
     needs: plan
+    if: needs.plan.outputs.release == 'true'
     runs-on: ubuntu-latest
     strategy:
       # Every target runs to the end, so one failure shows them all; publishing
@@ -114,7 +126,7 @@ jobs:
 
   publish:
     needs: [plan, build]
-    if: needs.plan.outputs.dry == 'false'
+    if: needs.plan.outputs.release == 'true' && needs.plan.outputs.dry == 'false'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
