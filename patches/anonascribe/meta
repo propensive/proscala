@@ -1,0 +1,2 @@
+needed-from   29497c036206d8cf4882b9b8374b2375c031adbc   # 3.10's read-only reading of a bare stateful type arose on main after 3.9 branched (exact commit not recorded; 3.9 accepts the code)
+variant 25c18aaa21b6.patch 1 25c18aaa21b6be202945e024cd5180d9d62d650f

@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 13 Oct 2026 11:22:30 +0200
+Subject: Do not assert on an open type parameter reached through a term's info
+
+Collecting the parts of an implicit search's type for its implicit scope
+asserted that every type parameter it meets is instantiated: `wildApprox`
+removes uninstantiated ones from the type. It does not look inside the info of
+a term reference in that type, though, and the parts collector does. So an
+inline match's given search (`summonFrom`) whose type mentions an inline
+`this`-proxy typed while an enclosing call's type variables were still open
+crashed with "`wildApprox` failed to remove uninstantiated value" (Soundness:
+`state/next` with serpentine's transparent `/`, inside a `fuse` within
+`mitigate`/`protect`, in exoskeleton's rig; stock 3.10.0 crashes too, 3.9
+does not). Such a parameter's declared bound stands for it, as for any other.
+
+Developed with LLM assistance (Claude Code).
+
+Proscala-Patch: implicitparts
+---
+ compiler/src/dotty/tools/dotc/typer/Implicits.scala | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/compiler/src/dotty/tools/dotc/typer/Implicits.scala b/compiler/src/dotty/tools/dotc/typer/Implicits.scala
+index 32bce843e2b0cf08689f40fb2e14479e23e912ce..83db3785bb593cc936ce42ee83ed53ea703a537d 100644
+--- a/compiler/src/dotty/tools/dotc/typer/Implicits.scala
++++ b/compiler/src/dotty/tools/dotc/typer/Implicits.scala
+@@ -681,7 +681,11 @@ trait ImplicitRunInfo:
+             case t: ConstantType =>
+               traverse(t.underlying)
+             case t: TypeParamRef =>
+-              assert(!ctx.typerState.constraint.contains(t), i"`wildApprox` failed to remove uninstantiated $t")
++              // `wildApprox` removes uninstantiated type parameters from the type itself,
++              // but one can still be reached through the info of a term reference in it
++              // (an inline `this`-proxy typed while an enclosing call's type variables are
++              // open, for instance); its declared bound stands for it here, as it does for
++              // an instantiated one.
+               traverse(t.underlying)
+             case t: TermParamRef =>
+               traverse(t.underlying)

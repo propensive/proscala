@@ -1,0 +1,2 @@
+needed-from   29497c036206d8cf4882b9b8374b2375c031adbc   # carried on the 3.10 line only: 3.9 has the same code, but no case is known to trigger it there (3.9 compiles the code)
+variant 25c18aaa21b6.patch 1 25c18aaa21b6be202945e024cd5180d9d62d650f

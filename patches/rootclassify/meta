@@ -1,2 +1,2 @@
+obsolete-from 0d7606986f92ac776fc5fa61a4fc19780164df06   # upstream #26580 (Fix gaps accounting for consume parameters in class captures) drops the assertion
 variant 0bc121c5fd74.patch 1 0bc121c5fd74a0340dc56e0739ebab40de3333a2
-absent-from   29497c036206d8cf4882b9b8374b2375c031adbc   # not yet ported to the main line

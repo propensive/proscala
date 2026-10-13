@@ -1,0 +1,94 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 13 Oct 2026 09:12:52 +0200
+Subject: Drop the implied capture set from a type alias in a refinement
+
+A type member's own info drops the capture set implied by a capability parent
+(`type X = C`, not `type X = C^{any}`). An alias inside a refinement did not:
+`Streamable { type Self = handle }` with `handle <: Res^` became
+`{ type Self = handle^ }`, which instantiating the given turns into a fresh
+root. 3.9's inference widened the call's type argument enough to absorb it;
+3.10 infers it exactly (`Res^{r}`), and the given no longer matches
+(galilei's `Handle.streamable`, guillotine's `Job.writableText`). Alias
+refinements now drop the implied set too, after the usual mapping.
+
+Developed with LLM assistance (Claude Code).
+
+Proscala-Patch: refinealias
+---
+ compiler/src/dotty/tools/dotc/cc/Setup.scala  | 35 ++++++++++++++-----
+ .../captures/refinealias.scala                | 19 ++++++++++
+ 2 files changed, 45 insertions(+), 9 deletions(-)
+ create mode 100644 tests/pos-custom-args/captures/refinealias.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/Setup.scala b/compiler/src/dotty/tools/dotc/cc/Setup.scala
+index 55662f204a84812b7fa0d03bac5029fb66306e16..32c62516f5f989d899cb50cfd4748ab5bea4f89b 100644
+--- a/compiler/src/dotty/tools/dotc/cc/Setup.scala
++++ b/compiler/src/dotty/tools/dotc/cc/Setup.scala
+@@ -592,15 +592,32 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
+             mapConserveSuper(t)
+           case t =>
+             val t1 = normalizeCaptures(mapFollowingAliases(mapOver(t)))
+-            if t.derivesFromCapability
+-                && t.typeParams.isEmpty
+-                && !t.isSingleton
+-                && (!sym.isConstructor || (t ne tp.finalResultType))
+-              // Don't add ^ to result types of class constructors deriving from Capability
+-            then t1 match
+-              case t1 @ CapturingType(_, _) => t1
+-              case t1 => CapturingType(t1, CaptureSet.CSImpliedByCapability(t1, sym, variance), boxed = false)
+-            else t1
++            val t2 =
++              if t.derivesFromCapability
++                  && t.typeParams.isEmpty
++                  && !t.isSingleton
++                  && (!sym.isConstructor || (t ne tp.finalResultType))
++                // Don't add ^ to result types of class constructors deriving from Capability
++              then t1 match
++                case t1 @ CapturingType(_, _) => t1
++                case t1 => CapturingType(t1, CaptureSet.CSImpliedByCapability(t1, sym, variance), boxed = false)
++              else t1
++            t match
++              case _: RefinedType => stripAliasRefinements(t2)
++              case _ => t2
++
++      /** As for a type member's own info (below), an alias refinement drops the capture
++       *  set implied by a capability: `{ type Self = handle }` with `handle <: C^` means
++       *  `handle`, not `handle^`, which instantiation would turn into a fresh root that no
++       *  argument's own captures could match.
++       */
++      private def stripAliasRefinements(t: Type): Type = t match
++        case t @ CapturingType(parent, refs) => t.derivedCapturingType(stripAliasRefinements(parent), refs)
++        case t @ RefinedType(parent, rname, rinfo: TypeAlias) =>
++          t.derivedRefinedType(stripAliasRefinements(parent), rname, stripImpliedCaptureSet(rinfo))
++        case t @ RefinedType(parent, rname, rinfo) =>
++          t.derivedRefinedType(stripAliasRefinements(parent), rname, rinfo)
++        case _ => t
+     }
+ 
+     val tp1 = ccState.withNoVarsMapped(toCapturing(tp))
+diff --git a/tests/pos-custom-args/captures/refinealias.scala b/tests/pos-custom-args/captures/refinealias.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..e2e2b5d063c1c00be9ab0945b70dfedb45b0c285
+--- /dev/null
++++ b/tests/pos-custom-args/captures/refinealias.scala
+@@ -0,0 +1,19 @@
++// A type alias in a refinement means the type it names, not that type with the capture
++// set implied by a capability bound: `{ type Self = handle }` with `handle <: Res^`
++// does not mint a fresh root at each instantiation of the given.
++
++trait Res extends caps.SharedCapability:
++  def size: Int
++
++trait Streamable:
++  type Self
++  def stream(s: Self): Int
++
++object Res:
++  given streamable: [handle <: Res^] => (Streamable { type Self = handle }) = _.size
++
++extension [source](source: source)(using st: Streamable { type Self = source })
++  def checksum: Int = st.stream(source)
++
++def f(r: Res^): Int = r.checksum
++def g(using r: Res^): Int = summon[Res^].checksum

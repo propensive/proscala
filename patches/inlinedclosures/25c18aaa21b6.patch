@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 13 Oct 2026 12:20:33 +0200
+Subject: -Zcheck-inlined-closures: capture-check closures inlined from
+ compiled code
+
+Completing a closure's anonymous function rechecks its definition only if its
+result type is inferred, and a closure block relied on that. In source a
+lambda's result type always is; in TASTy no type tree is marked inferred, so a
+closure in an inline method's body, read at another unit's inline site, has a
+declared result type, and if its parameter types change in capture checking
+its body was never checked: `withFile(file => () => file)` leaks `file` when
+`withFile` is compiled separately, and is rejected when compiled with it. With
+the flag, the block rechecks the definition after completing it, unless the
+completer already has. Gated, since it rejects code upstream accepts.
+
+Developed with LLM assistance (Claude Code).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Proscala-Patch: inlinedclosures
+---
+ compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala       | 6 +++++-
+ tests/neg-custom-args/captures/inlinedclosures/Lib_1.scala | 7 +++++++
+ .../neg-custom-args/captures/inlinedclosures/Test_2.scala  | 3 +++
+ 3 files changed, 15 insertions(+), 1 deletion(-)
+ create mode 100644 tests/neg-custom-args/captures/inlinedclosures/Lib_1.scala
+ create mode 100644 tests/neg-custom-args/captures/inlinedclosures/Test_2.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala b/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
+index 3cb2e7ed09f1b07ece926212f01494a78c421730..a9acf6715bb08b4512fdf5df1732aed86240fce8 100644
+--- a/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
++++ b/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
+@@ -1231,7 +1231,11 @@ class CheckCaptures extends Recheck, SymTransformer:
+         if !anonfun.isCompleted then
+           // anonfun is already completed if its parameter and result types do not change in cc.
+           matchParamsAndResult(mdef.paramss, pt)
+-          anonfun.ensureCompleted() // this will recheck def
++          anonfun.ensureCompleted() // this will recheck def, if its result type is inferred
++          // A closure with a declared result type, as every closure read from TASTy in an
++          // inline body has, is not rechecked by its completion
++          if config.Proscala.enabled(config.Proscala.InlinedClosures) && !skipRecheck(anonfun)
++          then recheckDef(mdef, anonfun)
+         else if !skipRecheck(anonfun) then
+           // A definition already rechecked by its completer, on an earlier reference to it,
+           // is not rechecked again: its nested closures would be checked against result
+diff --git a/tests/neg-custom-args/captures/inlinedclosures/Lib_1.scala b/tests/neg-custom-args/captures/inlinedclosures/Lib_1.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..833a3d8f3760d6a3d551740b9af74382b8c345dc
+--- /dev/null
++++ b/tests/neg-custom-args/captures/inlinedclosures/Lib_1.scala
+@@ -0,0 +1,7 @@
++class File extends caps.SharedCapability
++
++def usingFile[T](op: File^ => T): T = op(File())
++
++// The closure passed to `usingFile` reaches `Test_2` in this method's inline body, read
++// from TASTy, where its result type is declared rather than inferred
++inline def withFile[T](inline f: File^ => T): T = usingFile { file => f(file) }
+diff --git a/tests/neg-custom-args/captures/inlinedclosures/Test_2.scala b/tests/neg-custom-args/captures/inlinedclosures/Test_2.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..63995d5f7aa79bdfeae34be4ce7b2f161e00652e
+--- /dev/null
++++ b/tests/neg-custom-args/captures/inlinedclosures/Test_2.scala
+@@ -0,0 +1,3 @@
++//> using options -Zcheck-inlined-closures
++
++def test = withFile(file => () => file) // error // error

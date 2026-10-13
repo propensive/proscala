@@ -52,12 +52,12 @@ given inst: (surface: Board^) => (I^{surface}) = new I {}
 
 def render(canvas: Board^): Unit =
   given canvas0: (Board^{canvas}) = canvas
-  summon[I]
+  summon[I^]
 ```
 
 Compiled with `scalac -experimental repro.scala`, an unpatched compiler
 crashes with the `IllegalCaptureRef` above: `canvas0` is a stable alias for
-`canvas`, so `UncacheGivenAliases` demotes it; resolving `summon[I]` through
+`canvas`, so `UncacheGivenAliases` demotes it; resolving `summon[I^]` through
 the dependent given `inst` then casts to `I^{canvas0}`, and forcing that
 capture set finds a method where a capability should be. With the patch, the
 file compiles.

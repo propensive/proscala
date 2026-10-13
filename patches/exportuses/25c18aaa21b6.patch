@@ -1,0 +1,75 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 13 Oct 2026 01:19:17 +0200
+Subject: Do not recheck the escaping uses of an export forwarder
+
+An export forwarder passes its own parameters, and its type parameters
+(bounded as the forwarded method bounds them), on to the method it forwards
+to, which admits them. On 3.10, though, a type parameter bounded by a
+capability class (`target <: Intake[medium]`, so `Intake^` in the bound)
+counts as a use of the bound's root when passed on, which the escaping-uses
+check reports as "Local any in the bound of type target leaks into capture
+scope of method ingest": exporting such an extension method no longer
+compiled (Soundness's `zephyrine.ingest`; 3.9 accepted it). Uses inside an
+export forwarder are not checked again.
+
+Developed with LLM assistance (Claude Code).
+
+Proscala-Patch: exportuses
+---
+ .../dotty/tools/dotc/cc/CheckCaptures.scala   |  5 +++-
+ .../pos-custom-args/captures/exportuses.scala | 29 +++++++++++++++++++
+ 2 files changed, 33 insertions(+), 1 deletion(-)
+ create mode 100644 tests/pos-custom-args/captures/exportuses.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala b/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
+index a69910720e4bc4d8f9b3370f5184b801a597bcaf..1f4571c2a51b726f21e5a1c525d10ecef3180ec2 100644
+--- a/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
++++ b/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
+@@ -2395,7 +2395,10 @@ class CheckCaptures extends Recheck, SymTransformer:
+      *  methods or classes.
+      */
+     def checkEscapingUses()(using Context) = {
+-      for (tree, uses, env) <- useInfos do
++      // An export forwarder only passes its own parameters, and the type parameters
++      // bounded as the method it forwards to bounds them, on to that method, which admits
++      // them: its uses are not checked again here.
++      for (tree, uses, env) <- useInfos if !env.owner.is(Exported) do
+         val seen = util.EqHashSet[Capability]()
+ 
+         // The owner of the innermost environment of kind Boxed
+diff --git a/tests/pos-custom-args/captures/exportuses.scala b/tests/pos-custom-args/captures/exportuses.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..326263675f83f54170dced8e6cca44468a506575
+--- /dev/null
++++ b/tests/pos-custom-args/captures/exportuses.scala
+@@ -0,0 +1,29 @@
++// An export forwarder for an extension whose type parameter is bounded by a capability
++// class passes that type parameter on; the forwarded method admits it.
++import language.experimental.separationChecking
++package lib:
++  trait Producer[medium] extends caps.ExclusiveCapability, caps.Stateful:
++    type Transport
++    update def put(m: medium): Unit
++  trait Intake[medium] extends Producer[medium]:
++    update def finish(): Unit
++  trait Stream[medium] extends caps.ExclusiveCapability, caps.Stateful:
++    type Transport
++  extension [medium, transport, target <: (Intake[medium] { type Transport = transport })](consume intake: target^)
++    def ingest(consume stream: (Stream[medium] { type Transport = transport })^): target^ =
++      intake.finish()
++      intake
++  class Gather extends Intake[Int]:
++    type Transport = Unit
++    update def put(m: Int): Unit = ()
++    update def finish(): Unit = ()
++    var data: Int = 0
++  def stream(): (Stream[Int] { type Transport = Unit })^ = new Stream[Int] { type Transport = Unit }
++package umbrella:
++  export lib.ingest
++package client:
++  import umbrella.ingest
++  def use(): Int =
++    val gather = lib.Gather()
++    val gathered = gather.ingest(lib.stream())
++    gathered.data

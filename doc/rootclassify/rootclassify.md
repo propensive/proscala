@@ -52,3 +52,10 @@ def hideIn(ac: LocalCap): Boolean =
 ```
 
 The inferred type then carries one root per classifier, which is what the surrounding code (`inDeclRoots` is a set) already allows. The program above compiles, as does the Soundness suite that crashed.
+
+Upstream reached the same change independently in
+[scala/scala3#26580](https://github.com/scala/scala3/pull/26580), which is on the 3.10
+line (3.10.0-RC1 onwards), so the patch carries `obsolete-from` that commit and only 3.9
+applies it. The reproduction also passes `-Zretains-skolems`: on 3.10, once the
+assertion is gone, the inlined proxy's capture set still names a skolem, which
+[skolemcap](../skolemcap/skolemcap.md) widens.

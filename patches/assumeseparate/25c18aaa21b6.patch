@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 13 Oct 2026 00:08:05 +0200
+Subject: Keep an unsafeAssumeSeparate operand's own type
+
+`caps.unsafe.unsafeAssumeSeparate(op): op.type` returns its operand as it is
+and only lifts separation checking for it (SepCheck recognises the call). As
+an ordinary call, though, the operand is passed for a parameter of type `Any`,
+which under separation checking makes an exclusive capability read-only, so
+on 3.10 the result can no longer be returned or passed as an exclusive one
+(3.9 kept it). Capture checking now rechecks the call as its operand, as it
+does for unsafeDiscardUses.
+
+Developed with LLM assistance (Claude Code).
+
+Proscala-Patch: assumeseparate
+---
+ compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala | 9 ++++++++-
+ tests/pos-custom-args/captures/assumeseparate.scala  | 9 +++++++++
+ 2 files changed, 17 insertions(+), 1 deletion(-)
+ create mode 100644 tests/pos-custom-args/captures/assumeseparate.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala b/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
+index f47d04545c8d7721bdb5965b5018eae5d6509a74..a69910720e4bc4d8f9b3370f5184b801a597bcaf 100644
+--- a/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
++++ b/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
+@@ -794,7 +794,7 @@ class CheckCaptures extends Recheck, SymTransformer:
+       super.recheckFinish(argType, tree, pt)
+ 
+     /** Recheck applications, with special handling of unsafeAssumePure,
+-     *  unsafeDiscardUses, and freeze.
++     *  unsafeDiscardUses, unsafeAssumeSeparate, and freeze.
+      *  More work is done in `recheckApplication`, `recheckArg` and `instantiate` below.
+      */
+     override def recheckApply(tree: Apply, pt: Type)(using Context): Type =
+@@ -804,6 +804,13 @@ class CheckCaptures extends Recheck, SymTransformer:
+       else if meth == defn.Caps_unsafeDiscardUses then
+         val arg :: Nil = tree.args: @unchecked
+         withDiscardedUses(recheck(arg, pt))
++      else if meth == defn.Caps_unsafeAssumeSeparate then
++        // `unsafeAssumeSeparate(op): op.type` returns its operand as it is, and only lifts
++        // separation checking (see SepCheck): its result is the operand's own type. As an
++        // ordinary call, the operand is passed for a parameter of type `Any`, which makes
++        // an exclusive capability read-only, so the result could no longer be used as one.
++        val arg :: Nil = tree.args: @unchecked
++        super.recheckFinish(recheck(arg, pt), tree, pt)
+       else if meth == defn.Caps_freeze then
+         freeze(super.recheckApply(tree, pt), tree.srcPos)
+       else
+diff --git a/tests/pos-custom-args/captures/assumeseparate.scala b/tests/pos-custom-args/captures/assumeseparate.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..1465f48caa1fbfdf61f350edc0a3cc198f432c0d
+--- /dev/null
++++ b/tests/pos-custom-args/captures/assumeseparate.scala
+@@ -0,0 +1,9 @@
++// `unsafeAssumeSeparate` returns its operand as it is: an exclusive capability stays
++// exclusive, so it can still be returned or passed where one is required.
++import language.experimental.separationChecking
++
++trait Sink extends caps.ExclusiveCapability, caps.Stateful:
++  update def put(i: Int): Unit
++
++def pass(consume sink: Sink^): Sink^ = scala.caps.unsafe.unsafeAssumeSeparate(sink)
++def cast(consume sink: Sink^): Sink^ = scala.caps.unsafe.unsafeAssumeSeparate(sink.asInstanceOf[Sink^])

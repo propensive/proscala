@@ -29,18 +29,20 @@ patch touches.
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 Proscala-Patch: unioncaps
 ---
- .../src/dotty/tools/dotc/cc/CaptureOps.scala  | 34 ++++++++++++++++++-
- .../dotty/tools/dotc/cc/CapturingType.scala   | 19 ++++++++++-
- 2 files changed, 51 insertions(+), 2 deletions(-)
+ .../src/dotty/tools/dotc/cc/CaptureOps.scala  | 41 ++++++++++++++++++-
+ .../dotty/tools/dotc/cc/CapturingType.scala   | 19 ++++++++-
+ 2 files changed, 57 insertions(+), 3 deletions(-)
 
 diff --git a/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala b/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala
-index fb9aea815bce2baa77c5ed284b34f35bbeba09d0..24ff282573c7312e5a63b9a048db94a0b058d224 100644
+index fb9aea815bce2baa77c5ed284b34f35bbeba09d0..3984c19b976e5fa60efab0aad0b407a5e0aee02b 100644
 --- a/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala
 +++ b/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala
-@@ -507,8 +507,40 @@ extension (tp: Type)
+@@ -507,8 +507,45 @@ extension (tp: Type)
        tp
  
    def inheritedClassifier(using Context): ClassSymbol =
+-    if tp.isArrayUnderStrictMut then defn.Caps_Unscoped
+-    else tp.classSymbols.map(_.classifier).foldLeft(defn.AnyClass)(leastClassifier)
 +    // The least upper bound of two classifiers: the more general of the two if
 +    // they are comparable, otherwise their closest common ancestor classifier,
 +    // or `AnyClass` if there is none. This differs from `greatestClassifier`,
@@ -64,18 +66,22 @@ index fb9aea815bce2baa77c5ed284b34f35bbeba09d0..24ff282573c7312e5a63b9a048db94a0
 +    // superclasses (e.g. `Object`, `Matchable`) whose classifier is `Any`; so
 +    // under strict mutability `Unset | Array[Byte]` would classify as `Any`
 +    // even though a bare `Array[Byte]` classifies as `Unscoped`.
-+    def memberClassifier(part: Type): ClassSymbol = part.dealias match
++    def memberClassifier(part: Type): ClassSymbol = part.stripCapturing.dealias match
 +      case part: OrType =>
 +        lubClassifier(memberClassifier(part.tp1), memberClassifier(part.tp2))
 +      case part =>
 +        if part.isAlwaysPure then defn.NothingClass else part.inheritedClassifier
-     if tp.isArrayUnderStrictMut then defn.Caps_Unscoped
--    else tp.classSymbols.map(_.classifier).foldLeft(defn.AnyClass)(leastClassifier)
-+    else tp.dealias match
++    // A union is classified member by member (each array member as `Unscoped`), before
++    // `isArrayUnderStrictMut`, whose `classSymbol` would join the members: that join
++    // fails an assertion when they share no dominating class (an opaque `Unset` bounded
++    // by `Matchable & caps.Pure` beside an enum). A capture set on the union is looked
++    // through: the classifier is of the members.
++    tp.stripCapturing.dealias match
 +      case tp: OrType if config.Proscala.enabled(config.Proscala.UnionCaptures) =>
 +        lubClassifier(memberClassifier(tp.tp1), memberClassifier(tp.tp2))
 +      case _ =>
-+        tp.classSymbols.map(_.classifier).foldLeft(defn.AnyClass)(leastClassifier)
++        if tp.isArrayUnderStrictMut then defn.Caps_Unscoped
++        else tp.classSymbols.map(_.classifier).foldLeft(defn.AnyClass)(leastClassifier)
  
    /** The classifiers of all terminal capabilities in the span capture set of `tp` */
    def embeddedLocalCaps(using Context): List[Capability] =

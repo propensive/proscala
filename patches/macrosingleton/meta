@@ -1,0 +1,3 @@
+needed-from   29497c036206d8cf4882b9b8374b2375c031adbc   # upstream #25756's macro-expansion conformance check, on main after 3.9 branched (exact commit not recorded); 3.9 has no such check
+variant 25c18aaa21b6.patch 1 25c18aaa21b6be202945e024cd5180d9d62d650f
+variant 403f2f663af8.patch 1 403f2f663af8ad947e36a8f80f9680a9b71f7cf2
