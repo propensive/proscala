@@ -1,0 +1,74 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 13 Oct 2026 12:24:44 +0200
+Subject: Reveal an opaque type behind a singleton in the macro-expansion check
+
+The check that a transparent macro's expansion conforms to its expected type
+(#25756) compares the two with their opaque aliases revealed, since an opaque's
+alias may not be visible where the macro expands. A singleton whose type is an
+opaque alias was not revealed, though: an expansion `Unset` of a
+`val Unset: Unset` (an opaque `Unset = Null`) kept the type `Unset.type`,
+which does not conform to the revealed expectation `Null | String`, so every
+transparent macro returning such a value failed (Soundness's `vacuous.Unset`,
+from xenophile's WASI macros). Such singletons are widened, and their opaques
+revealed, on both sides.
+
+Developed with LLM assistance (Claude Code).
+
+Proscala-Patch: macrosingleton
+---
+ .../src/dotty/tools/dotc/inlines/Inliner.scala    |  5 +++++
+ tests/run-macros/macrosingleton/Macro_1.scala     | 15 +++++++++++++++
+ tests/run-macros/macrosingleton/Test_2.scala      |  5 +++++
+ 3 files changed, 25 insertions(+)
+ create mode 100644 tests/run-macros/macrosingleton/Macro_1.scala
+ create mode 100644 tests/run-macros/macrosingleton/Test_2.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/inlines/Inliner.scala b/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
+index fe4fb00813140ca2156cd4dcd767cb65b57942da..e67d9d0cba537f05ec5e8445ef93c230a9ace14b 100644
+--- a/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
++++ b/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
+@@ -1293,6 +1293,11 @@ class Inliner(val call: tpd.Tree)(using Context):
+               case tp: TypeRef if tp.typeSymbol.isAliasType =>
+                 val tp1 = tp.dealias
+                 if tp1 eq tp then tp else apply(tp1)
++              // A singleton whose type is (or contains) an opaque alias, such as a
++              // `val Unset: Unset` of an opaque `Unset`, is widened to it, so that the
++              // opaque is revealed on this side as it is on the other.
++              case tp: TermRef if tp.widen.existsPart(_.typeSymbol.isOpaqueAlias) =>
++                apply(tp.widen)
+               case _ =>
+                 mapOver(tp)
+ 
+diff --git a/tests/run-macros/macrosingleton/Macro_1.scala b/tests/run-macros/macrosingleton/Macro_1.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..dcc6da9d30dcae74386dbbe2084fef786f79e146
+--- /dev/null
++++ b/tests/run-macros/macrosingleton/Macro_1.scala
+@@ -0,0 +1,15 @@
++package repro2
++
++import scala.quoted.*
++
++object opt:
++  opaque type Unset <: Matchable = Null
++  val Unset: Unset = null
++
++export opt.Unset
++type Optional[value] = Unset | value
++
++object macros:
++  transparent inline def pick(inline flag: Boolean): Optional[String] = ${pickImpl('flag)}
++  def pickImpl(flag: Expr[Boolean])(using Quotes): Expr[Optional[String]] =
++    if flag.valueOrAbort then '{ "yes" } else '{ Unset }
+diff --git a/tests/run-macros/macrosingleton/Test_2.scala b/tests/run-macros/macrosingleton/Test_2.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..144fbc2d6de5d9be8ece6f48b6c9e0b6aade9ead
+--- /dev/null
++++ b/tests/run-macros/macrosingleton/Test_2.scala
+@@ -0,0 +1,5 @@
++package repro2
++
++def use: Optional[String] = macros.pick(false)
++
++@main def Test: Unit = assert(use == null)

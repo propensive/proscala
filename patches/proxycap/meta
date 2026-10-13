@@ -1,3 +1,3 @@
 needed-from 98e67a194cc755b137cc44360c58090e0e9ba387   # upstream #26989 (Make parameter proxies of inline methods have explicit types) on main
 needed-from 1b651c85787ac95fb7b1486f7c2b8aa68267ee98   # its backport to release-3.10.0 (3.10.0-RC3)
-variant 25c18aaa21b6.patch 2 25c18aaa21b6be202945e024cd5180d9d62d650f
+variant 25c18aaa21b6.patch 3 25c18aaa21b6be202945e024cd5180d9d62d650f

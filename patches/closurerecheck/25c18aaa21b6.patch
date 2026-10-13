@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 13 Oct 2026 12:20:02 +0200
+Subject: Do not recheck a closure its completer has already checked
+
+A closure block rechecks its anonymous function if the function is already
+completed, assuming it was completed only because its types did not change in
+capture checking. But a function with an inferred result type can be completed
+by an earlier reference, through Setup's completer, which checks it. Its body
+was then checked twice, and a closure nested in it, completed by the first
+check with a result type holding that check's fresh capabilities, was checked
+again against it with new ones, which cannot flow into the old (apoplexy's
+`Api.Response.attempt` over a wisteria-derived decoder, with
+`strategies.throwUnsafely`). The block now asks `skipRecheck`, as Recheck
+does for every other definition.
+
+Developed with LLM assistance (Claude Code).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Proscala-Patch: closurerecheck
+---
+ compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala b/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
+index 1f4571c2a51b726f21e5a1c525d10ecef3180ec2..3cb2e7ed09f1b07ece926212f01494a78c421730 100644
+--- a/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
++++ b/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
+@@ -1232,7 +1232,10 @@ class CheckCaptures extends Recheck, SymTransformer:
+           // anonfun is already completed if its parameter and result types do not change in cc.
+           matchParamsAndResult(mdef.paramss, pt)
+           anonfun.ensureCompleted() // this will recheck def
+-        else
++        else if !skipRecheck(anonfun) then
++          // A definition already rechecked by its completer, on an earlier reference to it,
++          // is not rechecked again: its nested closures would be checked against result
++          // types holding the first check's fresh capabilities.
+           recheckDef(mdef, anonfun)
+         recheckClosure(expr, pt, forceDependent = true)
+       finally

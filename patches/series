@@ -51,3 +51,10 @@ frozenpure
 proxycap
 assumeseparate
 exportuses
+refinealias
+macrosingleton
+implicitparts
+definefurther
+closurerecheck
+anonascribe
+inlinedclosures

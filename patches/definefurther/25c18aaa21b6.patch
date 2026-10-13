@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 13 Oct 2026 11:27:32 +0200
+Subject: Treat an endless instantiation as no further definition in
+ canDefineFurther
+
+`canDefineFurther` is a speculative step: when adapting a tree to its expected
+type fails, the adapter asks whether instantiating more of its type variables
+would help, and retries if so. Instantiating one can recurse without end (here
+through constraint adjustment, while the first `read[X in Protobuf]` of a unit
+resolves a given). Since 3.10's fuel-based recursion limit (#25937), that
+surfaces as "Recursion limit exceeded", a hard error, where 3.9 compiled the
+same code. The answer such a step should give is that the type cannot be
+defined further; the adapter then reports its ordinary failure, if any, and an
+implicit search goes on to its other candidates.
+
+Developed with LLM assistance (Claude Code).
+
+Proscala-Patch: definefurther
+---
+ compiler/src/dotty/tools/dotc/typer/Inferencing.scala | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/compiler/src/dotty/tools/dotc/typer/Inferencing.scala b/compiler/src/dotty/tools/dotc/typer/Inferencing.scala
+index d2c74268145830d487bf28cd99cfac82cd291d72..4eaa15177ad8a9606057944cca18d2a1ceb0b298 100644
+--- a/compiler/src/dotty/tools/dotc/typer/Inferencing.scala
++++ b/compiler/src/dotty/tools/dotc/typer/Inferencing.scala
+@@ -35,8 +35,13 @@ object Inferencing {
+    */
+   def canDefineFurther(tp: Type)(using Context): Boolean =
+     val prevConstraint = ctx.typerState.constraint
+-    isFullyDefined(tp, force = ForceDegree.failBottom)
+-    && (ctx.typerState.constraint ne prevConstraint)
++    // A speculative step (it lets the adapter retry after instantiating more type
++    // variables): if instantiating one recurses without end, the answer is that the
++    // type cannot be defined further, not a fatal error.
++    try
++      isFullyDefined(tp, force = ForceDegree.failBottom)
++      && (ctx.typerState.constraint ne prevConstraint)
++    catch case _: RecursionOverflow => false
+ 
+   /** The fully defined type, where all type variables are forced.
+    *  Throws an error if type contains wildcards.
