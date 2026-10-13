@@ -52,6 +52,12 @@ explicit again. The parameter types it bounds by are computed with the call's
 inferred type arguments marked inferred (an inferred capture-set argument bounds
 nothing).
 
+The proxy's binding keeps upstream's tree and symbol type. The type for capture
+checking travels beside it, as an `Inliner.ProxyCaptures` attachment on the
+`ValDef`, which Setup reads in place of the binding's type tree (and drops), and
+which `TreeTypeMap` maps along with the binding when inlined code is copied. So
+typing, macros and every phase but capture checking see exactly upstream's types.
+
 **Any argument but a closure** is inferred, intersected with a declared bound on
 its top-level capture set: the parameter's explicit set (`^{io}`, `^{}`), or
 empty for a parameter of a pure type. A parameter that may capture anything — `^`,
