@@ -527,13 +527,13 @@ patches, is a patch release: 1.0.1 is 1.0.0's features on more Scala versions.
 
 ### Releases
 
-    bin/proscala-release 1.0.0 --targets    # what it would be built for
-    bin/proscala-release 1.0.0 --dry-run    # check everything, and say what it would do
-    bin/proscala-release 1.0.0              # tag HEAD v1.0.0 and push the tag
+    bin/proscala-release 1.0.1 --targets    # what it would be built for
+    bin/proscala-release 1.0.1 --dry-run    # check everything, and say what it would do
+    bin/proscala-release 1.0.1              # tag HEAD 1.0.1 and push the tag
 
-A release is a **tag `v<x.y.z>` on `main`**, built for every `scala/scala3`
-final release `3.<y>.<z>` with `y` ≥ 9, and for a **snapshot** of every upstream
-branch developing a version that has not been released yet — `main`, each
+A release is a **tag `<x.y.z>` on `main`**, a plain version as for every
+Propensive project, built for every `scala/scala3` final release `3.<y>.<z>` with
+`y` ≥ 9, and for a **snapshot** of every upstream branch developing a version that has not been released yet — `main`, each
 `lts-3.<y>` and each `release-3.<y>.<z>`, from 3.9 on — as it is when the release
 is cut. A release branch drops out once its version is tagged, and is then
 covered as a release. Each build's version puts the upstream first, then `-pro-`
@@ -573,7 +573,7 @@ tag. That runs `.github/workflows/release.yml`:
    then tests the patches against it (`bin/proscala-test`). Nothing leaves the
    runner yet.
 3. **publish**, only once every target has built: creates the GitHub release
-   `v<x.y.z>`, with every target's tarball, jars and Maven repository, and notes
+   `<x.y.z>`, with every target's tarball, jars and Maven repository, and notes
    listing each target's upstream commit and `scalaVersion` and how to use them.
 
 So a release publishes for all its targets or for none. Run by hand from the

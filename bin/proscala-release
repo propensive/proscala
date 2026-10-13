@@ -3,7 +3,7 @@
 # proscala-release — cut a Proscala release by tagging `main`.
 #
 # Usage:
-#   bin/proscala-release <x.y.z>               # check, tag HEAD v<x.y.z>, push the tag
+#   bin/proscala-release <x.y.z>               # check, tag HEAD <x.y.z>, push the tag
 #   bin/proscala-release <x.y.z> --dry-run     # check, and say what it would do
 #   bin/proscala-release <x.y.z> --targets     # print the targets only: "<spec> <commit> <version>"
 #
@@ -56,10 +56,19 @@ if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
   [ "$mode" = dry ] || die "HEAD is not origin/main; a release is cut from exactly what is on main"
   warn "HEAD is not origin/main: a real release would refuse"
 fi
-tag="v$version"
+tag="$version"
 git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1 && die "tag $tag already exists on origin"
-latest="$(git ls-remote --tags --refs origin 'v*' | awk '{ print $2 }' | sed 's#refs/tags/v##' \
-            | { grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -V | tail -1)"
+# A release's tag is its plain version (1.0.0 was first tagged v1.0.0, so a v-prefixed one
+# counts too). This repository also holds scala/scala3's own tags, which look like versions
+# as well; a release is tagged on main's history, which no upstream commit is part of.
+# (`ls-remote` lists an annotated tag twice; its `^{}` line gives the commit.)
+latest="$(git ls-remote --tags origin \
+            | awk '{ sub("^refs/tags/", "", $2); sub("\\^\\{\\}$", "", $2); commit[$2] = $1 }
+                   END { for (t in commit) print commit[t], t }' \
+            | { grep -E ' v?[0-9]+\.[0-9]+\.[0-9]+$' || true; } \
+            | while read -r c t; do
+                if git merge-base --is-ancestor "$c" origin/main 2>/dev/null; then echo "${t#v}"; fi
+              done | sort -V | tail -1)"
 if [ -n "$latest" ] && [ "$(printf '%s\n%s\n' "$latest" "$version" | sort -V | tail -1)" != "$version" -o "$latest" = "$version" ]; then
   die "$version is not greater than the latest release, $latest"
 fi

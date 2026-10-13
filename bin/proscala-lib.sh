@@ -393,7 +393,7 @@ default_targets() {
 }
 
 # --- releases ----------------------------------------------------------------------
-# A Proscala release (tag v<x.y.z>) is built for every scala/scala3 final release
+# A Proscala release (tag <x.y.z>) is built for every scala/scala3 final release
 # 3.<y>.<z> with y >= 9, and for a snapshot of every upstream branch developing a
 # version not yet released: main, lts-3.<y> and release-3.<y>.<z>, from 3.9 on.
 # Each build's version puts the upstream first, so that sbt reads it as Scala 3

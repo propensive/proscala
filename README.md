@@ -118,7 +118,7 @@ Releases
 
 Releases are published automatically to
 [GitHub Releases](https://github.com/propensive/proscala/releases), and only
-there. A release is a tag `v<x.y.z>` on `main`, pushed by
+there. A release is a tag `<x.y.z>` on `main`, pushed by
 `bin/proscala-release <x.y.z>`, which records the exact upstream commits it is
 for. A GitHub Actions workflow then builds every target — each Scala release
 from 3.9.0 on, and each upstream branch developing an unreleased version as it
