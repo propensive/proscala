@@ -20,9 +20,9 @@ Proscala-Patch: zflags
 ---
  .../dotty/tools/dotc/config/CliCommand.scala  |  6 +-
  .../tools/dotc/config/CompilerCommand.scala   |  3 +-
- .../dotty/tools/dotc/config/Proscala.scala    | 57 +++++++++++++++++++
+ .../dotty/tools/dotc/config/Proscala.scala    | 59 +++++++++++++++++++
  .../tools/dotc/config/ScalaSettings.scala     | 17 +++++-
- 4 files changed, 80 insertions(+), 3 deletions(-)
+ 4 files changed, 82 insertions(+), 3 deletions(-)
  create mode 100644 compiler/src/dotty/tools/dotc/config/Proscala.scala
 
 diff --git a/compiler/src/dotty/tools/dotc/config/CliCommand.scala b/compiler/src/dotty/tools/dotc/config/CliCommand.scala
@@ -77,10 +77,10 @@ index 3ad1585812b3435891e55720b0e085118e99833c..727872eea5e19f649ec9b862fcc347b3
      allSettings.exists(isHelping) || flags.exists(_.value)
 diff --git a/compiler/src/dotty/tools/dotc/config/Proscala.scala b/compiler/src/dotty/tools/dotc/config/Proscala.scala
 new file mode 100644
-index 0000000000000000000000000000000000000000..b5675ebbf99b2d893db6b8cd670d1b2bd5e818e9
+index 0000000000000000000000000000000000000000..1de57242fe90a83c15cbbdb85839680dbee4b7ed
 --- /dev/null
 +++ b/compiler/src/dotty/tools/dotc/config/Proscala.scala
-@@ -0,0 +1,57 @@
+@@ -0,0 +1,59 @@
 +package dotty.tools.dotc
 +package config
 +
@@ -104,6 +104,8 @@ index 0000000000000000000000000000000000000000..b5675ebbf99b2d893db6b8cd670d1b2b
 +      "Capture-check the bodies of closures inlined from compiled code.")
 +    case DiagnosticGivens extends Feature("diagnostic-givens", "searchdiag",
 +      "Report an @internal.diagnostic given's own errors as the message of a failed implicit search.")
++    case FrozenPure extends Feature("frozen-pure", "frozenpure",
++      "Classify a stateful type with an explicit empty capture set as pure under capture checking.")
 +    case GivenPrefixes extends Feature("given-prefixes", "givenprefix",
 +      "Seal package-object prefixes on implicit candidates, so a top-level given cannot leak an opaque type's representation.")
 +    case InlineSourceMaps extends Feature("inline-source-maps", "smap",
