@@ -44,7 +44,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [anonascribe](anonascribe/anonascribe.md) | Treat an anonymous class instance's ascription as inferred | 3.10 | bug fix | yes | always on |
 | [anonspec](anonspec/anonspec.md) | Treat non-specialized anonymous-class parents as such, not as a crash | 3.10 | bug fix (crash) | yes | always on |
 | [anykindcap](anykindcap/anykindcap.md) | Do not constrain type arguments by an `AnyKind` bound's capture set | 3.10 | bug fix | yes | always on |
-| [assumeseparate](assumeseparate/assumeseparate.md) | Keep an `unsafeAssumeSeparate` operand's own type | 3.10 | bug fix | yes | always on |
+| [assumeseparate](assumeseparate/assumeseparate.md) | Keep an `unsafeAssumeSeparate` operand's own type | 3.9, 3.10 | bug fix | yes (2: `repro`, `repro-element`) | always on |
 | [blockimport](blockimport/blockimport.md) | Recheck a block's result expression in its statements' context | 3.9, 3.10 | bug fix | yes | always on |
 | [boolunapply](boolunapply/boolunapply.md) | Keep Boolean results of nullary case-class unapplies under capture checking | 3.10 | bug fix | yes | always on |
 | [castbox](castbox/castbox.md) | Box opaque-external type arguments in cast type applications | 3.9 | bug fix | yes | always on |

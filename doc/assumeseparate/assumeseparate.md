@@ -18,8 +18,8 @@ Its documentation says the operand is "returned as-is", and the separation
 checker recognises the call by its symbol. The capture checker, though, treats
 it as an ordinary call: the operand is passed for a parameter of type `Any`.
 Under separation checking, passing an exclusive capability to a parameter whose
-type is not stateful only reads it, so on 3.10 the result — `op.type`, widened —
-is read-only. A block wrapped in `unsafeAssumeSeparate` can then no longer be
+type is not stateful only reads it, so the result — `op.type`, widened — can be
+read-only. A block wrapped in `unsafeAssumeSeparate` can then no longer be
 returned or passed where an exclusive capability is required.
 
 ## Reproducing it
@@ -40,7 +40,25 @@ Note that {any²} is an exclusive capture set of the stateful type Sink^{any²},
 it cannot subsume a read-only capture set of the stateful type Sink^{any.rd}.
 ```
 
-3.9 accepts it. Soundness hit this where a stream is built through a duct that
+3.9 accepts that one, but not the same thing for an element of a collection
+(`repro-element/`), which both 3.9 and 3.10 reject:
+
+```scala
+def sinks(): IndexedSeq[Sink^] = IndexedSeq()
+def drain(consume sink: Sink^): Unit = sink.put(0)
+
+def write(): Unit =
+  val all = sinks()
+  val second = scala.caps.unsafe.unsafeAssumeSeparate(all(1))
+  drain(second)
+```
+
+```
+Found:    (second : Sink^{all*.rd})
+Required: Sink^{any}
+```
+
+Soundness hit the first form where a stream is built through a duct that
 shares an ambient tactic with the consumed stream, which separation checking
 cannot see is not an aliased writer (`enigmatic.BlockCipher.decryptStream`,
 `ypsiloid`'s cursor over a pull endpoint):
@@ -49,6 +67,9 @@ cannot see is not an aliased writer (`enigmatic.BlockCipher.decryptStream`,
 scala.caps.unsafe.unsafeAssumeSeparate:
   stream.viaDuct(DecipherDuct(start, ivSize, tactic))
 ```
+
+and the second in turbulence's tests of a divergence, whose subscribers are rings
+of their own though they are reached through one collection.
 
 ## The solution
 
