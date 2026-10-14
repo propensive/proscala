@@ -3,10 +3,22 @@
 sjs_cp() { local l="$DIST/lib"; echo "$l/scala3-library_sjs1.jar:$(ls "$l"/scalajs-library_2.13-*.jar | head -1):$l/scalajs-scalalib_2.13.jar"; }
 wit_import_in_ir() { [ "$(strings 'Host$.sjsir' | grep -c 'example:host/utils@0.1.0')" -gt 0 ]; }
 
+# The shipped scalalib must choose its Wasm or JS implementation at link time
+# (`core/isWebAssembly` in the IR), or a Wasm-only link fails on JS interop.
+scalalib_guarded() {
+  local jar="$DIST/lib/scalajs-scalalib_2.13.jar" c
+  mkdir -p scalalib && (cd scalalib && unzip -oq "$jar" 'scala/collection/mutable/*.sjsir')
+  for c in 'ArrayBuilder$' 'Buffer$' 'IndexedBuffer$'; do
+    strings "scalalib/scala/collection/mutable/$c.sjsir" | grep -q 'core/isWebAssembly' \
+      || fail "scalajs-scalalib_2.13.jar: $c.sjsir has no link-time Wasm guard"
+  done
+}
+
 with_feature() {
   compiles -scalajs -cp "$(sjs_cp)" -d . Component.scala
   wit_import_in_ir || fail "Host\$.sjsir records no WIT import"
   fails_with '@WitRecord class must be final' -scalajs -cp "$(sjs_cp)" -d . NotFinal.scala
+  scalalib_guarded
 }
 
 without_feature() {

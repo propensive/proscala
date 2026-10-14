@@ -16,6 +16,14 @@ and `NotFinal.scala` is rejected early: `@WitRecord class must be final.` Upstre
 compiles both without complaint, and its IR has no WIT import — `Host.log` is an
 ordinary method calling `wit.native` — so no component could be linked from it.
 
+The distribution's `scalajs-scalalib_2.13.jar` is checked too: in its IR,
+`scala/collection/mutable/ArrayBuilder$`, `Buffer$` and `IndexedBuffer$` must
+pick their Wasm or JS implementation through the link-time property
+`core/isWebAssembly` (`strings` on the `.sjsir` finds it). A scalalib built
+without those guards still compiles everything, but a Wasm-only link of it fails
+with `Uses JS interop with a Wasm-only module kind` through `ArrayBuilder.makeForJS`
+and `js.WrappedArray` (propensive/proscala#71).
+
 Linking an actual component needs the scala-wasm linker, which is outside the
 compiler; this checks what the compiler contributes. `test.sh` is its executable
 form, run by `bin/proscala-test`.
