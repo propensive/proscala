@@ -51,7 +51,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [classifiermeet](classifiermeet/classifiermeet.md) | Accept a declared meet of two unrelated classifiers | 3.9, 3.10 | feature | yes | always on |
 | [closurerecheck](closurerecheck/closurerecheck.md) | Do not recheck a closure its completer has checked | 3.10 | bug fix | FIXME | always on |
 | [ctxresult](ctxresult/ctxresult.md) | Context-result closures level-checked at the method's level | 3.9, 3.10 | bug fix | yes | always on |
-| [definefurther](definefurther/definefurther.md) | Treat an endless instantiation as no further definition in `canDefineFurther` | 3.10 | bug fix | FIXME | always on |
+| [definefurther](definefurther/definefurther.md) | Treat an endless instantiation as no further definition in `canDefineFurther` | 3.10 | bug fix | yes | always on |
 | [dependarg](dependarg/dependarg.md) | Conserve stable argument paths in dependent-application rechecking | 3.9, 3.10 | bug fix | yes | always on |
 | [depset](depset/depset.md) | Add a mutable IdentitySet to optimize variable dependencies in CC | 3.9 | backport (perf) | yes | always on |
 | [dictcaps](dictcaps/dictcaps.md) | Infer the capture set of recursive-implicit dictionary instances | 3.9, 3.10 | bug fix | yes | always on |
@@ -61,7 +61,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [iarraypure](iarraypure/iarraypure.md) | Treat `IArray` as pure under capture checking | 3.9, 3.10 | bug fix | yes | `-Zpure-iarrays` |
 | [iarraypure-mutalias](iarraypure-mutalias/iarraypure-mutalias.md) | Classify opaque aliases over mutable types under capture checking | 3.9, 3.10 | bug fix | yes | `-Zopaque-mutability` |
 | [frozenpure](frozenpure/frozenpure.md) | Classify a frozen type as pure under capture checking | 3.9, 3.10 | bug fix | yes | `-Zfrozen-pure` |
-| [implicitparts](implicitparts/implicitparts.md) | Do not assert on an open type parameter reached through a term's info | 3.10 | bug fix (crash) | FIXME | always on |
+| [implicitparts](implicitparts/implicitparts.md) | Do not assert on an open type parameter reached through a term's info | 3.10 | bug fix (crash) | yes | always on |
 | [inertcache](inertcache/inertcache.md) | Cache inert types in capture-checking Setup | 3.9, 3.10 | bug fix (hang) | yes | always on |
 | [inlinedclosures](inlinedclosures/inlinedclosures.md) | Capture-check closures inlined from compiled code | 3.10 | bug fix | yes | `-Zcheck-inlined-closures` |
 | [inlineupdate](inlineupdate/inlineupdate.md) | Propagate update classification to inline accessors | 3.9, 3.10 | bug fix | yes | always on |
@@ -75,7 +75,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [permitlazy](permitlazy/permitlazy.md) | Lazy resolution of permitted subclasses in classfile parsing | 3.9 | bug fix | yes | always on |
 | [proxycap](proxycap/proxycap.md) | Capture-check inline argument proxies within their parameters' bounds | 3.10 | bug fix | yes | always on |
 | [proxyskolem](proxyskolem/proxyskolem.md) | No skolem-typed inline argument proxies under capture checking | 3.9, 3.10 | bug fix | yes (2: `repro`, `repro2`) | always on |
-| [prunecomplete](prunecomplete/prunecomplete.md) | Do not force completion when filtering prunable inline methods | 3.10 | bug fix (crash) | FIXME | always on |
+| [prunecomplete](prunecomplete/prunecomplete.md) | Do not force completion when filtering prunable inline methods | 3.10 | bug fix (crash) | yes | always on |
 | [refinealias](refinealias/refinealias.md) | Drop the implied capture set from a type alias in a refinement | 3.10 | bug fix | yes | always on |
 | [retainbounds](retainbounds/retainbounds.md) | Sanitize `TypeBounds` in `@retains` arguments to the top capability | 3.9, 3.10 | bug fix | yes | `-Zretains-bounds` |
 | [returnavoid](returnavoid/returnavoid.md) | Avoid only pattern-bound term symbols in rechecked returns | 3.9, 3.10 | bug fix | yes | always on |

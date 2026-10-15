@@ -66,7 +66,10 @@ where:    any  is a root capability classified as SharedUnscoped created in anon
 Both capabilities come from instantiating `throwUnsafely` in the same by-name
 argument, `Json.long(throwUnsafely)` passed to `Json.optional`: once in each
 check. The same code compiled with apoplexy in one run is accepted, as it is on
-3.9. There is no self-contained reproduction yet (`repro/FIXME.md`).
+3.9. Current Soundness no longer exercises it; `repro/FIXME.md` records the
+Soundness commit that does, a two-file probe against its jars, and which
+ingredients were shown to be necessary, but no self-contained reproduction
+is known yet.
 
 ## The solution
 

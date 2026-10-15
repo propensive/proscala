@@ -16,33 +16,62 @@ symbol's flags completes it, and merely touching `sym.denot` replays the
 intervening info transforms — so the phase turned every denotation advance into
 a completion cascade at whatever point it happened to occur.
 
-That is harmless in a single-run compilation, where completers resolve against
-the current run. But `dotc` restarts suspended units in a *second* run inside
-the same invocation: when a macro or inline expansion depends on a symbol
-compiled in the current run (typically pulled in via `-sourcepath`),
-`CompilationUnit.suspend` defers the unit and `Driver.finish` recompiles it
-with `compileSuspendedUnits` in a fresh run. In that second run, the pruning
-phase's forcing reaches completers — a `Namer` `ClassCompleter` typing a parent
-application, whose implicit search walks imported scopes — that resolve symbols
-created in the first run. Those have no second-run denotation, and
-`bringForward` fails:
+That is harmless for symbols whose completers resolve against the current run.
+But a symbol loaded from a `-sourcepath` file is only entered, never
+type-checked, so its members keep their `Namer` completers, and the symbols
+the compiler loads for itself while initialising belong to the run before the
+first compilation run. When the pruning phase forces such a completer — a
+member's signature, a class's parent application, an implicit search walking
+imported scopes — it can resolve a name to one of those earlier symbols, whose
+denotation has no counterpart in the current run, and `bringForward` fails:
 
     StaleSymbolException: stale symbol; module class compileTimeOnly$ …
     defined in Period(1.1-2), is referred to in run Period(2.1)
 
 ## How to reproduce
 
-The in-tree reproduction is the distribution build's Scala.js scalalib overlay
-step, which compiles `library-js-aux/src/scala/runtime/*.scala` with
-`-sourcepath library/src -scalajs`: one of the units suspends on a
-sourcepath-loaded macro dependency and the second run crashes as above while
-compiling `BoxesRunTime.scala` during erasure. On an unpatched tree, `make
-STREAM=3.10 release` fails at exactly this step (it succeeded at p13, whose
-base predates #26156; sources, flags and Makefile are byte-identical). The same
-invocation compiles cleanly under `-Yskip:pruneInlinedMethods,pruneInlineTraits`,
-which attributes the crash to the new phases without rebuilding anything. No
-self-contained reproduction has been extracted yet — it needs a macro whose
-dependency arrives via `-sourcepath` (see `repro/FIXME.md`).
+`repro/` shows it in four short files. A unit with an inline call names a
+class, `Foo`, that comes from a `-sourcepath` directory which also shadows the
+standard library's `scala.Unit` and `scala.annotation.compileTimeOnly`:
+
+```scala
+// sp/lib/Foo.scala
+import scala.annotation.compileTimeOnly
+class Foo[T](x: T)(implicit num: Integral[T])
+object Foo:
+  class Inclusive[T](x: T)(implicit num: Integral[T]) extends Foo(x)
+```
+
+```scala
+// Use.scala
+inline def one: Int = 1
+object Use:
+  val a: Int = one
+  val foo: Foo[Int] = ???
+```
+
+```
+scalac -sourcepath sp -d . Use.scala
+```
+
+A sourcepath file is parsed and entered, not type-checked, so `Inclusive`
+still has its `Namer` completer when erasure advances `Foo`'s companion past
+`pruneInlinedMethods`; `isDeletable` reads its flags, completing it, and the
+implicit search for its parent's `Integral[T]` walks the import, whose
+`compileTimeOnly` is the symbol the compiler loaded for itself while
+initialising, before the run began. Its module class cannot be brought
+forward, and stock 3.10.0 crashes with the `StaleSymbolException` above. The
+patch compiles it.
+
+The in-tree form was the distribution build's Scala.js scalalib overlay step,
+which compiles `library-js-aux/src/scala/runtime/*.scala` with
+`-sourcepath library/src -scalajs`, where the stdlib itself comes from the
+sourcepath. On an unpatched tree at `9542a5f686`, `make` fails at exactly this
+step while compiling `BoxesRunTime.scala` during erasure; the same invocation
+compiles cleanly under `-Yskip:pruneInlinedMethods,pruneInlineTraits`.
+Upstream's later gate on `needsInlining` (#26842, and its backport in
+3.10.0-RC2) spares that build today, which is why the stream's own build no
+longer shows it, but any unit that inlines still runs the phase.
 
 ## Solution
 

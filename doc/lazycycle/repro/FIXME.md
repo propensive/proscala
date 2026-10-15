@@ -24,3 +24,25 @@ sound (re-entrancy protection), but a reproduction will probably have to be
 caught in the wild: if a StackOverflow in `SetupTypeMap` ever reappears,
 distil it here. The `trunk-minus-lazycycle` recipe (merge all 3.9 feature
 branches except this one onto make) is the oracle to verify against.
+
+## 2026-10-15: a second, short attempt
+
+With a new oracle to hand — stock Scala 3.10.0 against the 1.0.1 release,
+run on `Macro.scala` + `Use.scala` compiled together under `-Ycc-new` so that
+`Use.scala` suspends on the same-run macro and is re-run, the layout of
+`doc/staleread/repro` — these shapes all compile on both, so none reaches
+the cycle:
+
+- an F-bounded `Ordered[T <: Ordered[T]]` with a derived typeclass whose
+  given summons the macro, as the feature doc's example;
+- the same with an F-bounded graph (`Graph[G <: Graph[G]]` with a `Node <: G`
+  member), and with the recursion encoded through abstract type members
+  (`Graph { type N <: Node; type E <: Edge }`) and an object instantiating
+  them;
+- a capability-typed recursive structure (`Tree[T <: Tree[T]]` holding
+  `List[T^]`) walked by a derived typeclass;
+- an opaque type bounded by its parameter's F-bound and an `Elem` member
+  defined through a recursive match type.
+
+The July conclusion stands: no shape made of ordinary source reaches a live
+`LazyRef` cycle in Setup, and the trigger will have to be caught in the wild.
