@@ -64,9 +64,10 @@ Which patches apply to a target is decided by **ancestry** between upstream
 commits, so the tools need upstream history: from `PROSCALA_SINCE` (2026-05-01,
 set in `bin/proscala-lib.sh`) on, the supported window, inside which every anchor
 and bound must lie. They fetch what is missing on demand, from a remote named
-`upstream` if you have one, else straight from GitHub. A full clone of this
-repository (which already holds most of that history) is best, and the workflows
-check out full history. In a shallow clone the tools fetch `PROSCALA_DEPTH`
+`upstream` if you have one, else straight from GitHub. This repository holds
+none of that history itself: a full clone fetches upstream's whole history the
+first time it is needed (as the workflows, which check out full history, do),
+and an `upstream` remote you already have saves that. In a shallow clone the tools fetch `PROSCALA_DEPTH`
 (5000) commits behind each upstream commit they need, and **refuse** to choose
 patches if that history stops short of the window, rather than silently
 answering ancestry questions wrongly. Work in progress may be pushed to any
@@ -75,7 +76,8 @@ branch for safe keeping, but nothing depends on such branches.
 The repository used to hold each patch as a branch per stream
 (`feature/<stream>/<patch>`, merged into `trunk/<stream>`, published through
 `release/<stream>`), and then as one file per stream. The branches were retired
-in October 2026; every one of them is kept, unchanged, as a tag `archive/<branch>`.
+in October 2026, and the repository was recreated from `main` alone, without the
+`scala/scala3` fork history it had carried until then.
 
 ### Versions
 
