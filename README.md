@@ -69,8 +69,7 @@ Everything is on the one `main` branch, and nothing is ever force-pushed: a
 changed patch, a newly supported upstream and a release are each an ordinary
 commit or tag.
 The patch rules, the tooling and the release process are documented in
-[AGENTS.md](AGENTS.md). (Until October 2026 each patch was a branch; those
-branches are kept as `archive/*` tags.)
+[AGENTS.md](AGENTS.md). (Until October 2026 each patch was a branch.)
 
 Building
 --------

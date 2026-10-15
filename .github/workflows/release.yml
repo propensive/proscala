@@ -56,9 +56,8 @@ jobs:
           else
             version="$GITHUB_REF_NAME"
             git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
-            # This repository also holds scala/scala3's own tags (3.10.0, 0.26.0, ...), which
-            # look like versions too. A Proscala release is tagged on main's history; any
-            # other tag is not one, and there is nothing to do.
+            # A Proscala release is tagged on main's history; any other tag is not
+            # one, and there is nothing to do.
             if ! git merge-base --is-ancestor "$GITHUB_REF_NAME^{commit}" origin/main; then
               echo "release: tag $GITHUB_REF_NAME is not on main, so it is not a Proscala release" >&2
               echo "release=false" >> "$GITHUB_OUTPUT"
