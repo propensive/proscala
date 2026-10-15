@@ -61,7 +61,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [iarraypure](iarraypure/iarraypure.md) | Treat `IArray` as pure under capture checking | 3.9, 3.10 | bug fix | yes | `-Zpure-iarrays` |
 | [iarraypure-mutalias](iarraypure-mutalias/iarraypure-mutalias.md) | Classify opaque aliases over mutable types under capture checking | 3.9, 3.10 | bug fix | yes | `-Zopaque-mutability` |
 | [frozenpure](frozenpure/frozenpure.md) | Classify a frozen type as pure under capture checking | 3.9, 3.10 | bug fix | yes | `-Zfrozen-pure` |
-| [implicitparts](implicitparts/implicitparts.md) | Do not assert on an open type parameter reached through a term's info | 3.10 | bug fix (crash) | FIXME | always on |
+| [implicitparts](implicitparts/implicitparts.md) | Do not assert on an open type parameter reached through a term's info | 3.10 | bug fix (crash) | yes | always on |
 | [inertcache](inertcache/inertcache.md) | Cache inert types in capture-checking Setup | 3.9, 3.10 | bug fix (hang) | yes | always on |
 | [inlinedclosures](inlinedclosures/inlinedclosures.md) | Capture-check closures inlined from compiled code | 3.10 | bug fix | yes | `-Zcheck-inlined-closures` |
 | [inlineupdate](inlineupdate/inlineupdate.md) | Propagate update classification to inline accessors | 3.9, 3.10 | bug fix | yes | always on |

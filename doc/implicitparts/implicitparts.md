@@ -33,19 +33,43 @@ proxy's info refers to the open parameters.
 
 ## Reproducing it
 
-Soundness reaches it in exoskeleton's `rig`, where a path is built with
-serpentine's transparent `/` on a state value (`state/next`) inside a `fuse`
-block, itself inside contingency's `mitigate` or `protect`. The `/` method's
-body resolves the path's type with `summonFrom`, and its receiver proxy is typed
-while the type variables of the enclosing `mitigate` call are open. Scala 3.10.0
-crashes:
+The whole shape fits in a few lines (`repro/parts.scala`):
+
+```scala
+import scala.compiletime.summonFrom
+
+inline def next[value](using items: List[value]): value = items.head
+
+def fuse[value](lambda: List[value] ?=> Any): Any = lambda(using Nil)
+
+trait Adm[t]
+class Box[child]
+
+transparent inline def box(child: Any): Box[child.type] =
+  summonFrom:
+    case given Adm[child.type] => (new Box).asInstanceOf[Box[child.type]]
+    case _                     => (new Box).asInstanceOf[Box[child.type]]
+
+def test: Any = fuse(box(next))
+```
+
+`fuse`'s type variable `value` is open while its context-function argument is
+typed. Inside it, `box(next)` is inlined at once, as it is transparent, and its
+result type mentions its argument, so the type variable of `next` cannot be
+interpolated first: the proxy that inlining binds `child` to has that open
+variable as its info. The `summonFrom` then searches for `Adm[child$proxy.type]`,
+and collecting its implicit scope reaches the variable through the proxy.
+Scala 3.10.0 crashes:
 
 ```
 java.lang.AssertionError: assertion failed: `wildApprox` failed to remove uninstantiated value
 ```
 
-3.9 compiles the module. There is no self-contained reproduction yet
-(`repro/FIXME.md`).
+Soundness reaches it in exoskeleton's `rig`, where a path is built with
+serpentine's transparent `/` on a state value (`state/next`) inside a `fuse`
+block: the `/` method's body resolves the path's type with `summonFrom`, its
+result type depends on `child.type`, and `next` is typed while the type
+variables of the enclosing `fuse` call are open. 3.9 compiles the module.
 
 ## The solution
 
