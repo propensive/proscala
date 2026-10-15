@@ -75,7 +75,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [permitlazy](permitlazy/permitlazy.md) | Lazy resolution of permitted subclasses in classfile parsing | 3.9 | bug fix | yes | always on |
 | [proxycap](proxycap/proxycap.md) | Capture-check inline argument proxies within their parameters' bounds | 3.10 | bug fix | yes | always on |
 | [proxyskolem](proxyskolem/proxyskolem.md) | No skolem-typed inline argument proxies under capture checking | 3.9, 3.10 | bug fix | yes (2: `repro`, `repro2`) | always on |
-| [prunecomplete](prunecomplete/prunecomplete.md) | Do not force completion when filtering prunable inline methods | 3.10 | bug fix (crash) | FIXME | always on |
+| [prunecomplete](prunecomplete/prunecomplete.md) | Do not force completion when filtering prunable inline methods | 3.10 | bug fix (crash) | yes | always on |
 | [refinealias](refinealias/refinealias.md) | Drop the implied capture set from a type alias in a refinement | 3.10 | bug fix | yes | always on |
 | [retainbounds](retainbounds/retainbounds.md) | Sanitize `TypeBounds` in `@retains` arguments to the top capability | 3.9, 3.10 | bug fix | yes | `-Zretains-bounds` |
 | [returnavoid](returnavoid/returnavoid.md) | Avoid only pattern-bound term symbols in rechecked returns | 3.9, 3.10 | bug fix | yes | always on |
