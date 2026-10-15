@@ -22,7 +22,7 @@ pick their Wasm or JS implementation through the link-time property
 `core/isWebAssembly` (`strings` on the `.sjsir` finds it). A scalalib built
 without those guards still compiles everything, but a Wasm-only link of it fails
 with `Uses JS interop with a Wasm-only module kind` through `ArrayBuilder.makeForJS`
-and `js.WrappedArray` (propensive/proscala#71).
+and `js.WrappedArray`, as Proscala 1.0.0's build for Scala 3.10.0 did.
 
 Linking an actual component needs the scala-wasm linker, which is outside the
 compiler; this checks what the compiler contributes. `test.sh` is its executable
