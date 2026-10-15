@@ -34,20 +34,40 @@ worth making.
 
 ## Reproducing it
 
-Soundness reaches it in the tests of locomotion and embarcadero, where the first
-`read[X in Protobuf]` of a compilation unit resolves the `Protobuf` decoding
-given for `X`. One candidate's adaptation fails, `canDefineFurther` is asked
-about it, and instantiating the result type's variables recurses without end.
-Scala 3.10.0 reports:
+`repro/read.scala` models the Soundness shape in 28 lines, with no flags. Three
+givens are resolved in a chain, each while searching for the previous one's
+context parameter, and the types they are searched for are refinements of type
+variables (`value in Protobuf` is `value { type Form = Protobuf }`):
+
+```scala
+object Protobuf:
+  given decodable: [value] => value is Decodable in Protobuf = ???
+  given aggregableIn: [value] => (decodable: value is Decodable in Protobuf)
+    => ((value in Protobuf) is Aggregable) = ???
+  given chainReadable: [value] => (aggregable: ((value in Protobuf) is Aggregable))
+    => (Chain is Readable to (value in Protobuf)) = ???
+
+object Decodable:
+  given generic: [value] => value is Decodable in value = ???
+
+def test = read[Chain, Sample in Protobuf](Chain())
+```
+
+Unifying `chainReadable`'s `value in Protobuf` with `aggregableIn`'s leaves
+each variable's lower bound the other one, refined. Then `generic`, the first
+candidate for `aggregableIn`'s parameter, fails to adapt, and
+`canDefineFurther` instantiates both variables to their lower bounds: each
+becomes the other, refined again, and recording that in the constraint recurses
+without end. Scala 3.10.0 reports:
 
 ```
 Recursion limit exceeded.
 Maybe there is an illegal cyclic reference?
 ```
 
-at `locomotion_test.scala:169` and `embarcadero_test.scala:748`, where 3.9
-compiles both modules. There is no self-contained reproduction yet
-(`repro/FIXME.md`).
+Soundness reaches the same thing in the tests of locomotion and embarcadero,
+on the first `read[X in Protobuf]` of a compilation unit, where 3.9 compiles
+both modules.
 
 ## The solution
 
