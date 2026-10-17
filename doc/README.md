@@ -93,6 +93,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [staleread](staleread/staleread.md) | Tolerate reading newer denotations from stale run contexts | 3.9 | bug fix (crash) | yes | always on |
 | [unboxedpure](unboxedpure/unboxedpure.md) | Do not box pure types with vacuous or pure-tuple capture sets | 3.9, 3.10 | bug fix | yes | `-Zunboxed-pure-types` |
 | [unioncaps](unioncaps/unioncaps.md) | Classify and preserve capture information on union types | 3.10 | bug fix | yes | `-Zunion-captures` |
+| [valuebased](valuebased/valuebased.md) | Keep the synthetic `jdk.internal.ValueBased` class valid across runs | — | bug fix (crash) | yes | always on |
 | [virtualdir](virtualdir/virtualdir.md) | Backport the `io.virtualDirectory` factory from the 3.10 stream | 3.9 | API backport | yes | always on |
 | [wasm](wasm/wasm.md) | WIT / WebAssembly Component Model support | 3.9, 3.10 | feature | yes | always on |
 | [wasm-witcall](wasm-witcall/wasm-witcall.md) | `witImportCall`: stub-free WIT imports | 3.9, 3.10 | feature | yes | always on |
