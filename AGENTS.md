@@ -201,7 +201,7 @@ copies are checked against it**:
 | which patches a stream carries | the bounds, at the stream's `UPSTREAM_SHA` |
 | which `scala/scala3` commit a stream is built on | `UPSTREAM_SHA` in `mk/<stream>.mk` |
 | which `scala/scala3` branch that commit is from | `UPSTREAM_REF` in `mk/<stream>.mk` |
-| what a release is built for | the release tag's annotation (from `bin/proscala-release`) |
+| what a release is built for | `targets.txt` on the GitHub release (resolved by the Release workflow) |
 | whether a patch has a reproduction | the filesystem, `doc/<patch>/repro*/` |
 | which `-Z` name enables a patch | `config.Proscala`, as each stream builds it |
 
@@ -529,9 +529,10 @@ patches, is a patch release: 1.0.1 is 1.0.0's features on more Scala versions.
 
 ### Releases
 
-    bin/proscala-release 1.0.1 --targets    # what it would be built for
+    git tag 1.0.1 && git push origin 1.0.1  # a release: the tag is the trigger
+    bin/proscala-release 1.0.1              # the same, after making the checks here first
     bin/proscala-release 1.0.1 --dry-run    # check everything, and say what it would do
-    bin/proscala-release 1.0.1              # tag HEAD 1.0.1 and push the tag
+    bin/proscala-release 1.0.1 --targets    # what it would be built for
 
 A release is a **tag `<x.y.z>` on `main`**, a plain version as for every
 Propensive project, built for every `scala/scala3` final release `3.<y>.<z>` with
@@ -560,28 +561,38 @@ way (all tested with sbt 1.11). So a project uses Proscala 1.0.0 on Scala 3.10.0
 with `scalaOrganization := "dev.propensive"` and
 `scalaVersion := "3.10.0-pro-1.0.0"`.
 
-`bin/proscala-release <x.y.z>` refuses unless `HEAD` is `origin/main`, nothing
-tracked is uncommitted, `bin/proscala-check` passes, the version is greater than
-every earlier release, and every target gets every patch it should (no gaps:
-`bin/proscala-coverage`). It writes the exact upstream commit of every target
-into the tag's annotation (`target <spec> <commit> <version>` lines), so the
-release builds what was checked even after `main` has moved on, then pushes the
-tag. That runs `.github/workflows/release.yml`:
+**Pushing the tag is the whole procedure.** It runs
+`.github/workflows/release.yml`:
 
-1. **plan** reads the targets from the tag.
+1. **plan** checks that the tag is on `main` (any other tag is ignored) and runs
+   `bin/proscala-release <x.y.z> --verify` on the tagged commit: the version must
+   be greater than every earlier release, `bin/proscala-check` must pass, and
+   every target must get every patch it should (no gaps: `bin/proscala-coverage`).
+   It resolves the targets — the snapshot branches as they are at that moment.
 2. **build**, for every target in parallel: builds the tree for the target's
    commit with `bin/proscala-tree`, and the release artefacts in it, cleanly
    (`make … tarball release-jars maven-repo`; see *What a release contains*),
    then tests the patches against it (`bin/proscala-test`). Nothing leaves the
    runner yet.
 3. **publish**, only once every target has built: creates the GitHub release
-   `<x.y.z>`, with every target's tarball, jars and Maven repository, and notes
-   listing each target's upstream commit and `scalaVersion` and how to use them.
+   `<x.y.z>`, with every target's tarball, jars and Maven repository, a
+   `targets.txt` naming the upstream commit each was built from
+   (`<spec> <commit> <version>` lines — the record of what a release is built
+   for), and notes listing each target's `scalaVersion` and how to use them.
+4. **untag**, if anything failed before the release was created: deletes the
+   tag, so that the same version can be pushed again once `main` is fixed. A
+   version means the bytes of a *published* release; a tag whose release never
+   existed means nothing, and is the one thing ever deleted from `origin`. If a
+   GitHub release exists despite the failure, the tag is kept and the job fails,
+   for a person to look at.
 
-So a release publishes for all its targets or for none. Run by hand from the
-Actions tab (`workflow_dispatch`, giving a version), the same workflow is a dry
-run: it plans and builds every target and publishes nothing. Only a tag releases,
-so editing `release.yml` never cuts a release.
+So a release publishes for all its targets or for none. `bin/proscala-release
+<x.y.z>` makes the same checks locally, for a fast answer, then tags and
+pushes; it refuses unless `HEAD` is `origin/main` and nothing tracked is
+uncommitted. Run by hand from the Actions tab (`workflow_dispatch`, giving a
+version), the workflow is a dry run: it plans and builds every target and
+publishes nothing. Only a tag releases, so editing `release.yml` never cuts a
+release.
 
 The streams (`mk/<stream>.mk`) no longer release: they are development pins,
 with hand-tested build configs. Releases before 1.0.0 were made per stream, as

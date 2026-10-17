@@ -1,22 +1,31 @@
 name: Release
 
-# A Proscala release is a tag <x.y.z> on `main`, pushed by bin/proscala-release.
-# Its annotation lists the targets — every scala/scala3 final release 3.<y>.<z>
-# from 3.9 on, and a snapshot of each upstream branch developing an unreleased
-# version — each as
-#   target <spec> <upstream commit> <version>
+# A Proscala release is a tag <x.y.z> on `main`. Pushing the tag is the whole
+# procedure (bin/proscala-release does that after the same checks, for a fast
+# answer). The targets — every scala/scala3 final release 3.<y>.<z> from 3.9 on,
+# and a snapshot of each upstream branch developing an unreleased version — are
+# resolved here, each as
+#   <spec> <upstream commit> <version>
 # with <version> = <scala version>-pro-<x.y.z>. This workflow:
 #
-#   plan     reads the targets (or, run by hand, works them out for a dry run)
+#   plan     checks that the tag is on main and runs `bin/proscala-release --verify`:
+#            the version is greater than every earlier release, bin/proscala-check
+#            passes, every target gets every patch it should; and resolves the targets
+#            (run by hand, it only works them out, for a dry run)
 #   build    for each target, in parallel: builds the tree, the distribution and
 #            the Maven-layout repository, and tests the patches against it
 #            (bin/proscala-test) — nothing leaves the runner yet
 #   publish  only once every target has built: creates the GitHub release, with
-#            every target's tarball, jars and repository
+#            every target's tarball, jars and repository, and targets.txt naming
+#            the upstream commit each was built from
+#   untag    if anything failed before the release was created: deletes the tag,
+#            so that the same version can be pushed again once main is fixed. A
+#            version means the bytes of a *published* release; an unpublished tag
+#            means nothing, and is the only thing ever deleted from origin.
 #
 # Releases go to GitHub Releases only. A release publishes for all its targets
-# or for none. Run by hand
-# (workflow_dispatch) it is a dry run: it plans and builds, and publishes nothing.
+# or for none. Run by hand (workflow_dispatch) it is a dry run: it plans and
+# builds, and publishes nothing.
 on:
   push:
     tags:
@@ -35,46 +44,61 @@ jobs:
   plan:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.plan.outputs.version }}
-      dry: ${{ steps.plan.outputs.dry }}
-      release: ${{ steps.plan.outputs.release }}
+      version: ${{ steps.tag.outputs.version }}
+      dry: ${{ steps.tag.outputs.dry }}
+      release: ${{ steps.tag.outputs.release }}
       matrix: ${{ steps.plan.outputs.matrix }}
+      targets: ${{ steps.plan.outputs.targets }}
     steps:
       - uses: actions/checkout@v4
         # Full history: which patches apply is decided by ancestry between
         # upstream commits, which a shallow checkout cannot see.
         with:
           fetch-depth: 0
-      - name: Work out the targets
-        id: plan
+
+      # Its own step, so that `release` is known even when verification fails:
+      # `untag` must delete the tag of a failed Proscala release and nothing else.
+      - name: Is this a Proscala release?
+        id: tag
         run: |
           set -euo pipefail
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
             version="${{ inputs.version }}"
-            targets="$(bin/proscala-release "$version" --targets)"
             dry=true
           else
             version="$GITHUB_REF_NAME"
-            git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+            dry=false
+            git fetch --force origin "refs/tags/$version:refs/tags/$version"
             # A Proscala release is tagged on main's history; any other tag is not
             # one, and there is nothing to do.
-            if ! git merge-base --is-ancestor "$GITHUB_REF_NAME^{commit}" origin/main; then
-              echo "release: tag $GITHUB_REF_NAME is not on main, so it is not a Proscala release" >&2
+            if ! git merge-base --is-ancestor "$version^{commit}" origin/main; then
+              echo "release: tag $version is not on main, so it is not a Proscala release" >&2
               echo "release=false" >> "$GITHUB_OUTPUT"
-              echo "Tag \`$GITHUB_REF_NAME\` is not on \`main\`: not a Proscala release, nothing built." >> "$GITHUB_STEP_SUMMARY"
+              echo "Tag \`$version\` is not on \`main\`: not a Proscala release, nothing built." >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
-            targets="$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME" | awk '$1 == "target" { print $2, $3, $4 }')"
-            [ -n "$targets" ] || { echo "release: tag $GITHUB_REF_NAME lists no targets (was it made by bin/proscala-release?)" >&2; exit 1; }
-            dry=false
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "dry=$dry"         >> "$GITHUB_OUTPUT"
+          echo "release=true"     >> "$GITHUB_OUTPUT"
+
+      - name: Verify, and work out the targets
+        id: plan
+        if: steps.tag.outputs.release == 'true'
+        run: |
+          set -euo pipefail
+          version="${{ steps.tag.outputs.version }}"
+          if [ "${{ steps.tag.outputs.dry }}" = true ]; then
+            targets="$(bin/proscala-release "$version" --targets)"
+          else
+            # The checks bin/proscala-release makes before tagging, on the tagged commit.
+            targets="$(bin/proscala-release "$version" --verify)"
           fi
           matrix="$(printf '%s\n' "$targets" | awk 'BEGIN { printf "{\"include\":[" }
             NF == 3 { printf "%s{\"spec\":\"%s\",\"commit\":\"%s\",\"version\":\"%s\"}", (n++ ? "," : ""), $1, $2, $3 }
             END { printf "]}" }')"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "dry=$dry"         >> "$GITHUB_OUTPUT"
-          echo "release=true"     >> "$GITHUB_OUTPUT"
-          echo "matrix=$matrix"   >> "$GITHUB_OUTPUT"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          { echo "targets<<EOF"; printf '%s\n' "$targets"; echo "EOF"; } >> "$GITHUB_OUTPUT"
           { echo "### Proscala $version"; echo; echo '| target | upstream commit | version |'; echo '| --- | --- | --- |'
             printf '%s\n' "$targets" | awk '{ printf "| %s | %s | %s |\n", $1, substr($2, 1, 10), $3 }'; } >> "$GITHUB_STEP_SUMMARY"
 
@@ -98,7 +122,7 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      # The commit, not the spec: `main` has moved on since the tag was cut.
+      # The commit, not the spec: `main` may have moved on since the tag was cut.
       - name: Build the source tree
         run: bin/proscala-tree "${{ matrix.commit }}" worktrees/dist
 
@@ -136,22 +160,24 @@ jobs:
           merge-multiple: true
 
       # Every target's tarball, jars (under their Maven names) and Maven-layout
-      # repository, in one command, so the release can never exist with only
-      # some of them attached.
+      # repository, plus targets.txt, in one command, so the release can never
+      # exist with only some of them attached.
       - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          TARGETS: ${{ needs.plan.outputs.targets }}
         run: |
           set -euo pipefail
           shopt -s failglob
           tag="$GITHUB_REF_NAME"
-          git fetch --force origin "refs/tags/$tag:refs/tags/$tag"
+          # What this release was built for: "<spec> <upstream commit> <version>" per line.
+          printf '%s\n' "$TARGETS" > built/targets.txt
           {
             echo "Proscala ${{ needs.plan.outputs.version }}, built from ${GITHUB_SHA}, for:"
             echo
             echo '| Scala | sbt `scalaVersion` (with `scalaOrganization := "dev.propensive"`) |'
             echo '| --- | --- |'
-            git tag -l --format='%(contents)' "$tag" | awk '$1 == "target" { printf "| %s (`%s`) | `%s` |\n", $2, substr($3, 1, 10), $4 }'
+            awk 'NF == 3 { printf "| %s (`%s`) | `%s` |\n", $1, substr($2, 1, 10), $3 }' built/targets.txt
             echo
             echo 'Each `proscala-<version>-maven.zip` is a Maven repository of that build. Unzip them into one'
             echo 'directory and use it in sbt with:'
@@ -169,3 +195,30 @@ jobs:
           gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "Proscala ${{ needs.plan.outputs.version }}" --notes-file notes.md \
             built/*
+
+  # A release that was not published leaves no tag behind. `always()` so that
+  # this runs after a failure; the guards so that it runs only for a real
+  # Proscala release tag (not a dry run, not a tag off main) that did not get
+  # as far as a GitHub release.
+  untag:
+    needs: [plan, build, publish]
+    if: always() && github.event_name == 'push' && needs.plan.outputs.release == 'true' && needs.publish.result != 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Delete the tag of the unpublished release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          # If a GitHub release exists, something was published after all: the
+          # tag then means those bytes, and a person must decide what to do.
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "untag: a GitHub release $tag exists; leaving the tag alone" >&2
+            echo "Release \`$tag\` exists although the run failed: tag kept, needs a look." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          git push origin ":refs/tags/$tag"
+          echo "Release \`$tag\` was not published: its tag has been deleted. Fix \`main\` and push the tag again." >> "$GITHUB_STEP_SUMMARY"
