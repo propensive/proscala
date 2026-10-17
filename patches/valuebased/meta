@@ -1,0 +1,2 @@
+variant ae374e9583c6.patch 1 ae374e9583c6e34732b786f2bcae57b84b4ee14f
+needed-from   67b2e879949df752f1e4d7413892191af26bbd64   # upstream #27318 synthesizes the jdk.internal.ValueBased class, without Permanent

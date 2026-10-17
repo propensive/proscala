@@ -1,3 +1,4 @@
 variant 403f2f663af8.patch 1 403f2f663af8ad947e36a8f80f9680a9b71f7cf2
 needed-from   3adfcbd32a00cb078db0d80ec4f147309e59895a   # upstream #26156 (Inline Traits & Specialized Traits) introduced the defect
 variant 190abc348060.patch 1 190abc348060a547db89181f4bcef0559520ab95
+obsolete-from 3f6189c2ca58ec25107622a60daa4ef1d946b4bc   # upstream #27247 deleted PruneInlinedMethods, the phase whose transformInfo forced completion
