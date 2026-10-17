@@ -47,6 +47,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [assumeseparate](assumeseparate/assumeseparate.md) | Keep an `unsafeAssumeSeparate` operand's own type | 3.9, 3.10 | bug fix | yes (2: `repro`, `repro-element`) | always on |
 | [blockimport](blockimport/blockimport.md) | Recheck a block's result expression in its statements' context | 3.9, 3.10 | bug fix | yes | always on |
 | [boolunapply](boolunapply/boolunapply.md) | Keep Boolean results of nullary case-class unapplies under capture checking | 3.10 | bug fix | yes | always on |
+| [boxcycle](boxcycle/boxcycle.md) | Guard against cyclic types in `boxDeeply` | 3.9, 3.10 | bug fix (crash) | FIXME | always on |
 | [castbox](castbox/castbox.md) | Box opaque-external type arguments in cast type applications | 3.9 | bug fix | yes | always on |
 | [classifiermeet](classifiermeet/classifiermeet.md) | Accept a declared meet of two unrelated classifiers | 3.9, 3.10 | feature | yes | always on |
 | [closurerecheck](closurerecheck/closurerecheck.md) | Do not recheck a closure its completer has checked | 3.10 | bug fix | FIXME | always on |
