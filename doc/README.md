@@ -52,6 +52,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [classifiermeet](classifiermeet/classifiermeet.md) | Accept a declared meet of two unrelated classifiers | 3.9, 3.10 | feature | yes | always on |
 | [closurerecheck](closurerecheck/closurerecheck.md) | Do not recheck a closure its completer has checked | 3.10 | bug fix | FIXME | always on |
 | [ctxresult](ctxresult/ctxresult.md) | Context-result closures level-checked at the method's level | 3.9, 3.10 | bug fix | yes | always on |
+| [cyclicctx](cyclicctx/cyclicctx.md) | Render an escaped type error in the context it was raised in | 3.9, 3.10 | bug fix (crash) | FIXME | always on |
 | [definefurther](definefurther/definefurther.md) | Treat an endless instantiation as no further definition in `canDefineFurther` | 3.10 | bug fix | yes | always on |
 | [dependarg](dependarg/dependarg.md) | Conserve stable argument paths in dependent-application rechecking | 3.9, 3.10 | bug fix | yes | always on |
 | [depset](depset/depset.md) | Add a mutable IdentitySet to optimize variable dependencies in CC | 3.9 | backport (perf) | yes | always on |
@@ -72,6 +73,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [macroalias](macroalias/macroalias.md) | Strip ordinary aliases when the macro-expansion check reveals opaques | — | bug fix | yes | always on |
 | [macrosingleton](macrosingleton/macrosingleton.md) | Reveal an opaque type behind a singleton in the macro-expansion check | 3.10 | bug fix | yes | always on |
 | [modulepath](modulepath/modulepath.md) | Give an inline accessor for a module the module's `TermRef` | 3.10 | bug fix | yes | always on |
+| [movestatics](movestatics/movestatics.md) | Test a symbol's owner before its annotations in `MoveStatics` | 3.9, 3.10 | bug fix (crash) | FIXME | always on |
 | [nullreceiver](nullreceiver/nullreceiver.md) | Widen bottom-typed call receivers to Object in the backend | 3.9 | bug fix (crash) | yes | always on |
 | [permitlazy](permitlazy/permitlazy.md) | Lazy resolution of permitted subclasses in classfile parsing | 3.9 | bug fix | yes | always on |
 | [proxycap](proxycap/proxycap.md) | Capture-check inline argument proxies within their parameters' bounds | 3.10 | bug fix | yes | always on |

@@ -1,0 +1,48 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Mon, 19 Oct 2026 10:59:05 +0200
+Subject: Test a symbol's owner before its annotations in MoveStatics
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+`MoveStatics.transformSym` asked `hasAnnotation(ScalaStaticAnnot)` of every
+denotation brought forward through it, before checking that the symbol is a
+member of a module with a companion — the only symbols it can move.
+`hasAnnotation` matches each annotation's class by `derivesFrom`, which needs
+that class's base classes. In a run where a class's base classes are first
+computed at a late phase (a suspended-units run, asked by a backend such as
+Scala Native's `genNIR`), computing them brings its parent forward through the
+transformers, and `MoveStatics` then matched the parent's own `@SourceFile`
+annotation against `@static` — re-entering the locked computation of
+`SourceFile`'s base classes: "Cyclic reference involving class SourceFile",
+escaping the run and failing the compilation. The owner checks now come
+first, so a class symbol is never made to look at its annotations here.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: movestatics
+---
+ compiler/src/dotty/tools/dotc/transform/MoveStatics.scala | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/compiler/src/dotty/tools/dotc/transform/MoveStatics.scala b/compiler/src/dotty/tools/dotc/transform/MoveStatics.scala
+index 13741c24d4155a52c41bb0d94b7580c21c474964..832ef537c6b2203429c73e817930d913f1d3e2a7 100644
+--- a/compiler/src/dotty/tools/dotc/transform/MoveStatics.scala
++++ b/compiler/src/dotty/tools/dotc/transform/MoveStatics.scala
+@@ -30,7 +30,13 @@ class MoveStatics extends MiniPhase with SymTransformer {
+   override def description: String = MoveStatics.description
+ 
+   def transformSym(sym: SymDenotation)(using Context): SymDenotation =
+-    if (sym.hasAnnotation(defn.ScalaStaticAnnot) && sym.owner.is(Flags.Module) && sym.owner.companionClass.exists &&
++    // Test the owner before the annotation: `hasAnnotation` matches each annotation's class by
++    // `derivesFrom`, which computes that class's base classes. When a denotation is brought
++    // forward to a late phase while the base classes of an annotation class are being computed
++    // (a `@SourceFile`-annotated parent, as every class from a TASTy-compiled library is), that
++    // would re-enter the computation and raise a cyclic reference; only a member of a module
++    // with a companion can move, so nothing else needs its annotations looked at.
++    if (sym.owner.is(Flags.Module) && sym.owner.companionClass.exists && sym.hasAnnotation(defn.ScalaStaticAnnot) &&
+         (sym.is(Flags.Method) || !(sym.isMutableVarOrAccessor && sym.owner.companionClass.is(Flags.Trait)) && !sym.symbol.name.is(LazyVarHandleName))) {
+       sym.owner.asClass.delete(sym.symbol)
+       sym.owner.companionClass.asClass.enter(sym.symbol)
