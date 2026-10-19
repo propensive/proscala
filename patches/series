@@ -59,4 +59,5 @@ closurerecheck
 anonascribe
 inlinedclosures
 boxcycle
+cyclicctx
 valuebased

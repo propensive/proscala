@@ -52,6 +52,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [classifiermeet](classifiermeet/classifiermeet.md) | Accept a declared meet of two unrelated classifiers | 3.9, 3.10 | feature | yes | always on |
 | [closurerecheck](closurerecheck/closurerecheck.md) | Do not recheck a closure its completer has checked | 3.10 | bug fix | FIXME | always on |
 | [ctxresult](ctxresult/ctxresult.md) | Context-result closures level-checked at the method's level | 3.9, 3.10 | bug fix | yes | always on |
+| [cyclicctx](cyclicctx/cyclicctx.md) | Render an escaped type error in the context it was raised in | 3.9, 3.10 | bug fix (crash) | FIXME | always on |
 | [definefurther](definefurther/definefurther.md) | Treat an endless instantiation as no further definition in `canDefineFurther` | 3.10 | bug fix | yes | always on |
 | [dependarg](dependarg/dependarg.md) | Conserve stable argument paths in dependent-application rechecking | 3.9, 3.10 | bug fix | yes | always on |
 | [depset](depset/depset.md) | Add a mutable IdentitySet to optimize variable dependencies in CC | 3.9 | backport (perf) | yes | always on |
