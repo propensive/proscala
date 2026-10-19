@@ -73,6 +73,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [macroalias](macroalias/macroalias.md) | Strip ordinary aliases when the macro-expansion check reveals opaques | — | bug fix | yes | always on |
 | [macrosingleton](macrosingleton/macrosingleton.md) | Reveal an opaque type behind a singleton in the macro-expansion check | 3.10 | bug fix | yes | always on |
 | [modulepath](modulepath/modulepath.md) | Give an inline accessor for a module the module's `TermRef` | 3.10 | bug fix | yes | always on |
+| [movestatics](movestatics/movestatics.md) | Test a symbol's owner before its annotations in `MoveStatics` | 3.9, 3.10 | bug fix (crash) | FIXME | always on |
 | [nullreceiver](nullreceiver/nullreceiver.md) | Widen bottom-typed call receivers to Object in the backend | 3.9 | bug fix (crash) | yes | always on |
 | [permitlazy](permitlazy/permitlazy.md) | Lazy resolution of permitted subclasses in classfile parsing | 3.9 | bug fix | yes | always on |
 | [proxycap](proxycap/proxycap.md) | Capture-check inline argument proxies within their parameters' bounds | 3.10 | bug fix | yes | always on |
