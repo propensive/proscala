@@ -148,16 +148,17 @@ an artifact — including expanding an inline method containing a backed
 splice — and running it require that class on the classpath. Source using
 the feature does not compile under vanilla Scala.
 
-That class does not live in Proscala's `scala3-library`. The fork's three
-standard-library additions — `scala.Literate`, `scala.Spreadable` and
-`scala.annotation.internal.diagnostic` — are built from `library-proscala/src`
+That class does not live in Proscala's `scala3-library`. The fork's four
+standard-library additions — `scala.Literate`, `scala.Spreadable`,
+`scala.caps.SharedUnscoped` and `scala.annotation.internal.diagnostic` — are
+built from `library-proscala/src`
 into a **supplementary jar**, `proscala-library_3` (and `proscala-library_sjs1_3`
-for Scala.js), so the `scala-library` and `scalajs-scalalib` jars Proscala
+for Scala.js, `proscala-library_native0.5_3` for Scala Native), so the `scala-library` and `scalajs-scalalib` jars Proscala
 ships are byte-identical to what upstream builds from the same sources. A
 consumer therefore needs only the small additive jar beside whichever
 `scala3-library` it already has — vanilla's included, since split packages are
 harmless on the classpath — and a vanilla compiler reading such TASTy resolves
-the classes from it like any other library. Proscala's compiler looks the three
+the classes from it like any other library. Proscala's compiler looks those
 classes up by name and runs without the jar; the features simply never engage.
 
 ## New platforms

@@ -302,9 +302,10 @@ directory name:
 
 - `release/<name>/lib/`  — **the published jars**: everything we build (compiler,
   stdlib, tasty-core, repl, staging, tasty-inspector, sbt-bridge,
-  presentation-compiler, our Scala.js libraries, the supplementary
-  proscala-library for the JVM and Scala.js, …) plus the Scala.js / scala-wasm
-  runtime jars, so a downloaded release can run Scala.js / WASM output
+  presentation-compiler, our Scala.js libraries, tasty-core and the
+  supplementary proscala-library for Scala.js and Scala Native too, …) plus
+  the Scala.js / scala-wasm runtime jars, so a downloaded release can run
+  Scala.js / WASM output
 - `release/<name>/deps/` — the remaining third-party runtime jars (jline, guava,
   lsp4j, …), needed to run the compiler locally but not published
 - `release/<name>/bin/`  — `scalac` / `scala` launchers whose classpath spans
@@ -626,23 +627,29 @@ excludeDependencies += "dev.propensive" % "scaladoc_3"   // no scaladoc is built
 scalaCompilerBridgeBinaryJar := Some(proscala / s"dev/propensive/scala3-sbt-bridge/${scalaVersion.value}/scala3-sbt-bridge-${scalaVersion.value}.jar")
 ```
 
-Fifteen artifacts are in each repository, under the group `dev.propensive`, at
-the target's version (`<scala version>-pro-<x.y.z>`). Thirteen carry **the same artifact names as the mainline
+Sixteen artifacts are in each repository, under the group `dev.propensive`, at
+the target's version (`<scala version>-pro-<x.y.z>`). Fourteen carry **the same artifact names as the mainline
 Scala releases**: `scala-library`, `scala3-library_3`, `scala3-interfaces`,
-`tasty-core_3`, `scala3-compiler_3`, `scala3-directives-parser_3`,
+`tasty-core_3`, `tasty-core_sjs1_3`, `scala3-compiler_3`, `scala3-directives-parser_3`,
 `scala3-staging_3`, `scala3-tasty-inspector_3`, `scala3-repl_3`,
 `scala3-sbt-bridge`, `scala3-presentation-compiler_3`, `scalajs-scalalib_2.13` and
 `scala3-library_sjs1_3`; matching the mainline names is what lets sbt's
 `scalaOrganization := "dev.propensive"` swap the fork in wholesale. Two are the
 fork's own: `proscala-library_3` and `proscala-library_sjs1_3`, the
 **supplementary library** holding the standard-library additions
-(`scala.Literate`, `scala.Spreadable`, `scala.annotation.internal.diagnostic`)
+(`scala.Literate`, `scala.Spreadable`, `scala.caps.SharedUnscoped`,
+`scala.annotation.internal.diagnostic`)
 from `library-proscala/src` in the tree (added by patches), built into their own jar so
 `scala-library` stays byte-identical to upstream's from the same sources.
 Consumers add it beside a `scala3-library`, and the compiler finds its classes
-by name, so nothing else depends on it. A WASM tree adds a sixteenth,
+by name, so nothing else depends on it. A WASM tree adds a seventeenth,
 `scalajs-library_2.13` — see below. Every release target from Scala.js 1.22.0
-on carries the `wasm` patch, so a release has sixteen for each.
+on carries the `wasm` patch, so a release has seventeen for each. A target
+whose Scala version Scala Native publishes an `nscplugin` for — every final
+release and RC, but no branch snapshot — adds two more, `tasty-core_native0.5_3`
+and `proscala-library_native0.5_3`: the same two modules compiled to NIR with
+that plugin, against the stock Native stdlib at the same version (see *The
+Scala Native artifacts*).
 
 Each artifact gets a POM and a sources jar, with md5/sha1 checksums. A GitHub
 release can be edited or deleted, but its tag should not be reused: a version,
@@ -653,6 +660,25 @@ compile classpaths use, so a version bump moves the POMs with it and there is no
 second copy to drift. It matches the graph Soundness already resolves the fork
 through (the `repo` task in its `build.mill`), plus the two modules Soundness
 does not use.
+
+#### The Scala Native artifacts
+
+`tasty-core` and `proscala-library` are the two modules a program that is not
+the compiler can want on a platform other than the JVM — a tool reading TASTy,
+and any code compiled by the fork (whose `ThrowTactic`-style capability
+classifiers extend `scala.caps.SharedUnscoped`) — so they, and only they, are
+built for Scala Native as well as Scala.js. There is no fork of Scala Native:
+the Makefile (steps 12c–12d) compiles the modules' unchanged sources with the
+stock `nscplugin` from Maven Central, typed against the fork's `scala-library`
+TASTy plus the stock `scala3lib_native0.5_3` and its runtime jars, which the
+published POMs depend on and consumers resolve from Central. That works because
+the fork is TASTy- and plugin-compatible with the upstream it is built on, but
+the plugin is compiled against one compiler's internals, so a tree only gets
+Native artifacts when a plugin exists for *its exact* Scala version:
+`SN_SCALA_VERSION` in `mk/target.mk` (set by `bin/proscala-buildconf`, which
+asks Central) is the tree's version or empty, and a stream's `mk/<stream>.mk`
+pins the nearest release by hand. Empty switches the two artifacts off; the
+Scala Native version itself is `SN_VERSION` in the Makefile.
 
 #### The Scala.js artifacts
 
