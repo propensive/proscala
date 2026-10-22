@@ -54,6 +54,10 @@ D_LSP4J    := org.eclipse.lsp4j:org.eclipse.lsp4j:$(LSP4J_VERSION) \
               org.eclipse.lsp4j:org.eclipse.lsp4j.jsonrpc:$(LSP4J_VERSION) \
               com.google.code.gson:gson:$(GSON_VERSION)
 D_SJSJAVA  := $(subst /,.,$(SCALAJS_GROUP)):scalajs-javalib:$(SCALAJS_VERSION)
+# The stock Scala Native stdlib the Native variants are compiled against (empty,
+# like the variants themselves, when SN_SCALA_VERSION is unset). Its own POM
+# pulls in scalalib, auxlib and, through them, javalib and the C runtime.
+D_SN_SCALA3LIB := org.scala-native:scala3lib_native0.5_3:$(SN_SCALA_VERSION)+$(SN_VERSION)
 
 # `scalajs-library_2.13` depends on `org.scala-js:scalajs-scalalib_2.13`, the
 # Scala 2.13 Scala.js standard library. Upstream publishes *its* Scala 3 stdlib
@@ -89,14 +93,23 @@ P_SJS3LIB    := $(PUB_GROUP):scala3-library_sjs1_3:$(VERSION)
 # Makefile, which is what decides whether the jar is built at all.
 DIRECTIVES_DEP := $(if $(HAS_DIRECTIVES),$(P_DIRECTIVES))
 
-# The supplementary library — the fork's standard-library additions, JVM and
-# Scala.js — only on trees that carry library-proscala/src (see the Makefile's
+# The supplementary library — the fork's standard-library additions, for the JVM,
+# Scala.js and (when the tree has Native artifacts to build against) Scala
+# Native — only on trees that carry library-proscala/src (see the Makefile's
 # $(HAS_PROSCALA_LIB)). Consumers add it beside a scala3-library; it is not a
 # dependency of any other module here, since the compiler finds its classes by
 # name.
 PUB_PROSCALA_LIB = $(if $(HAS_PROSCALA_LIB),\
   proscala-library_3|proscala-library.jar|library-proscala/src|$(P_SCALA3LIB) \
-  proscala-library_sjs1_3|proscala-library_sjs1.jar|library-proscala/src|$(call join_deps,$(P_SCALA3LIB) $(P_SJS3LIB)))
+  proscala-library_sjs1_3|proscala-library_sjs1.jar|library-proscala/src|$(call join_deps,$(P_SCALA3LIB) $(P_SJS3LIB)) \
+  $(if $(SN_SCALA_VERSION),proscala-library_native0.5_3|proscala-library_native0.5.jar|library-proscala/src|$(call join_deps,$(P_SCALA3LIB) $(D_SN_SCALA3LIB))))
+
+# tasty-core for the other two platforms (Makefile steps 12c and 12d), named as
+# upstream names its Scala.js build of the module (`tasty-core_sjs1_3`) and as
+# Scala Native names a Scala 3 artifact (`_native0.5_3`).
+PUB_TASTY_CROSS = \
+  tasty-core_sjs1_3|tasty-core_sjs1.jar|tasty/src|$(call join_deps,$(P_SCALALIB) $(P_SJS3LIB)) \
+  $(if $(SN_SCALA_VERSION),tasty-core_native0.5_3|tasty-core_native0.5.jar|tasty/src|$(call join_deps,$(P_SCALALIB) $(D_SN_SCALA3LIB)))
 
 # ---- The published set -------------------------------------------------------
 # One record per artifact, four `|`-separated fields:
@@ -164,6 +177,7 @@ PUB_TABLE := \
   scalajs-scalalib_2.13|scalajs-scalalib_2.13.jar|library-js/src,library/src|$(D_SJSJAVA) \
   $(PUB_SJSLIB) \
   scala3-library_sjs1_3|scala3-library_sjs1.jar|-|$(call join_deps,$(P_SCALALIB) $(SJS_LIB_DEP) $(P_SJSSCALA)) \
+  $(PUB_TASTY_CROSS) \
   $(PUB_PROSCALA_LIB)
 
 # ==============================================================================
