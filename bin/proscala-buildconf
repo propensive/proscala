@@ -61,7 +61,7 @@ ref_ow2="$(printf '%s' "$pom" | awk '/<artifactId>asm-util<\/artifactId>/ { f = 
 sn="$(sed -nE 's/^SN_VERSION[[:space:]]*:=[[:space:]]*([^[:space:]]+).*/\1/p' "$PROSCALA_ROOT/Makefile" | head -1)"
 [ -n "$sn" ] || die "no SN_VERSION in $PROSCALA_ROOT/Makefile"
 sn_scala=""
-if curl -fsSI -o /dev/null "https://repo1.maven.org/maven2/org/scala-native/nscplugin_$upver/$sn/nscplugin_$upver-$sn.jar"; then
+if curl -fsI -o /dev/null "https://repo1.maven.org/maven2/org/scala-native/nscplugin_$upver/$sn/nscplugin_$upver-$sn.jar"; then
   sn_scala="$upver"
 fi
 
