@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 7 Jul 2026 23:31:36 +0200
+Subject: Guard against cyclic LazyRef graphs in capture-checking Setup
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+SetupTypeMap forces a LazyRef's underlying type eagerly via
+mapConserveSuper; a reference cycle — reachable e.g. through
+denotations surviving a compilation-suspension re-run — recursed
+without bound. A re-entered LazyRef is now returned unmapped; its
+underlying type is transformed when forced outside the traversal.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Proscala-Patch: lazycycle
+---
+ compiler/src/dotty/tools/dotc/cc/Setup.scala | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/Setup.scala b/compiler/src/dotty/tools/dotc/cc/Setup.scala
+index 34e998f81d0b7e03c4c02fa166cdab3e10041eeb..082c953b6431921749982a27ccf1562710de79cb 100644
+--- a/compiler/src/dotty/tools/dotc/cc/Setup.scala
++++ b/compiler/src/dotty/tools/dotc/cc/Setup.scala
+@@ -252,6 +252,13 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
+   private trait SetupTypeMap extends FollowAliasesMap:
+     private var isTopLevel = true
+ 
++    // Guards against cyclic `LazyRef` graphs: `mapConserveSuper` forces a LazyRef's
++    // underlying type eagerly, and a reference cycle (reachable e.g. through denotations
++    // surviving a compilation-suspension re-run) would otherwise recurse without bound.
++    // A re-entered LazyRef is returned unmapped; its underlying type is transformed when
++    // it is forced in a context outside this traversal.
++    protected val mappingLazyRefs = mutable.HashSet[Type]()
++
+     protected def innerApply(tp: Type): Type
+ 
+     // Types that map to themselves (`eq`) contain nothing for Setup to transform under any
+@@ -562,7 +569,12 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
+                   isContextual = defn.isContextFunctionClass(tycon.classSymbol)),
+                 t.dealiasKeepAnnots))
+               .showing(i"convert dep $t to $result", capt)
+-          case t: (LazyRef | TypeVar) =>
++          case t: LazyRef =>
++            if mappingLazyRefs.contains(t) then t
++            else
++              mappingLazyRefs += t
++              try mapConserveSuper(t) finally mappingLazyRefs.remove(t)
++          case t: TypeVar =>
+             mapConserveSuper(t)
+           case t =>
+             val t1 = normalizeCaptures(mapFollowingAliases(mapOver(t)))

@@ -1,0 +1,83 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 17 Oct 2026 07:07:55 +0200
+Subject: Guard against cyclic types in boxDeeply
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+`boxDeeply` recurses into an annotated type's parent, and, for a tracked
+singleton, into the capturing type it makes of it. A parent whose dealiasing
+leads back to the same annotated type — reachable through a cyclic `LazyRef`
+graph, as `Setup`'s type map already guards against — or a capturing type
+that collapses back to the singleton, recursed without bound: the compiler
+died with a stack overflow in capture checking. A type met again on the way
+down is now returned unboxed.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: boxcycle
+---
+ .../src/dotty/tools/dotc/cc/CaptureOps.scala  | 38 ++++++++++++++-----
+ 1 file changed, 28 insertions(+), 10 deletions(-)
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala b/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala
+index f6f700d6320c62190abb4c6e36de07c9f562b999..8e10ca1cf52459eaa1a083a611d8a3f8abc3bd24 100644
+--- a/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala
++++ b/compiler/src/dotty/tools/dotc/cc/CaptureOps.scala
+@@ -242,18 +242,35 @@ extension (tp: Type)
+    *  convert it to be boxed.
+    */
+   def boxDeeply(using Context): Type =
+-    def recur(tp: Type): Type = tp.dealiasKeepAnnotsAndOpaques match
+-      case tp @ CapturingType(parent, refs) =>
+-        if tp.isBoxed || parent.derivesFromCapSet then tp
+-        else tp.boxed
+-      case tp @ AnnotatedType(parent, ann: RetainingAnnotation)
++    // Guards against a cycle: an annotated type's parent is boxed by recursing into it, and a
++    // tracked singleton by recursing into the capturing type made of it. A parent whose
++    // dealiasing leads back to the same annotated type — reachable through a cyclic `LazyRef`
++    // graph, as `Setup`'s type map guards against — or a capturing type that collapses back to
++    // the singleton, would otherwise recurse without bound. A type met again on the way down
++    // is returned unboxed: nothing new remains to box in it.
++    val boxing = mutable.HashSet[Type]()
++    def recur(tp: Type): Type =
++      val tp1 = tp.dealiasKeepAnnotsAndOpaques
++      if boxing.contains(tp) || boxing.contains(tp1) then tp
++      else
++        boxing += tp
++        boxing += tp1
++        try recur1(tp, tp1)
++        finally
++          boxing.remove(tp)
++          boxing.remove(tp1)
++    def recur1(tp: Type, tp1: Type): Type = tp1 match
++      case tp1 @ CapturingType(parent, refs) =>
++        if tp1.isBoxed || parent.derivesFromCapSet then tp1
++        else tp1.boxed
++      case tp1 @ AnnotatedType(parent, ann: RetainingAnnotation)
+       if !parent.derivesFromCapSet =>
+         assert(ann.isStrict)
+         CapturingType(parent, ann.toCaptureSet, boxed = true)
+-      case tp @ AnnotatedType(parent, ann) =>
+-        tp.derivedAnnotatedType(parent.boxDeeply, ann)
+-      case tp: (Capability & SingletonType) if tp.isTrackableRef && !tp.isAlwaysPure =>
+-        recur(CapturingType(tp, CaptureSet(tp)))
++      case tp1 @ AnnotatedType(parent, ann) =>
++        tp1.derivedAnnotatedType(box(parent), ann)
++      case tp1: (Capability & SingletonType) if tp1.isTrackableRef && !tp1.isAlwaysPure =>
++        recur(CapturingType(tp1, CaptureSet(tp1)))
+       case tp1 @ AppliedType(tycon, args) if defn.isNonRefinedFunction(tp1) =>
+         val res = args.last
+         val boxedRes = recur(res)
+@@ -269,9 +286,10 @@ extension (tp: Type)
+         if boxedRes eq res then tp
+         else tp1.derivedLambdaType(resType = boxedRes)
+       case _ => tp
+-    tp match
++    def box(tp: Type): Type = tp match
+       case tp: MethodOrPoly => tp // don't box results of methods outside refinements
+       case _ => recur(tp)
++    box(tp)
+ 
+   /** Is this type boxed (i.e its outmost capturing type is boxed,
+    *  skipping any capturing types with empty capsets)?
