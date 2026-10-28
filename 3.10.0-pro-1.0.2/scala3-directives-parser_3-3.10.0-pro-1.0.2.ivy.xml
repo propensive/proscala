@@ -8,6 +8,7 @@
         <conf name="optional" visibility="public" description=""/>
         <conf name="compile" visibility="public" description=""/>
         <conf extends="compile" name="runtime" visibility="public" description=""/>
+        <conf extends="runtime" name="default" visibility="public" description=""/>
     </configurations>
     <publications>
         <artifact name="scala3-directives-parser_3" type="pom" ext="pom" conf="pom"/>
