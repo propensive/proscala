@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ivy-module version="2.0" xmlns:e="http://ant.apache.org/ivy/extra">
+    <info organisation="org.scala-lang" module="scala3-presentation-compiler_3" revision="3.10.0-pro-1.0.5" status="release"/>
+    <configurations>
+        <conf name="pom" visibility="public" description=""/>
+        <conf extends="runtime" name="test" visibility="public" description=""/>
+        <conf name="provided" visibility="public" description=""/>
+        <conf name="optional" visibility="public" description=""/>
+        <conf name="compile" visibility="public" description=""/>
+        <conf extends="compile" name="runtime" visibility="public" description=""/>
+    </configurations>
+    <publications>
+        <artifact name="scala3-presentation-compiler_3" type="pom" ext="pom" conf="pom"/>
+        <artifact name="scala3-presentation-compiler_3" type="jar" ext="jar" conf="compile"/>
+    </publications>
+    <dependencies>
+        <dependency org="org.scala-lang" name="scala3-compiler_3" rev="3.10.0-pro-1.0.5" conf="compile-&gt;default(compile)"/>
+        <dependency org="org.scala-lang" name="scala3-directives-parser_3" rev="3.10.0-pro-1.0.5" conf="compile-&gt;default(compile)"/>
+        <dependency org="at.yawk.lz4" name="lz4-java" rev="1.8.1" conf="compile-&gt;default(compile)"/>
+        <dependency org="io.get-coursier" name="interface" rev="1.0.29-M4" conf="compile-&gt;default(compile)"/>
+        <dependency org="org.scalameta" name="mtags-interfaces" rev="1.6.7" conf="compile-&gt;default(compile)"/>
+        <dependency org="com.google.guava" name="guava" rev="33.6.0-jre" conf="compile-&gt;default(compile)"/>
+        <dependency org="com.google.guava" name="failureaccess" rev="1.0.3" conf="compile-&gt;default(compile)"/>
+        <dependency org="org.eclipse.lsp4j" name="org.eclipse.lsp4j" rev="1.0.0" conf="compile-&gt;default(compile)"/>
+        <dependency org="org.eclipse.lsp4j" name="org.eclipse.lsp4j.jsonrpc" rev="1.0.0" conf="compile-&gt;default(compile)"/>
+        <dependency org="com.google.code.gson" name="gson" rev="2.11.0" conf="compile-&gt;default(compile)"/>
+    </dependencies>
+</ivy-module>
