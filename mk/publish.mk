@@ -88,6 +88,11 @@ P_DIRECTIVES := $(PUB_GROUP):scala3-directives-parser_3:$(VERSION)
 P_REPL       := $(PUB_GROUP):scala3-repl_3:$(VERSION)
 P_SJSSCALA   := $(PUB_GROUP):scalajs-scalalib_2.13:$(VERSION)
 P_SJS3LIB    := $(PUB_GROUP):scala3-library_sjs1_3:$(VERSION)
+# The supplementary library, as the standard library's companion (below): only on
+# trees that carry it, so the dependency is empty — `join_deps` drops it — elsewhere.
+# Recursively expanded (`=`): $(HAS_PROSCALA_LIB) is defined after this file is read.
+P_PROSCALA_LIB     = $(if $(HAS_PROSCALA_LIB),$(PUB_GROUP):proscala-library_3:$(VERSION))
+P_PROSCALA_SJS_LIB = $(if $(HAS_PROSCALA_LIB),$(PUB_GROUP):proscala-library_sjs1_3:$(VERSION))
 
 # Only when the tree carries the module — mirrors $(HAS_DIRECTIVES) in the
 # Makefile, which is what decides whether the jar is built at all.
@@ -96,12 +101,17 @@ DIRECTIVES_DEP := $(if $(HAS_DIRECTIVES),$(P_DIRECTIVES))
 # The supplementary library — the fork's standard-library additions, for the JVM,
 # Scala.js and (when the tree has Native artifacts to build against) Scala
 # Native — only on trees that carry library-proscala/src (see the Makefile's
-# $(HAS_PROSCALA_LIB)). Consumers add it beside a scala3-library; it is not a
-# dependency of any other module here, since the compiler finds its classes by
-# name.
+# $(HAS_PROSCALA_LIB)). The compiler finds its classes by name, but a consumer's
+# build does not: the JVM and Scala.js builds are declared as dependencies of the
+# standard library they extend (`scala-library` and `scala3-library_sjs1_3`), so
+# that resolving the standard library brings the additions along, and they
+# themselves declare no dependencies, which would close a cycle. (This is the
+# graph Soundness used to synthesise for the fork, and what crux reads now.) The
+# Native build's standard library is stock Scala Native's, whose POM is not ours
+# to extend, so a Native consumer still adds it beside the stdlib.
 PUB_PROSCALA_LIB = $(if $(HAS_PROSCALA_LIB),\
-  proscala-library_3|proscala-library.jar|library-proscala/src|$(P_SCALA3LIB) \
-  proscala-library_sjs1_3|proscala-library_sjs1.jar|library-proscala/src|$(call join_deps,$(P_SCALA3LIB) $(P_SJS3LIB)) \
+  proscala-library_3|proscala-library.jar|library-proscala/src|- \
+  proscala-library_sjs1_3|proscala-library_sjs1.jar|library-proscala/src|- \
   $(if $(SN_SCALA_VERSION),proscala-library_native0.5_3|proscala-library_native0.5.jar|library-proscala/src|$(call join_deps,$(P_SCALA3LIB) $(D_SN_SCALA3LIB))))
 
 # tasty-core for the other two platforms (Makefile steps 12c and 12d), named as
@@ -163,7 +173,7 @@ else
 endif
 
 PUB_TABLE := \
-  scala-library|scala-library.jar|library/src|- \
+  scala-library|scala-library.jar|library/src|$(if $(P_PROSCALA_LIB),$(P_PROSCALA_LIB),-) \
   scala3-library_3|scala3-library.jar|-|$(P_SCALALIB) \
   scala3-interfaces|scala3-interfaces.jar|interfaces/src|- \
   tasty-core_3|tasty-core.jar|tasty/src|$(P_SCALALIB) \
@@ -176,7 +186,7 @@ PUB_TABLE := \
   scala3-presentation-compiler_3|scala3-presentation-compiler.jar|presentation-compiler/src|$(call join_deps,$(P_COMPILER) $(DIRECTIVES_DEP) $(D_LZ4) $(D_COURSIER) $(D_MTAGS) $(D_GUAVA) $(D_LSP4J)) \
   scalajs-scalalib_2.13|scalajs-scalalib_2.13.jar|library-js/src,library/src|$(D_SJSJAVA) \
   $(PUB_SJSLIB) \
-  scala3-library_sjs1_3|scala3-library_sjs1.jar|-|$(call join_deps,$(P_SCALALIB) $(SJS_LIB_DEP) $(P_SJSSCALA)) \
+  scala3-library_sjs1_3|scala3-library_sjs1.jar|-|$(call join_deps,$(P_SCALALIB) $(SJS_LIB_DEP) $(P_SJSSCALA) $(P_PROSCALA_SJS_LIB)) \
   $(PUB_TASTY_CROSS) \
   $(PUB_PROSCALA_LIB)
 
