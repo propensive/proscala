@@ -196,6 +196,14 @@ jobs:
             --title "Proscala ${{ needs.plan.outputs.version }}" --notes-file notes.md \
             built/*
 
+      # The descriptors crux (propensive/crux) reads when it uses this release as an Ivy-pattern
+      # repository — one per loose jar, derived from the POMs — go to the `ivy` branch, once the
+      # release they describe exists.
+      - name: Publish the descriptors to the ivy branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./etc/ivy-publish.sh built
+
   # A release that was not published leaves no tag behind. `always()` so that
   # this runs after a failure; the guards so that it runs only for a real
   # Proscala release tag (not a dry run, not a tag off main) that did not get
