@@ -97,7 +97,7 @@ content for the better, not their nature.
 
 ## The `-Z` flags
 
-Fourteen features are enabled by name with `-Z<name>` (`-Zunion-captures`, say; a bare `-Z` lists them)
+Sixteen features are enabled by name with `-Z<name>` (`-Zunion-captures`, say; a bare `-Z` lists them)
 ([zflags](zflags/zflags.md) has the mechanism and the full table); with a
 name absent, the compiler runs upstream's code at every site the feature
 touches. What matters for compatibility is the *scope* of each flag's effect,
@@ -108,7 +108,9 @@ no artifact records whether the flag was on. `semantic-diagnostics` and
 `diagnostic-givens` change only what is printed; `inline-source-maps`
 changes only the debug attribute described above; `given-prefixes` only
 rejects code (a leak of an opaque type's representation) that vanilla
-accepts. Each module chooses these freely.
+accepts; `isolated-macros` changes only which class loader a macro's
+dependencies are resolved through while it expands. Each module chooses
+these freely.
 
 **Recorded in the module's own artifacts, but complete there.**
 `literate-literals` and `spreadable-varargs` change how a literal or a
@@ -203,6 +205,11 @@ code a vanilla compiler accepts.
   pre-3.9.0-RC5 widened type for inline argument proxies, deliberately
   giving up upstream's more precise dependent-inline results under capture
   checking until the interaction is fixed properly.
+- **[macroloader](macroloader/macroloader.md)** (`-Zisolated-macros`) resolves
+  a macro's classes from the compilation classpath rather than the compiler's
+  own class loader, so a macro can no longer reach a class that is only on the
+  compiler's classpath (jline, guava, `xsbti`, …) without declaring it. Vanilla
+  lets such a macro expand by accident of what the compiler happens to bundle.
 - **[modulepath](modulepath/modulepath.md)** gives a module's inline
   accessor a `TermRef` result where vanilla 3.10 pickles a `TypeRef`; the
   two erase identically, so classfiles agree and only the pickled

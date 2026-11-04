@@ -20,9 +20,9 @@ Proscala-Patch: zflags
 ---
  .../dotty/tools/dotc/config/CliCommand.scala  |  6 +-
  .../tools/dotc/config/CompilerCommand.scala   |  3 +-
- .../dotty/tools/dotc/config/Proscala.scala    | 59 +++++++++++++++++++
+ .../dotty/tools/dotc/config/Proscala.scala    | 61 +++++++++++++++++++
  .../tools/dotc/config/ScalaSettings.scala     | 17 +++++-
- 4 files changed, 82 insertions(+), 3 deletions(-)
+ 4 files changed, 84 insertions(+), 3 deletions(-)
  create mode 100644 compiler/src/dotty/tools/dotc/config/Proscala.scala
 
 diff --git a/compiler/src/dotty/tools/dotc/config/CliCommand.scala b/compiler/src/dotty/tools/dotc/config/CliCommand.scala
@@ -77,10 +77,10 @@ index 3ad1585812b3435891e55720b0e085118e99833c..727872eea5e19f649ec9b862fcc347b3
      allSettings.exists(isHelping) || flags.exists(_.value)
 diff --git a/compiler/src/dotty/tools/dotc/config/Proscala.scala b/compiler/src/dotty/tools/dotc/config/Proscala.scala
 new file mode 100644
-index 0000000000000000000000000000000000000000..1de57242fe90a83c15cbbdb85839680dbee4b7ed
+index 0000000000000000000000000000000000000000..27b69ea3e5de4333883cf9963a8c2ed5cbd209eb
 --- /dev/null
 +++ b/compiler/src/dotty/tools/dotc/config/Proscala.scala
-@@ -0,0 +1,59 @@
+@@ -0,0 +1,61 @@
 +package dotty.tools.dotc
 +package config
 +
@@ -110,6 +110,8 @@ index 0000000000000000000000000000000000000000..1de57242fe90a83c15cbbdb85839680d
 +      "Seal package-object prefixes on implicit candidates, so a top-level given cannot leak an opaque type's representation.")
 +    case InlineSourceMaps extends Feature("inline-source-maps", "smap",
 +      "Emit JSR-45 SourceDebugExtension (SMAP) attributes mapping inlined code back to its source files.")
++    case IsolatedMacros extends Feature("isolated-macros", "macroloader",
++      "Resolve a macro's classes from the compilation classpath, sharing only scala.* and dotty.* with the compiler's own class loader.")
 +    case LiterateLiterals extends Feature("literate-literals", "literate",
 +      "Re-type literals through a scala.Literate instance in scope.")
 +    case OpaqueMutability extends Feature("opaque-mutability", "iarraypure-mutalias",

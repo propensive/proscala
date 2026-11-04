@@ -70,6 +70,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [lazycycle](lazycycle/lazycycle.md) | Guard against cyclic LazyRef graphs in capture-checking Setup | 3.9, 3.10 | bug fix (crash) | FIXME (not triggered by current Soundness) | always on |
 | [literate](literate/literate.md) | Re-type literals through a `Literate` instance in scope | 3.9, 3.10 | feature | yes | `-Zliterate-literals` |
 | [macroalias](macroalias/macroalias.md) | Strip ordinary aliases when the macro-expansion check reveals opaques | — | bug fix | yes | always on |
+| [macroloader](macroloader/macroloader.md) | Resolve a macro's classes from the compilation classpath, not the compiler's host | 3.9, 3.10 | bug fix | yes | `-Zisolated-macros` |
 | [macrosingleton](macrosingleton/macrosingleton.md) | Reveal an opaque type behind a singleton in the macro-expansion check | 3.10 | bug fix | yes | always on |
 | [modulepath](modulepath/modulepath.md) | Give an inline accessor for a module the module's `TermRef` | 3.10 | bug fix | yes | always on |
 | [nullreceiver](nullreceiver/nullreceiver.md) | Widen bottom-typed call receivers to Object in the backend | 3.9 | bug fix (crash) | yes | always on |
