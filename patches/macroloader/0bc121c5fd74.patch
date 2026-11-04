@@ -1,0 +1,73 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Wed, 4 Nov 2026 09:09:33 +0100
+Subject: Resolve a macro's classes from the compilation classpath, not the
+ compiler's host
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The macro class loader is a URLClassLoader over the compilation classpath
+whose parent is the loader that loaded the compiler. A host that embeds the
+compiler beside its own libraries therefore shadows the session classpath:
+parent-first delegation resolves every class the host also carries from the
+host's copy, and a macro from the session is linked against the host's
+versions of its dependencies, failing with NoSuchMethodError or the like
+whenever they differ.
+
+Under -Zisolated-macros the parent is an IsolatingLoader instead, which
+delegates to the compiler's loader only the names a macro must share with
+the compiler — the standard library and quotes API (scala.) and the compiler
+itself (dotty.) — and sends everything else to the platform class loader, so
+that any other class is found on the compilation classpath, as in a
+standalone scalac. Resources are routed the same way, since the macro loader
+is also the thread's context class loader while a macro runs.
+
+Proscala-Patch: macroloader
+---
+ .../tools/dotc/core/MacroClassLoader.scala    | 26 ++++++++++++++++++-
+ 1 file changed, 25 insertions(+), 1 deletion(-)
+
+diff --git a/compiler/src/dotty/tools/dotc/core/MacroClassLoader.scala b/compiler/src/dotty/tools/dotc/core/MacroClassLoader.scala
+index dc68c9e11bb7f7e4c0ac5de38392069ac94e1fe9..bb642adc80d757976416c32b3cd295073a638ce5 100644
+--- a/compiler/src/dotty/tools/dotc/core/MacroClassLoader.scala
++++ b/compiler/src/dotty/tools/dotc/core/MacroClassLoader.scala
+@@ -5,6 +5,7 @@ import dotty.tools.dotc.core.Mode
+ import dotty.tools.dotc.util.Property
+ import dotty.tools.dotc.reporting.trace
+ import dotty.tools.io.ClassPath
++import dotty.tools.dotc.config.Proscala
+ 
+ object MacroClassLoader {
+ 
+@@ -39,6 +40,29 @@ object MacroClassLoader {
+       else
+         settingsUrls
+     val out = Option(ctx.settings.outputDir.value.toURL) // to find classes in case of suspended compilation
+-    new java.net.URLClassLoader((urls ++ out.toList).toArray, getClass.getClassLoader)
++    val parent =
++      if Proscala.enabled(Proscala.IsolatedMacros) then IsolatingLoader(getClass.getClassLoader)
++      else getClass.getClassLoader
++    new java.net.URLClassLoader((urls ++ out.toList).toArray, parent)
++  }
++
++  /** Shares with the compiler's own class loader only what a macro must share with it — the
++   *  standard library and quotes API (`scala.`) and the compiler itself (`dotty.`) — and sends
++   *  every other name to the platform class loader, so that a macro's dependencies are found on
++   *  the compilation classpath (through the child loader) even when the host embedding the
++   *  compiler carries other versions of them.
++   */
++  private class IsolatingLoader(compiler: ClassLoader) extends ClassLoader(ClassLoader.getPlatformClassLoader) {
++    private def shared(name: String, sep: Char): Boolean =
++      name.startsWith(s"scala$sep") || name.startsWith(s"dotty$sep")
++
++    override def loadClass(name: String, resolve: Boolean): Class[?] =
++      if shared(name, '.') then compiler.loadClass(name) else super.loadClass(name, resolve)
++
++    override def getResource(name: String): java.net.URL | Null =
++      if shared(name, '/') then compiler.getResource(name) else super.getResource(name)
++
++    override def getResources(name: String): java.util.Enumeration[java.net.URL] =
++      if shared(name, '/') then compiler.getResources(name) else super.getResources(name)
+   }
+ }

@@ -65,10 +65,12 @@ The names, one per gated patch:
 | Setting | Patch | Enables |
 | --- | --- | --- |
 | `-Zalias-captures` | [aliascap](../aliascap/aliascap.md) | root capabilities stay global in type alias infos |
+| `-Zcheck-inlined-closures` | [inlinedclosures](../inlinedclosures/inlinedclosures.md) | bodies of closures inlined from compiled code capture-checked |
 | `-Zdiagnostic-givens` | [searchdiag](../searchdiag/searchdiag.md) | an `@internal.diagnostic` given's errors become the search-failure message |
 | `-Zfrozen-pure` | [frozenpure](../frozenpure/frozenpure.md) | a stateful type with an explicit empty capture set classified as pure |
 | `-Zgiven-prefixes` | [givenprefix](../givenprefix/givenprefix.md) | package-object prefixes sealed on implicit candidates |
 | `-Zinline-source-maps` | [smap](../smap/smap.md) | JSR-45 SMAP attributes for inlined code |
+| `-Zisolated-macros` | [macroloader](../macroloader/macroloader.md) | a macro's classes resolved from the compilation classpath, not the compiler's host |
 | `-Zliterate-literals` | [literate](../literate/literate.md) | literals re-typed through `Literate` instances |
 | `-Zopaque-mutability` | [iarraypure-mutalias](../iarraypure-mutalias/iarraypure-mutalias.md) | opaque aliases over mutable types classified as mutable |
 | `-Zpure-iarrays` | [iarraypure](../iarraypure/iarraypure.md) | `IArray` treated as pure |
