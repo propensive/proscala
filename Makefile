@@ -17,6 +17,9 @@ MTAGS_VERSION      := 1.6.7
 LSP4J_VERSION      := 1.0.0
 GSON_VERSION       := 2.11.0
 JAVA_TARGET        := 17
+# Scala Native: the version of the nscplugin and runtime jars (below) that the
+# Native variants of tasty-core and proscala-library are compiled against.
+SN_VERSION         := 0.5.12
 
 # ---- Directories -------------------------------------------------------------
 # Build artefacts and the release tree are laid out per tree, under a name
@@ -116,6 +119,20 @@ else
   SCALAJS_GROUP   := io/github/scala-wasm
 endif
 
+# ---- Scala Native --------------------------------------------------------------
+# tasty-core and proscala-library are also compiled to NIR, by the stock nscplugin,
+# against the stock Native stdlib. The plugin is built against one compiler's
+# internals and published only for released Scala versions, so SN_SCALA_VERSION
+# (mk/<stream>.mk, or mk/target.mk from bin/proscala-buildconf) names the Scala
+# version whose Native artifacts this tree's compiler can run — and is empty
+# where there is none, which disables the Native variants entirely. The
+# `+`-joined stdlib version is Scala Native's own convention.
+SN_NATIVE_LIBS := javalib auxlib clib posixlib nativelib
+SN_MAVEN_PATHS := $(if $(SN_SCALA_VERSION), \
+  org/scala-native/nscplugin_$(SN_SCALA_VERSION)/$(SN_VERSION)/nscplugin_$(SN_SCALA_VERSION)-$(SN_VERSION).jar \
+  org/scala-native/scala3lib_native0.5_3/$(SN_SCALA_VERSION)+$(SN_VERSION)/scala3lib_native0.5_3-$(SN_SCALA_VERSION)+$(SN_VERSION).jar \
+  $(foreach n,$(SN_NATIVE_LIBS),org/scala-native/$(n)_native0.5_3/$(SN_VERSION)/$(n)_native0.5_3-$(SN_VERSION).jar))
+
 WIT_TOOLCHAIN_PATHS := $(if $(WIT_SRC), \
   org/scala-lang/scala-compiler/$(SCALA2_VERSION)/scala-compiler-$(SCALA2_VERSION).jar \
   org/scala-lang/scala-reflect/$(SCALA2_VERSION)/scala-reflect-$(SCALA2_VERSION).jar \
@@ -125,7 +142,7 @@ WIT_TOOLCHAIN_PATHS := $(if $(WIT_SRC), \
 # ==============================================================================
 # Dependencies (downloaded from Maven Central, cached under .build/jars)
 # ==============================================================================
-MAVEN_PATHS := $(EXTRA_MAVEN_PATHS) $(WIT_TOOLCHAIN_PATHS) $(TREE_ASM_MAVEN_PATHS) \
+MAVEN_PATHS := $(EXTRA_MAVEN_PATHS) $(WIT_TOOLCHAIN_PATHS) $(TREE_ASM_MAVEN_PATHS) $(SN_MAVEN_PATHS) \
   org/scala-lang/scala3-compiler_3/$(REF_VERSION)/scala3-compiler_3-$(REF_VERSION).jar \
   org/scala-lang/scala3-library_3/$(REF_VERSION)/scala3-library_3-$(REF_VERSION).jar \
   org/scala-lang/scala-library/$(REF_VERSION)/scala-library-$(REF_VERSION).jar \
@@ -206,6 +223,11 @@ LSP4J_JARS         := $(JARS)/org.eclipse.lsp4j-$(LSP4J_VERSION).jar \
                       $(JARS)/gson-$(GSON_VERSION).jar
 SJS_LIBRARY_JAR    := $(JARS)/scalajs-library_2.13-$(SCALAJS_VERSION).jar
 SJS_JAVALIB_JAR    := $(JARS)/scalajs-javalib-$(SCALAJS_VERSION).jar
+# Scala Native (empty unless SN_SCALA_VERSION is set, see above)
+NSCPLUGIN_JAR      := $(if $(SN_SCALA_VERSION),$(JARS)/nscplugin_$(SN_SCALA_VERSION)-$(SN_VERSION).jar)
+SN_RUNTIME_JARS    := $(if $(SN_SCALA_VERSION),\
+  $(JARS)/scala3lib_native0.5_3-$(SN_SCALA_VERSION)+$(SN_VERSION).jar \
+  $(foreach n,$(SN_NATIVE_LIBS),$(JARS)/$(n)_native0.5_3-$(SN_VERSION).jar))
 
 .PHONY: check-ref
 check-ref: deps
@@ -326,7 +348,8 @@ $(SCALA3_LIB_JAR): $(DEPS_STAMP)
 	$(call jar_module,scala3-library,$@,org.scala.lang.scala3.library)
 
 # ---- 4. tasty-core ------------------------------------------------------------
-$(TASTY_JAR): $(COMMON_ARGS) $(SCALA_LIB_JAR) $(shell find tasty/src -name '*.scala')
+TASTY_SRC := $(shell find tasty/src -name '*.scala' -type f)
+$(TASTY_JAR): $(COMMON_ARGS) $(SCALA_LIB_JAR) $(TASTY_SRC)
 	@echo ">> tasty-core"
 	$(call scalac_with,$(REFC),tasty-core,$(SCALA_LIB_JAR),tasty/src)
 	$(call jar_module,tasty-core,$@,org.scala.lang.tasty.core)
@@ -538,6 +561,47 @@ $(SJS_LIB_SHIP): $(SJS_LIBRARY_JAR) $(SJS_JAVALIB_JAR) $(SCALA2_COMPILER) $(SCAL
 	cd $(GEN)/wit/out && jar uf $@ $$(find scala/scalajs/wit \( -name 'package*.class' -o -name 'package*.sjsir' \) -type f)
 endif
 
+# ---- 12c. tasty-core for Scala.js and Scala Native ----------------------------
+# The TASTy reader (tasty/src) has no platform-specific source, so it is compiled
+# for the other two platforms as proscala-library is in 12a — typed against the
+# JVM scala-library's TASTy plus the platform's own stdlib — so that a tool
+# reading TASTy can be cross-compiled without depending on the compiler. On a
+# WASM tree the Scala.js library must be the wit-baked one from 12b: the WASM
+# backend's lowering reaches for `scala.scalajs.wit.witImportCall`, which the
+# downloaded library lacks (a crash in genSJSIR). The Native variant goes through
+# the stock nscplugin (12d), hence STAGEC: the plugin runs only on the compiler
+# version it was built against, which the reference compiler is not.
+SJS_TYPING_LIB := $(if $(WIT_SRC),$(SJS_LIB_SHIP),$(SJS_LIBRARY_JAR))
+TASTY_SJS_JAR  := $(LIB)/tasty-core_sjs1.jar
+$(TASTY_SJS_JAR): $(COMMON_ARGS) $(STAGE_JARS) $(SJS_TYPING_LIB) $(SJS_JAVALIB_JAR) $(TASTY_SRC)
+	@echo ">> tasty-core-sjs"
+	$(call scalac_with,$(STAGEC) -scalajs,tasty-core-sjs,$(call cpjoin,$(SCALA_LIB_JAR) $(SJS_TYPING_LIB) $(SJS_JAVALIB_JAR)),tasty/src)
+	$(call jar_module,tasty-core-sjs,$@,org.scala.lang.tasty.core.sjs1)
+
+# ---- 12d. Scala Native: tasty-core and proscala-library -----------------------
+# Only when SN_SCALA_VERSION names published Native artifacts (see the Scala
+# Native section above). The jars keep .class, .tasty and .nir, like any Scala
+# Native Scala 3 artifact; the runtime jars are compile-time only and are not
+# shipped — a consumer resolves them from Maven Central at $(SN_VERSION).
+ifneq ($(SN_SCALA_VERSION),)
+SN_CP := $(call cpjoin,$(SCALA_LIB_JAR) $(SN_RUNTIME_JARS))
+STAGEC_NATIVE := $(STAGEC) -Xplugin:$(NSCPLUGIN_JAR)
+
+TASTY_NATIVE_JAR := $(LIB)/tasty-core_native0.5.jar
+$(TASTY_NATIVE_JAR): $(COMMON_ARGS) $(STAGE_JARS) $(NSCPLUGIN_JAR) $(SN_RUNTIME_JARS) $(TASTY_SRC)
+	@echo ">> tasty-core-native"
+	$(call scalac_with,$(STAGEC_NATIVE),tasty-core-native,$(SN_CP),tasty/src)
+	$(call jar_module,tasty-core-native,$@,org.scala.lang.tasty.core.native)
+
+ifneq ($(HAS_PROSCALA_LIB),)
+PROSCALA_NATIVE_LIB_JAR := $(LIB)/proscala-library_native0.5.jar
+$(PROSCALA_NATIVE_LIB_JAR): $(COMMON_ARGS) $(STAGE_JARS) $(NSCPLUGIN_JAR) $(SN_RUNTIME_JARS) $(PROSCALA_LIB_SRC)
+	@echo ">> proscala-library-native"
+	$(call scalac_with,$(STAGEC_NATIVE),proscala-library-native,$(SN_CP),library-proscala/src)
+	$(call jar_module,proscala-library-native,$@,dev.propensive.proscala.library.native)
+endif
+endif
+
 # ---- 13. scala3-presentation-compiler ----------------------------------------
 # Generates dotty.tools.pc.buildinfo.BuildInfo and compiles the shaded
 # mtags-shared sources (protobuf remap + unsafe-nulls, per project/Shading.scala)
@@ -572,7 +636,8 @@ $(PC_JAR): $(COMMON_ARGS) $(STAGE_JARS) $(DEPS_STAMP) $(shell find presentation-
 STAGE1_JARS := $(INTERFACES_JAR) $(SCALA_LIB_JAR) $(SCALA3_LIB_JAR) $(TASTY_JAR) \
                $(DIRECTIVES_JAR) $(COMPILER_JAR)
 STAGE2_JARS := $(STAGING_JAR) $(TASTY_INSPECTOR_JAR) $(REPL_JAR) $(SBT_BRIDGE_JAR)
-EXTRA_JARS  := $(SJS_SCALALIB_JAR) $(SJS3_LIB_JAR) $(PC_JAR) $(PROSCALA_LIB_JAR) $(PROSCALA_SJS_LIB_JAR)
+EXTRA_JARS  := $(SJS_SCALALIB_JAR) $(SJS3_LIB_JAR) $(PC_JAR) $(PROSCALA_LIB_JAR) $(PROSCALA_SJS_LIB_JAR) \
+               $(TASTY_SJS_JAR) $(TASTY_NATIVE_JAR) $(PROSCALA_NATIVE_LIB_JAR)
 
 .PHONY: stage1
 stage1: $(STAGE1_JARS)

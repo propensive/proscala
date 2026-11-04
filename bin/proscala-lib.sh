@@ -465,9 +465,3 @@ release_targets() {
 
 # artifact_version <scala version> <proscala version>
 artifact_version() { printf '%s-pro-%s\n' "$1" "$2"; }
-
-# release_tag_targets <tag> — the targets a release tag was cut for, from its
-# annotation: "<spec> <commit> <artifact version>" lines
-release_tag_targets() {
-  g tag -l --format='%(contents)' "$1" | awk '$1 == "target" { print $2, $3, $4 }'
-}

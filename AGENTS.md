@@ -181,8 +181,8 @@ new versions once their changes are confirmed identical.
 
 The bounds give the streams different patch sets:
 
-    stream 3.9    40 patches   carries castbox, depset, splicealias, samstateful, staleread, virtualdir
-    stream 3.10   47 patches   adds anonascribe, anonspec, anykindcap, boolunapply, closurerecheck, definefurther, exportuses, implicitparts, inlinedclosures, integratemap, macrosingleton, modulepath, prunecomplete, proxycap, refinealias, unioncaps; drops those six, and nullreceiver, permitlazy and rootclassify (fixed upstream); macroalias applies to 3.10.0 only
+    stream 3.9    42 patches   carries castbox, depset, splicealias, samstateful, staleread, virtualdir
+    stream 3.10   49 patches   adds anonascribe, anonspec, anykindcap, boolunapply, closurerecheck, definefurther, exportuses, implicitparts, inlinedclosures, integratemap, macrosingleton, modulepath, prunecomplete, proxycap, refinealias, unioncaps; drops those six, and nullreceiver, permitlazy and rootclassify (fixed upstream); macroalias applies to 3.10.0 only
 
 (The counts exclude `zflags`.)
 
@@ -201,7 +201,7 @@ copies are checked against it**:
 | which patches a stream carries | the bounds, at the stream's `UPSTREAM_SHA` |
 | which `scala/scala3` commit a stream is built on | `UPSTREAM_SHA` in `mk/<stream>.mk` |
 | which `scala/scala3` branch that commit is from | `UPSTREAM_REF` in `mk/<stream>.mk` |
-| what a release is built for | the release tag's annotation (from `bin/proscala-release`) |
+| what a release is built for | `targets.txt` on the GitHub release (resolved by the Release workflow) |
 | whether a patch has a reproduction | the filesystem, `doc/<patch>/repro*/` |
 | which `-Z` name enables a patch | `config.Proscala`, as each stream builds it |
 
@@ -302,9 +302,10 @@ directory name:
 
 - `release/<name>/lib/`  — **the published jars**: everything we build (compiler,
   stdlib, tasty-core, repl, staging, tasty-inspector, sbt-bridge,
-  presentation-compiler, our Scala.js libraries, the supplementary
-  proscala-library for the JVM and Scala.js, …) plus the Scala.js / scala-wasm
-  runtime jars, so a downloaded release can run Scala.js / WASM output
+  presentation-compiler, our Scala.js libraries, tasty-core and the
+  supplementary proscala-library for Scala.js and Scala Native too, …) plus
+  the Scala.js / scala-wasm runtime jars, so a downloaded release can run
+  Scala.js / WASM output
 - `release/<name>/deps/` — the remaining third-party runtime jars (jline, guava,
   lsp4j, …), needed to run the compiler locally but not published
 - `release/<name>/bin/`  — `scalac` / `scala` launchers whose classpath spans
@@ -529,9 +530,10 @@ patches, is a patch release: 1.0.1 is 1.0.0's features on more Scala versions.
 
 ### Releases
 
-    bin/proscala-release 1.0.1 --targets    # what it would be built for
+    git tag 1.0.1 && git push origin 1.0.1  # a release: the tag is the trigger
+    bin/proscala-release 1.0.1              # the same, after making the checks here first
     bin/proscala-release 1.0.1 --dry-run    # check everything, and say what it would do
-    bin/proscala-release 1.0.1              # tag HEAD 1.0.1 and push the tag
+    bin/proscala-release 1.0.1 --targets    # what it would be built for
 
 A release is a **tag `<x.y.z>` on `main`**, a plain version as for every
 Propensive project, built for every `scala/scala3` final release `3.<y>.<z>` with
@@ -560,28 +562,38 @@ way (all tested with sbt 1.11). So a project uses Proscala 1.0.0 on Scala 3.10.0
 with `scalaOrganization := "dev.propensive"` and
 `scalaVersion := "3.10.0-pro-1.0.0"`.
 
-`bin/proscala-release <x.y.z>` refuses unless `HEAD` is `origin/main`, nothing
-tracked is uncommitted, `bin/proscala-check` passes, the version is greater than
-every earlier release, and every target gets every patch it should (no gaps:
-`bin/proscala-coverage`). It writes the exact upstream commit of every target
-into the tag's annotation (`target <spec> <commit> <version>` lines), so the
-release builds what was checked even after `main` has moved on, then pushes the
-tag. That runs `.github/workflows/release.yml`:
+**Pushing the tag is the whole procedure.** It runs
+`.github/workflows/release.yml`:
 
-1. **plan** reads the targets from the tag.
+1. **plan** checks that the tag is on `main` (any other tag is ignored) and runs
+   `bin/proscala-release <x.y.z> --verify` on the tagged commit: the version must
+   be greater than every earlier release, `bin/proscala-check` must pass, and
+   every target must get every patch it should (no gaps: `bin/proscala-coverage`).
+   It resolves the targets — the snapshot branches as they are at that moment.
 2. **build**, for every target in parallel: builds the tree for the target's
    commit with `bin/proscala-tree`, and the release artefacts in it, cleanly
    (`make … tarball release-jars maven-repo`; see *What a release contains*),
    then tests the patches against it (`bin/proscala-test`). Nothing leaves the
    runner yet.
 3. **publish**, only once every target has built: creates the GitHub release
-   `<x.y.z>`, with every target's tarball, jars and Maven repository, and notes
-   listing each target's upstream commit and `scalaVersion` and how to use them.
+   `<x.y.z>`, with every target's tarball, jars and Maven repository, a
+   `targets.txt` naming the upstream commit each was built from
+   (`<spec> <commit> <version>` lines — the record of what a release is built
+   for), and notes listing each target's `scalaVersion` and how to use them.
+4. **untag**, if anything failed before the release was created: deletes the
+   tag, so that the same version can be pushed again once `main` is fixed. A
+   version means the bytes of a *published* release; a tag whose release never
+   existed means nothing, and is the one thing ever deleted from `origin`. If a
+   GitHub release exists despite the failure, the tag is kept and the job fails,
+   for a person to look at.
 
-So a release publishes for all its targets or for none. Run by hand from the
-Actions tab (`workflow_dispatch`, giving a version), the same workflow is a dry
-run: it plans and builds every target and publishes nothing. Only a tag releases,
-so editing `release.yml` never cuts a release.
+So a release publishes for all its targets or for none. `bin/proscala-release
+<x.y.z>` makes the same checks locally, for a fast answer, then tags and
+pushes; it refuses unless `HEAD` is `origin/main` and nothing tracked is
+uncommitted. Run by hand from the Actions tab (`workflow_dispatch`, giving a
+version), the workflow is a dry run: it plans and builds every target and
+publishes nothing. Only a tag releases, so editing `release.yml` never cuts a
+release.
 
 The streams (`mk/<stream>.mk`) no longer release: they are development pins,
 with hand-tested build configs. Releases before 1.0.0 were made per stream, as
@@ -615,23 +627,29 @@ excludeDependencies += "dev.propensive" % "scaladoc_3"   // no scaladoc is built
 scalaCompilerBridgeBinaryJar := Some(proscala / s"dev/propensive/scala3-sbt-bridge/${scalaVersion.value}/scala3-sbt-bridge-${scalaVersion.value}.jar")
 ```
 
-Fifteen artifacts are in each repository, under the group `dev.propensive`, at
-the target's version (`<scala version>-pro-<x.y.z>`). Thirteen carry **the same artifact names as the mainline
+Sixteen artifacts are in each repository, under the group `dev.propensive`, at
+the target's version (`<scala version>-pro-<x.y.z>`). Fourteen carry **the same artifact names as the mainline
 Scala releases**: `scala-library`, `scala3-library_3`, `scala3-interfaces`,
-`tasty-core_3`, `scala3-compiler_3`, `scala3-directives-parser_3`,
+`tasty-core_3`, `tasty-core_sjs1_3`, `scala3-compiler_3`, `scala3-directives-parser_3`,
 `scala3-staging_3`, `scala3-tasty-inspector_3`, `scala3-repl_3`,
 `scala3-sbt-bridge`, `scala3-presentation-compiler_3`, `scalajs-scalalib_2.13` and
 `scala3-library_sjs1_3`; matching the mainline names is what lets sbt's
 `scalaOrganization := "dev.propensive"` swap the fork in wholesale. Two are the
 fork's own: `proscala-library_3` and `proscala-library_sjs1_3`, the
 **supplementary library** holding the standard-library additions
-(`scala.Literate`, `scala.Spreadable`, `scala.annotation.internal.diagnostic`)
+(`scala.Literate`, `scala.Spreadable`, `scala.caps.SharedUnscoped`,
+`scala.annotation.internal.diagnostic`)
 from `library-proscala/src` in the tree (added by patches), built into their own jar so
 `scala-library` stays byte-identical to upstream's from the same sources.
 Consumers add it beside a `scala3-library`, and the compiler finds its classes
-by name, so nothing else depends on it. A WASM tree adds a sixteenth,
+by name, so nothing else depends on it. A WASM tree adds a seventeenth,
 `scalajs-library_2.13` — see below. Every release target from Scala.js 1.22.0
-on carries the `wasm` patch, so a release has sixteen for each.
+on carries the `wasm` patch, so a release has seventeen for each. A target
+whose Scala version Scala Native publishes an `nscplugin` for — every final
+release and RC, but no branch snapshot — adds two more, `tasty-core_native0.5_3`
+and `proscala-library_native0.5_3`: the same two modules compiled to NIR with
+that plugin, against the stock Native stdlib at the same version (see *The
+Scala Native artifacts*).
 
 Each artifact gets a POM and a sources jar, with md5/sha1 checksums. A GitHub
 release can be edited or deleted, but its tag should not be reused: a version,
@@ -642,6 +660,25 @@ compile classpaths use, so a version bump moves the POMs with it and there is no
 second copy to drift. It matches the graph Soundness already resolves the fork
 through (the `repo` task in its `build.mill`), plus the two modules Soundness
 does not use.
+
+#### The Scala Native artifacts
+
+`tasty-core` and `proscala-library` are the two modules a program that is not
+the compiler can want on a platform other than the JVM — a tool reading TASTy,
+and any code compiled by the fork (whose `ThrowTactic`-style capability
+classifiers extend `scala.caps.SharedUnscoped`) — so they, and only they, are
+built for Scala Native as well as Scala.js. There is no fork of Scala Native:
+the Makefile (steps 12c–12d) compiles the modules' unchanged sources with the
+stock `nscplugin` from Maven Central, typed against the fork's `scala-library`
+TASTy plus the stock `scala3lib_native0.5_3` and its runtime jars, which the
+published POMs depend on and consumers resolve from Central. That works because
+the fork is TASTy- and plugin-compatible with the upstream it is built on, but
+the plugin is compiled against one compiler's internals, so a tree only gets
+Native artifacts when a plugin exists for *its exact* Scala version:
+`SN_SCALA_VERSION` in `mk/target.mk` (set by `bin/proscala-buildconf`, which
+asks Central) is the tree's version or empty, and a stream's `mk/<stream>.mk`
+pins the nearest release by hand. Empty switches the two artifacts off; the
+Scala Native version itself is `SN_VERSION` in the Makefile.
 
 #### The Scala.js artifacts
 

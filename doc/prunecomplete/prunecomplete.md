@@ -105,3 +105,6 @@ that matters.
 First present in the 3.10 stream; 3.9 predates #26156 and needs no patch.
 Upstream candidate: the unguarded forcing bites any build that combines
 `-sourcepath` with macro suspension, independent of this fork.
+
+Upstream #27247 later deleted `PruneInlinedMethods` altogether, taking the
+unguarded forcing with it, so the patch is not carried on its descendants.

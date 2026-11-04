@@ -10,6 +10,11 @@ UPSTREAM_REF       := lts-3.9
 UPSTREAM_SHA       := 0bc121c5fd74a0340dc56e0739ebab40de3333a2
 REF_VERSION        := 3.8.4
 BASE_SCALAJS_VERSION    := 1.22.0
+# The Scala version whose stock Scala Native artifacts (nscplugin, scala3lib) the
+# Native variants of tasty-core and proscala-library are built with: the 3.9.0
+# release, whose plugin this stream's lts-3.9 compiler still runs (tested at
+# UPSTREAM_SHA). Empty disables the variants, as mk/3.10.mk does.
+SN_SCALA_VERSION   := 3.9.0
 COMPILER_IFACE_VER := 1.12.0
 UTIL_IFACE_VER     := 1.11.5
 JLINE_VERSION      := 4.0.14

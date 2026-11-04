@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 17 Oct 2026 10:25:51 +0200
+Subject: Make the synthetic jdk.internal.ValueBased annotation class permanent
+
+Under -release (ct.sym), jdk.internal.ValueBased is absent and upstream
+#27318 has Definitions.JdkInternalValueBasedAnnot synthesize a class symbol
+for it, which the classfile parser then attaches to every @ValueBased JDK
+class (Integer, Long, Optional, ...). Definitions is shared by every run of
+a compiler instance, but the symbol was created with newCompleteClassSymbol
+and never entered in its owner, so it is valid only in the run that made
+it: in the next run, any look at those classes' annotations -- the
+backend's isScalaStatic check when boxing, for one -- brings it forward,
+stillValid fails, and compilation crashes with a StaleSymbolException. A
+second run happens whenever a unit is suspended for a macro defined in the
+same compilation, and in the REPL. Building scala3-repl itself crashed this
+way in genBCode on Fansi.scala.
+
+Mark the symbol Permanent, as every other synthetic class in Definitions
+is (newPermanentClassSymbol, enterCompleteClassSymbol), so stillValid
+accepts it in every run. Upstream candidate.
+
+Developed with LLM assistance (Claude).
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: valuebased
+---
+ compiler/src/dotty/tools/dotc/core/Definitions.scala | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/compiler/src/dotty/tools/dotc/core/Definitions.scala b/compiler/src/dotty/tools/dotc/core/Definitions.scala
+index 2bac0cdea94b64f8009b7c0b58de3e6504f53148..c44e67dea154eab98a3c4371050b3769e6c7d684 100644
+--- a/compiler/src/dotty/tools/dotc/core/Definitions.scala
++++ b/compiler/src/dotty/tools/dotc/core/Definitions.scala
+@@ -1225,7 +1225,9 @@ class Definitions {
+   @tu lazy val JdkInternalValueBasedAnnot: Symbol = getClassIfDefined("jdk.internal.ValueBased").orElse {
+     val pkg = getPackageClassIfDefined("jdk.internal")
+     if pkg.exists then
+-      val flags = JavaDefined | JavaAnnotation | PureInterfaceCreationFlags | Abstract
++      // Permanent: `Definitions` outlives a run, and a symbol created here but entered
++      // nowhere is otherwise stale in the next run (compilation-suspension restarts, REPL).
++      val flags = JavaDefined | JavaAnnotation | PureInterfaceCreationFlags | Abstract | Permanent
+       completeClass(newCompleteClassSymbol(pkg, "ValueBased".toTypeName, flags, List(ObjectType, JavaAnnotationClass.typeRef), newScope))
+     else NoSymbol
+   }

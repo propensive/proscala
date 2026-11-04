@@ -1,0 +1,61 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Mon, 19 Oct 2026 10:32:47 +0200
+Subject: Render an escaped type error in the context it was raised in
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+A TypeError that escapes a run reaches Driver.doCompile, which renders it in
+its own context — the one the run was created from, whose run id is below the
+run's, and further below the suspended-units run that `finish` starts. A
+cyclic reference raised there names a symbol whose denotation is valid only in
+that later run, so `toMessage` fails the `bringForward` assertion ("denotation
+… invalid in run 1") and the compiler dies describing the error instead of
+reporting it. TypeError now exposes the context it was raised in, and
+doCompile renders in it whenever it is more recent than its own.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: cyclicctx
+---
+ compiler/src/dotty/tools/dotc/Driver.scala          | 6 +++++-
+ compiler/src/dotty/tools/dotc/core/TypeErrors.scala | 7 +++++++
+ 2 files changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/compiler/src/dotty/tools/dotc/Driver.scala b/compiler/src/dotty/tools/dotc/Driver.scala
+index 5de118ad6cf1a631386aa9be150bde0a65445cf0..adaf27fcc6a9369964aa704a842720b15d64543d 100644
+--- a/compiler/src/dotty/tools/dotc/Driver.scala
++++ b/compiler/src/dotty/tools/dotc/Driver.scala
+@@ -51,7 +51,11 @@ class Driver {
+           report.bestEffortError(ex, "Some best-effort tasty files were not able to be read.")
+           throw ex
+         case ex: TypeError if !runOrNull.enrichedErrorMessage =>
+-          println(runOrNull.enrichErrorMessage(s"${ex.toMessage} while compiling ${files.map(_.path).mkString(", ")}"))
++          // The error escaped the run it was raised in; this context predates that run (and a
++          // suspended-units run started by `finish` is later still), so a denotation it refers
++          // to is invalid here and rendering it would assert. Render it where it was raised.
++          val msg = ex.toMessage(using if ex.creationCtx.runId > ctx.runId then ex.creationCtx else ctx)
++          println(runOrNull.enrichErrorMessage(s"$msg while compiling ${files.map(_.path).mkString(", ")}"))
+           throw ex
+         case ex: Exception if !runOrNull.enrichedErrorMessage =>
+           println(runOrNull.enrichErrorMessage(s"Exception while compiling ${files.map(_.path).mkString(", ")}"))
+diff --git a/compiler/src/dotty/tools/dotc/core/TypeErrors.scala b/compiler/src/dotty/tools/dotc/core/TypeErrors.scala
+index 712e0bf70112e6706eb954522a1fef0bcea239a7..158d1b71037038522c914af4ce4faced30be4580 100644
+--- a/compiler/src/dotty/tools/dotc/core/TypeErrors.scala
++++ b/compiler/src/dotty/tools/dotc/core/TypeErrors.scala
+@@ -19,6 +19,13 @@ import collection.mutable
+ 
+ abstract class TypeError(using creationContext: Context) extends Exception(""):
+ 
++  /** The context this error was raised in. A handler that catches the error after the run it
++   *  was raised in has ended (as `Driver.doCompile` does) cannot render it in its own context:
++   *  a denotation created in that run is invalid in any earlier one, and `toMessage` would fail
++   *  an assertion in `bringForward` rather than show the message.
++   */
++  def creationCtx: Context = creationContext
++
+   /** Will the stack trace of this exception be filled in?
+    *  This is expensive and only useful for debugging purposes.
+    */

@@ -5,6 +5,7 @@
 # Usage:
 #   bin/proscala-release <x.y.z>               # check, tag HEAD <x.y.z>, push the tag
 #   bin/proscala-release <x.y.z> --dry-run     # check, and say what it would do
+#   bin/proscala-release <x.y.z> --verify      # the checks the Release workflow makes; print the targets
 #   bin/proscala-release <x.y.z> --targets     # print the targets only: "<spec> <commit> <version>"
 #
 # A Proscala version names a set of features (the patches, with their documented
@@ -17,15 +18,19 @@
 # 3.10.2-88be2f56a1103b0e-pro-1.0.0), with a full 3.x.y first, without which sbt
 # does not treat scalaVersion as Scala 3.
 #
-# The exact upstream commits are written into the tag's annotation, so the
-# release workflow builds what was checked here even after main has moved on.
-# Pushing the tag runs .github/workflows/release.yml, which builds every target
-# and, only when all have built, creates the GitHub release with every target's
-# artefacts. Releases go to GitHub Releases only.
+# The tag is the trigger: pushing a tag <x.y.z> on main runs
+# .github/workflows/release.yml, whose first job runs `--verify` on the tagged
+# commit — it must be on main, the version greater than every earlier release,
+# bin/proscala-check must pass, and every target must get every patch it should —
+# and resolves the targets. Only then are they built, and only once every target
+# has built is the GitHub release created, with every target's artefacts and a
+# targets.txt naming the upstream commit of each. A tag whose run fails before
+# anything is published is deleted by the workflow, so the same version can be
+# pushed again once main is fixed. Releases go to GitHub Releases only.
 #
-# It refuses unless HEAD is origin/main, the checkout has no uncommitted changes
-# to tracked files, bin/proscala-check passes, the version is greater than every
-# earlier release, and every target gets every patch it should.
+# Without options this command makes the same checks here, for a fast answer,
+# then tags and pushes; `git tag <x.y.z> && git push origin <x.y.z>` releases
+# just the same.
 
 set -euo pipefail
 PROSCALA_PROG=proscala-release
@@ -36,6 +41,7 @@ version="" mode=release
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) mode=dry; shift ;;
+    --verify)  mode=verify; shift ;;
     --targets) mode=targets; shift ;;
     -h|--help) sed -n '3,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*) die "unknown option $1" ;;
@@ -46,6 +52,9 @@ done
   || die "give the version to release, x.y.z (semantic versioning; see AGENTS.md, 'Versions')"
 cd "$PROSCALA_ROOT"
 
+# `--verify` is read by the workflow: the targets alone on stdout, everything else on stderr.
+if [ "$mode" = verify ]; then exec 3>&1 1>&2; fi
+
 targets="$(release_targets | while read -r spec sha sv; do echo "$spec $sha $(artifact_version "$sv" "$version")"; done)"
 if [ "$mode" = targets ]; then printf '%s\n' "$targets"; exit 0; fi
 
@@ -53,20 +62,29 @@ if [ "$mode" = targets ]; then printf '%s\n' "$targets"; exit 0; fi
 [ -z "$(git status --porcelain --untracked-files=no)" ] || die "the checkout has uncommitted changes"
 git fetch --quiet origin main
 if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
-  [ "$mode" = dry ] || die "HEAD is not origin/main; a release is cut from exactly what is on main"
-  warn "HEAD is not origin/main: a real release would refuse"
+  case "$mode" in
+    # The workflow checks out the tagged commit, which main may since have moved past.
+    verify) git merge-base --is-ancestor HEAD origin/main || die "$(git rev-parse --short HEAD) is not on main; a release is cut from main" ;;
+    dry)    warn "HEAD is not origin/main: a real release would refuse" ;;
+    *)      die "HEAD is not origin/main; a release is cut from exactly what is on main" ;;
+  esac
 fi
 tag="$version"
-git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1 && die "tag $tag already exists on origin"
+if [ "$mode" != verify ] && git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+  [ "$mode" = dry ] || die "tag $tag already exists on origin"
+  warn "tag $tag already exists on origin: a real release would refuse"
+fi
 # A release's tag is its plain version (1.0.0 was first tagged v1.0.0, so a v-prefixed one
 # counts too). This repository also holds scala/scala3's own tags, which look like versions
 # as well; a release is tagged on main's history, which no upstream commit is part of.
-# (`ls-remote` lists an annotated tag twice; its `^{}` line gives the commit.)
+# (`ls-remote` lists an annotated tag twice; its `^{}` line gives the commit.) Under
+# `--verify` the tag being released is itself on origin, and is not an earlier release.
 latest="$(git ls-remote --tags origin \
             | awk '{ sub("^refs/tags/", "", $2); sub("\\^\\{\\}$", "", $2); commit[$2] = $1 }
                    END { for (t in commit) print commit[t], t }' \
             | { grep -E ' v?[0-9]+\.[0-9]+\.[0-9]+$' || true; } \
             | while read -r c t; do
+                [ "${t#v}" != "$version" ] || continue
                 if git merge-base --is-ancestor "$c" origin/main 2>/dev/null; then echo "${t#v}"; fi
               done | sort -V | tail -1)"
 if [ -n "$latest" ] && [ "$(printf '%s\n%s\n' "$latest" "$version" | sort -V | tail -1)" != "$version" -o "$latest" = "$version" ]; then
@@ -87,17 +105,18 @@ while read -r spec sha av; do
 done <<< "$targets"
 [ "$gaps" = 0 ] || die "some targets lack a version of a patch; cover them first (AGENTS.md, 'Covering a new target')"
 
-msg="Proscala $version
+case "$mode" in
+  verify)
+    printf '%s\n' "$targets" >&3
+    exit 0 ;;
+  dry)
+    note "would tag $(git rev-parse --short HEAD) as $tag and push it; the Release workflow then verifies, builds and publishes"
+    exit 0 ;;
+esac
+git tag -a "$tag" -m "Proscala $version
 
-Built for each scala/scala3 commit below, as the version given:
-
-$(while read -r spec sha av; do echo "target $spec $sha $av"; done <<< "$targets")"
-if [ "$mode" = dry ]; then
-  note "would tag $(git rev-parse --short HEAD) as $tag and push it, with the annotation:"
-  printf '%s\n' "$msg" | sed 's/^/   | /'
-  exit 0
-fi
-git tag -a "$tag" -m "$msg"
+The Release workflow verifies this tag, resolves the targets it is built for and
+records them in the release (targets.txt)."
 git push --quiet origin "refs/tags/$tag"
-note "tagged and pushed $tag; the Release workflow now builds and publishes it:"
+note "tagged and pushed $tag; the Release workflow now verifies, builds and publishes it:"
 echo "   https://github.com/propensive/proscala/actions/workflows/release.yml"

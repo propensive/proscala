@@ -11,6 +11,13 @@ UPSTREAM_REF       := main
 UPSTREAM_SHA       := 403f2f663af8ad947e36a8f80f9680a9b71f7cf2
 REF_VERSION        := 3.10.0-RC3
 BASE_SCALAJS_VERSION    := 1.22.0
+# The Scala version whose stock Scala Native artifacts (nscplugin, scala3lib) the
+# Native variants of tasty-core and proscala-library are built with. None here:
+# this stream's compiler comes from scala/scala3 `main`, whose internals have moved
+# on from 3.10.0 (nscplugin_3.10.0 fails with a NoSuchMethodError in
+# NirPrimitivesBase), and no plugin exists for an unreleased version. The
+# variants are built for release targets, where mk/target.mk sets this.
+SN_SCALA_VERSION   :=
 COMPILER_IFACE_VER := 1.12.0
 UTIL_IFACE_VER     := 1.11.5
 JLINE_VERSION      := 4.0.14

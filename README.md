@@ -117,15 +117,17 @@ Releases
 
 Releases are published automatically to
 [GitHub Releases](https://github.com/propensive/proscala/releases), and only
-there. A release is a tag `<x.y.z>` on `main`, pushed by
-`bin/proscala-release <x.y.z>`, which records the exact upstream commits it is
-for. A GitHub Actions workflow then builds every target — each Scala release
-from 3.9.0 on, and each upstream branch developing an unreleased version as it
-was when the tag was cut — and, only
-once all have built, attaches each target's `proscala-<version>.tar.gz` (a
-top-level `lib/` of everything Proscala builds plus the Scala.js / scala-wasm
-runtime), each jar under its Maven name, and `proscala-<version>-maven.zip`, a
-Maven repository of them, to the GitHub release. Unzipped and named as a
+there. A release is a tag `<x.y.z>` on `main`: pushing it is the whole
+procedure (`bin/proscala-release <x.y.z>` does so after making the same checks
+locally). A GitHub Actions workflow checks the tag, then builds every target —
+each Scala release from 3.9.0 on, and each upstream branch developing an
+unreleased version as it is at that moment — and, only once all have built,
+attaches each target's `proscala-<version>.tar.gz` (a top-level `lib/` of
+everything Proscala builds plus the Scala.js / scala-wasm runtime), each jar
+under its Maven name, `proscala-<version>-maven.zip`, a Maven repository of
+them, and a `targets.txt` recording the exact upstream commit of every target,
+to the GitHub release. A tag whose release fails before it is published is
+deleted again, so the same version can be pushed once `main` is fixed. Unzipped and named as a
 resolver, that repository lets a build use the fork in place of Scala:
 
 ```scala
