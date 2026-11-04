@@ -3,13 +3,13 @@
 # genuinely differ between streams live here; everything else is shared and
 # tree-detected. $(JARS) is defined by the Makefile before this file is included.
 
-VERSION            := 3.10.1-dev-propensive
+VERSION            := 3.10.2-dev-propensive
 # The scala/scala3 commit this stream is built on (patches/3.10/series applies
 # onto it), and the scala/scala3 branch it is taken from. Authoritative: the
 # docs are checked against both. An upstream bump changes UPSTREAM_SHA.
 UPSTREAM_REF       := main
-UPSTREAM_SHA       := 403f2f663af8ad947e36a8f80f9680a9b71f7cf2
-REF_VERSION        := 3.10.0-RC3
+UPSTREAM_SHA       := a6d308066747aa3015972a0d974c1028cb9ff3c5
+REF_VERSION        := 3.10.1-RC2
 BASE_SCALAJS_VERSION    := 1.22.0
 # The Scala version whose stock Scala Native artifacts (nscplugin, scala3lib) the
 # Native variants of tasty-core and proscala-library are built with. None here:
@@ -40,11 +40,11 @@ REPL_EXTRA_COORDS  :=
 # Upstream main's JVM backend imports org.objectweb.asm directly (unshaded)
 # since the 9.10 switch, so this tree compiles and ships the org.ow2.asm jars;
 # the shaded scala-asm remains only on the reference-compiler classpath.
-TREE_ASM_VERSION := 9.10.1
+TREE_ASM_VERSION := 9.11.1
 TREE_ASM_NAMES := asm asm-tree asm-analysis asm-util asm-commons
 TREE_ASM_MAVEN_PATHS := $(foreach n,$(TREE_ASM_NAMES),org/ow2/asm/$(n)/$(TREE_ASM_VERSION)/$(n)-$(TREE_ASM_VERSION).jar)
 TREE_ASM_JARS := $(foreach n,$(TREE_ASM_NAMES),$(JARS)/$(n)-$(TREE_ASM_VERSION).jar)
 TREE_ASM_COORDS := org.ow2.asm:asm-util:$(TREE_ASM_VERSION) org.ow2.asm:asm-commons:$(TREE_ASM_VERSION)
-# The 3.10.0-RC3 reference compiler depends on the same unshaded jars (see its
+# The 3.10.1-RC2 reference compiler depends on the same unshaded jars (see its
 # POM), not on scala-asm, so they go on the reference classpath as well.
 REF_ASM_JARS := $(foreach n,$(TREE_ASM_NAMES),$(n)-$(TREE_ASM_VERSION).jar)
