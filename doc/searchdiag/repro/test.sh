@@ -5,6 +5,7 @@ with_feature() {
   compiles -d . Macro_1.scala
   fails_with 'CUSTOM DIAGNOSTIC: Missing' $ZFLAG -cp . -d . Test_2.scala
   compiles $ZFLAG -cp . -d . Pos_2.scala
+  compiles $ZFLAG -cp . -d . Inline_2.scala
   fails_with 'CUSTOM DIAGNOSTIC: scala\.util\.NotGiven\[Present\]' $ZFLAG -cp . -d . NotGiven_2.scala
 }
 
@@ -19,4 +20,5 @@ without_feature() {
   compiles -cp stub -d . Macro_1.scala
   fails_with 'annotation message' -cp .:stub -d . Test_2.scala
   compiles -cp .:stub -d . NotGiven_2.scala
+  fails_with 'CUSTOM DIAGNOSTIC: ' -cp .:stub -d . Inline_2.scala
 }

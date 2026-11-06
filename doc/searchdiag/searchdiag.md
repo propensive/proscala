@@ -91,6 +91,33 @@ unexpanded body, and the abort only fires in the `inlining` phase — exactly
 the corruption this feature exists to remove. Every hop from the annotated
 given to the splice must therefore be `transparent inline`.
 
+## Where no expansion can happen
+
+An `@internal.diagnostic` candidate does its work by being expanded while it
+is tried. There are contexts in which the typer expands no inline call at all:
+the body of an `inline def` (`Inlines.isInlineable` is false inside one, since
+its calls are inlined only when the enclosing method is), and a quote (staging
+level above zero). A search there would accept the catch-all *unexpanded* —
+it is tried first, from lexical scope, and a `[T] => T` matches anything — so
+it shadowed every instance in implicit scope, and left the call site's type
+variables unconstrained, instantiated to `Nothing` or `Any` by the rules for
+an undetermined variable. The macro then ran only when the enclosing method
+was inlined, long after the search, and could do nothing useful: Frontier's
+re-search found the shadowed instance and reported "contextual value resolves
+without the catch-all". In Soundness this was the long-standing "gated
+collection operations fail inside an `inline def` but not in a plain `def`"
+problem (propensive/soundness#2422): `join`, `cut`, `.let` and the rest
+inside a derivation rule's `conjunction`.
+
+`typedImplicit` therefore fails a `@internal.diagnostic` candidate whose
+adapted tree contains no `Inlined` node for the candidate's own symbol — it
+was not expanded, so it cannot have diagnosed anything — with a plain
+`NoMatchingImplicitsFailure`, and the search goes on as if the candidate were
+absent: the companion instance is found, with inference intact. The test is
+what actually happened to the tree, not the reasons expansion is skipped, so
+it holds for every such context. `Inline_2.scala` in the reproduction is the
+inline-body case.
+
 ## Reproduction
 
 `repro/` holds the feature's test files (also checked in as
@@ -102,6 +129,7 @@ scalac -d out Macro_1.scala
 scalac -Zdiagnostic-givens -classpath out -d out Test_2.scala      # error: CUSTOM DIAGNOSTIC: Missing
 scalac -Zdiagnostic-givens -classpath out -d out Pos_2.scala       # compiles cleanly
 scalac -Zdiagnostic-givens -classpath out -d out NotGiven_2.scala  # error: no NotGiven[Present]
+scalac -Zdiagnostic-givens -classpath out -d out Inline_2.scala    # compiles cleanly
 ```
 
 `Test_2.scala` summons an `@implicitNotFound`-annotated trait with the
