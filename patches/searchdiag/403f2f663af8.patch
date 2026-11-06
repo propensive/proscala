@@ -44,19 +44,21 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 Proscala-Patch: searchdiag
 ---
  .../dotty/tools/dotc/core/Definitions.scala   |  4 ++
- .../dotty/tools/dotc/reporting/messages.scala | 14 +++++--
- .../dotty/tools/dotc/typer/Implicits.scala    | 38 +++++++++++++++++--
- .../annotation/internal/diagnostic.scala      |  9 +++++
- .../neg-macros/diagnostic-given/Macro_1.scala | 12 ++++++
- .../diagnostic-given/NotGiven_2.scala         |  9 +++++
- .../neg-macros/diagnostic-given/Test_2.scala  |  7 ++++
- .../pos-macros/diagnostic-given/Macro_1.scala | 12 ++++++
- .../pos-macros/diagnostic-given/Test_2.scala  | 18 +++++++++
- 9 files changed, 116 insertions(+), 7 deletions(-)
+ .../dotty/tools/dotc/reporting/messages.scala | 14 ++++-
+ .../dotty/tools/dotc/typer/Implicits.scala    | 55 +++++++++++++++++--
+ .../annotation/internal/diagnostic.scala      |  9 +++
+ .../neg-macros/diagnostic-given/Macro_1.scala | 12 ++++
+ .../diagnostic-given/NotGiven_2.scala         |  9 +++
+ .../neg-macros/diagnostic-given/Test_2.scala  |  7 +++
+ .../diagnostic-given/Inline_2.scala           | 16 ++++++
+ .../pos-macros/diagnostic-given/Macro_1.scala | 12 ++++
+ .../pos-macros/diagnostic-given/Test_2.scala  | 18 ++++++
+ 10 files changed, 149 insertions(+), 7 deletions(-)
  create mode 100644 library-proscala/src/scala/annotation/internal/diagnostic.scala
  create mode 100644 tests/neg-macros/diagnostic-given/Macro_1.scala
  create mode 100644 tests/neg-macros/diagnostic-given/NotGiven_2.scala
  create mode 100644 tests/neg-macros/diagnostic-given/Test_2.scala
+ create mode 100644 tests/pos-macros/diagnostic-given/Inline_2.scala
  create mode 100644 tests/pos-macros/diagnostic-given/Macro_1.scala
  create mode 100644 tests/pos-macros/diagnostic-given/Test_2.scala
 
@@ -115,7 +117,7 @@ index 4013735ced49bdd4b3250880d5f8e182c4b98b80..78e34ce0997f3fdc09ecb28ee6aec353
  
  class CannotBeAccessed(tpe: NamedType, superAccess: Boolean)(using Context)
 diff --git a/compiler/src/dotty/tools/dotc/typer/Implicits.scala b/compiler/src/dotty/tools/dotc/typer/Implicits.scala
-index 17f23ee05a105e39d87a5120ac1c848d0765de5d..a64042ae6bb6642065d635bfde266b67a97d3e3a 100644
+index 17f23ee05a105e39d87a5120ac1c848d0765de5d..5e3c3ff820c98f72de4332a6caef6bb59f1753d1 100644
 --- a/compiler/src/dotty/tools/dotc/typer/Implicits.scala
 +++ b/compiler/src/dotty/tools/dotc/typer/Implicits.scala
 @@ -624,6 +624,11 @@ object Implicits:
@@ -130,9 +132,31 @@ index 17f23ee05a105e39d87a5120ac1c848d0765de5d..a64042ae6bb6642065d635bfde266b67
  end Implicits
  
  import Implicits.*
-@@ -1247,6 +1252,14 @@ trait Implicits:
+@@ -1242,11 +1247,36 @@ trait Implicits:
+             case _ =>
+               tryConversion
+         }
++      // An `@internal.diagnostic` candidate diagnoses by being expanded while it is
++      // tried, so that its macro can fail the candidate with an account of the search.
++      // Where no expansion can happen at all -- lexically inside an inline method's
++      // body, or at a staging level above zero -- the unexpanded call would be accepted
++      // as the result, shadowing the instances in implicit scope whose absence it exists
++      // to explain, and leaving the call site's type variables unconstrained; its macro
++      // would then run only when the enclosing method is inlined, long after the
++      // search. Such a candidate fails here, so that the search goes on as if it were
++      // absent.
++      def unexpandedDiagnostic: Boolean =
++        config.Proscala.enabled(config.Proscala.DiagnosticGivens)
++        && cand.ref.symbol.hasAnnotation(defn.DiagnosticAnnot)
++        && !adapted.existsSubTree:
++          case Inlined(call, _, _) => call.symbol == cand.ref.symbol
++          case _ => false
+       if ctx.reporter.hasErrors
+          || !cand.ref.symbol.isAccessibleFrom(cand.ref.prefix)
++         || unexpandedDiagnostic
        then
          val res = adapted.tpe match {
++          case _ if !ctx.reporter.hasErrors && unexpandedDiagnostic => NoMatchingImplicitsFailure
            case _: SearchFailureType => SearchFailure(adapted)
 +          case _ if ctx.reporter.hasErrors
 +                    && config.Proscala.enabled(config.Proscala.DiagnosticGivens)
@@ -145,7 +169,7 @@ index 17f23ee05a105e39d87a5120ac1c848d0765de5d..a64042ae6bb6642065d635bfde266b67
            case error: PreviousErrorType if !adapted.symbol.isAccessibleFrom(cand.ref.prefix) =>
              SearchFailure(adapted.withType(new NestedFailure(error.msg, pt)))
            case tpe =>
-@@ -1486,7 +1499,7 @@ trait Implicits:
+@@ -1486,7 +1516,7 @@ trait Implicits:
                  case _ => fail
              end healAmbiguous
  
@@ -154,7 +178,7 @@ index 17f23ee05a105e39d87a5120ac1c848d0765de5d..a64042ae6bb6642065d635bfde266b67
                case fail: SearchFailure =>
                  if fail eq ImplicitSearchTooLargeFailure then
                    fail
-@@ -1523,12 +1536,26 @@ trait Implicits:
+@@ -1523,12 +1553,26 @@ trait Implicits:
              }
            case nil =>
              if (rfailures.isEmpty) found
@@ -183,7 +207,7 @@ index 17f23ee05a105e39d87a5120ac1c848d0765de5d..a64042ae6bb6642065d635bfde266b67
              case _: SearchFailure =>
                SearchSuccess(ref(defn.NotGiven_value), defn.NotGiven_value.termRef, 0)(
                  ctx.typerState.fresh().setCommittable(true),
-@@ -1799,7 +1826,10 @@ trait Implicits:
+@@ -1799,7 +1843,10 @@ trait Implicits:
                          case _ =>
                            reason match
                              case (_: DivergingImplicit) => failure
@@ -256,6 +280,28 @@ index 0000000000000000000000000000000000000000..f70bd07a5419432fe130924264ca4cbf
 +trait Missing
 +
 +def test = summon[Missing] // error
+diff --git a/tests/pos-macros/diagnostic-given/Inline_2.scala b/tests/pos-macros/diagnostic-given/Inline_2.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..e9a30a2c0effc0b366f4b53800c39a4c5793bc63
+--- /dev/null
++++ b/tests/pos-macros/diagnostic-given/Inline_2.scala
+@@ -0,0 +1,16 @@
++//> using options -Zdiagnostic-givens
++
++import Givens.given
++
++trait Shape:
++  def name: String
++
++object Shape:
++  given square: Shape = new Shape { def name = "square" }
++
++// The search for `Shape` runs while the inline body is typed, where no inline
++// call is expanded: the catch-all, found first in lexical scope, must not be
++// accepted unexpanded ahead of the companion's instance.
++inline def shape: Shape = summon[Shape]
++
++def shapeName: String = shape.name
 diff --git a/tests/pos-macros/diagnostic-given/Macro_1.scala b/tests/pos-macros/diagnostic-given/Macro_1.scala
 new file mode 100644
 index 0000000000000000000000000000000000000000..c30c6ee937f3fd3093c8c42c397f49bf74a197dd
