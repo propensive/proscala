@@ -68,6 +68,7 @@ The names, one per gated patch:
 | `-Zcheck-inlined-closures` | [inlinedclosures](../inlinedclosures/inlinedclosures.md) | bodies of closures inlined from compiled code capture-checked |
 | `-Zdiagnostic-givens` | [searchdiag](../searchdiag/searchdiag.md) | an `@internal.diagnostic` given's errors become the search-failure message |
 | `-Zfrozen-pure` | [frozenpure](../frozenpure/frozenpure.md) | a stateful type with an explicit empty capture set classified as pure |
+| `-Zgatherable-varargs` | [gatherable](../gatherable/gatherable.md) | repeated parameters received through a `Gatherable` instance |
 | `-Zgiven-prefixes` | [givenprefix](../givenprefix/givenprefix.md) | package-object prefixes sealed on implicit candidates |
 | `-Zinline-source-maps` | [smap](../smap/smap.md) | JSR-45 SMAP attributes for inlined code |
 | `-Zisolated-macros` | [macroloader](../macroloader/macroloader.md) | a macro's classes resolved from the compilation classpath, not the compiler's host |

@@ -511,25 +511,6 @@ $(SJS3_LIB_JAR): $(DEPS_STAMP)
 	@rm -rf $(CLASSES)/sjs3-library && mkdir -p $(CLASSES)/sjs3-library $(LIB)
 	$(call jar_module,sjs3-library,$@,org.scala.lang.scala3.library.sjs1)
 
-# ---- 12a. proscala-library-sjs (the additions, for Scala.js) -----------------
-# The same sources as proscala-library, compiled for Scala.js the way a
-# downstream Scala.js project is: typed against the JVM scala-library's TASTy
-# plus the Scala.js library and javalib (the scalalib's .sjsir only matters at
-# link time). The jar keeps its .class, .tasty and .sjsir like any Scala.js
-# Scala 3 artifact.
-ifneq ($(HAS_PROSCALA_LIB),)
-PROSCALA_SJS_LIB_JAR := $(LIB)/proscala-library_sjs1.jar
-$(PROSCALA_SJS_LIB_JAR): $(COMMON_ARGS) $(STAGE_JARS) $(SJS_LIBRARY_JAR) $(SJS_JAVALIB_JAR) $(PROSCALA_LIB_SRC)
-	@echo ">> proscala-library-sjs"
-	@rm -rf $(CLASSES)/proscala-library-sjs && mkdir -p $(CLASSES)/proscala-library-sjs
-	@cp $(COMMON_ARGS) $(CLASSES)/proscala-library-sjs.args
-	@printf '%s\n' -scalajs -classpath '$(call cpjoin,$(SCALA_LIB_JAR) $(SJS_CP))' \
-	  -d $(CLASSES)/proscala-library-sjs >> $(CLASSES)/proscala-library-sjs.args
-	@printf '%s\n' $(sort $(PROSCALA_LIB_SRC)) >> $(CLASSES)/proscala-library-sjs.args
-	$(STAGEC) @$(CLASSES)/proscala-library-sjs.args
-	$(call jar_module,proscala-library-sjs,$@,dev.propensive.proscala.library.sjs1)
-endif
-
 # ---- 12b. scalajs-library + scala.scalajs.wit (WASM trees only) ---------------
 # Upstream vendors Scala.js 1.20.2; the scala-wasm fork bumps it to
 # $(SCALAJS_VERSION) (1.22.0-wasm.*) and adds the WASM runtime. Proscala's WIT
@@ -577,6 +558,27 @@ $(TASTY_SJS_JAR): $(COMMON_ARGS) $(STAGE_JARS) $(SJS_TYPING_LIB) $(SJS_JAVALIB_J
 	@echo ">> tasty-core-sjs"
 	$(call scalac_with,$(STAGEC) -scalajs,tasty-core-sjs,$(call cpjoin,$(SCALA_LIB_JAR) $(SJS_TYPING_LIB) $(SJS_JAVALIB_JAR)),tasty/src)
 	$(call jar_module,tasty-core-sjs,$@,org.scala.lang.tasty.core.sjs1)
+
+# ---- 12a. proscala-library-sjs (the additions, for Scala.js) -----------------
+# The same sources as proscala-library, compiled for Scala.js the way a
+# downstream Scala.js project is: typed against the JVM scala-library's TASTy
+# plus the Scala.js library and javalib (the scalalib's .sjsir only matters at
+# link time). The jar keeps its .class, .tasty and .sjsir like any Scala.js
+# Scala 3 artifact. Like tasty-core-sjs it is typed against $(SJS_TYPING_LIB),
+# and so comes after 12b: a source with a method body (`Gatherable.gather`)
+# sends the WASM backend looking for `witImportCall`.
+ifneq ($(HAS_PROSCALA_LIB),)
+PROSCALA_SJS_LIB_JAR := $(LIB)/proscala-library_sjs1.jar
+$(PROSCALA_SJS_LIB_JAR): $(COMMON_ARGS) $(STAGE_JARS) $(SJS_TYPING_LIB) $(SJS_JAVALIB_JAR) $(PROSCALA_LIB_SRC)
+	@echo ">> proscala-library-sjs"
+	@rm -rf $(CLASSES)/proscala-library-sjs && mkdir -p $(CLASSES)/proscala-library-sjs
+	@cp $(COMMON_ARGS) $(CLASSES)/proscala-library-sjs.args
+	@printf '%s\n' -scalajs -classpath '$(call cpjoin,$(SCALA_LIB_JAR) $(SJS_TYPING_LIB) $(SJS_JAVALIB_JAR))' \
+	  -d $(CLASSES)/proscala-library-sjs >> $(CLASSES)/proscala-library-sjs.args
+	@printf '%s\n' $(sort $(PROSCALA_LIB_SRC)) >> $(CLASSES)/proscala-library-sjs.args
+	$(STAGEC) @$(CLASSES)/proscala-library-sjs.args
+	$(call jar_module,proscala-library-sjs,$@,dev.propensive.proscala.library.sjs1)
+endif
 
 # ---- 12d. Scala Native: tasty-core and proscala-library -----------------------
 # Only when SN_SCALA_VERSION names published Native artifacts (see the Scala

@@ -20,9 +20,9 @@ Proscala-Patch: zflags
 ---
  .../dotty/tools/dotc/config/CliCommand.scala  |  6 +-
  .../tools/dotc/config/CompilerCommand.scala   |  3 +-
- .../dotty/tools/dotc/config/Proscala.scala    | 61 +++++++++++++++++++
- .../tools/dotc/config/ScalaSettings.scala     | 17 +++++-
- 4 files changed, 84 insertions(+), 3 deletions(-)
+ .../dotty/tools/dotc/config/Proscala.scala    | 63 +++++++++++++++++++
+ .../tools/dotc/config/ScalaSettings.scala     | 16 ++++-
+ 4 files changed, 85 insertions(+), 3 deletions(-)
  create mode 100644 compiler/src/dotty/tools/dotc/config/Proscala.scala
 
 diff --git a/compiler/src/dotty/tools/dotc/config/CliCommand.scala b/compiler/src/dotty/tools/dotc/config/CliCommand.scala
@@ -77,10 +77,10 @@ index 3ad1585812b3435891e55720b0e085118e99833c..727872eea5e19f649ec9b862fcc347b3
      allSettings.exists(isHelping) || flags.exists(_.value)
 diff --git a/compiler/src/dotty/tools/dotc/config/Proscala.scala b/compiler/src/dotty/tools/dotc/config/Proscala.scala
 new file mode 100644
-index 0000000000000000000000000000000000000000..27b69ea3e5de4333883cf9963a8c2ed5cbd209eb
+index 0000000000000000000000000000000000000000..021412383fb15cbbf953c0d9039edf8da9826aac
 --- /dev/null
 +++ b/compiler/src/dotty/tools/dotc/config/Proscala.scala
-@@ -0,0 +1,61 @@
+@@ -0,0 +1,63 @@
 +package dotty.tools.dotc
 +package config
 +
@@ -106,6 +106,8 @@ index 0000000000000000000000000000000000000000..27b69ea3e5de4333883cf9963a8c2ed5
 +      "Report an @internal.diagnostic given's own errors as the message of a failed implicit search.")
 +    case FrozenPure extends Feature("frozen-pure", "frozenpure",
 +      "Classify a stateful type with an explicit empty capture set as pure under capture checking.")
++    case GatherableVarargs extends Feature("gatherable-varargs", "gatherable",
++      "Give a method body its repeated parameters through a scala.Gatherable instance in scope.")
 +    case GivenPrefixes extends Feature("given-prefixes", "givenprefix",
 +      "Seal package-object prefixes on implicit candidates, so a top-level given cannot leak an opaque type's representation.")
 +    case InlineSourceMaps extends Feature("inline-source-maps", "smap",
@@ -143,7 +145,7 @@ index 0000000000000000000000000000000000000000..27b69ea3e5de4333883cf9963a8c2ed5
 +
 +end Proscala
 diff --git a/compiler/src/dotty/tools/dotc/config/ScalaSettings.scala b/compiler/src/dotty/tools/dotc/config/ScalaSettings.scala
-index 4c33b47ab2eed9af277b10368baa1698fae7fd57..c2ddd441dd8f277f1c6fe4261f16d5f38d3a27eb 100644
+index 4c33b47ab2eed9af277b10368baa1698fae7fd57..96fcd6704bc7aab7d2f1635f6906083aa7074709 100644
 --- a/compiler/src/dotty/tools/dotc/config/ScalaSettings.scala
 +++ b/compiler/src/dotty/tools/dotc/config/ScalaSettings.scala
 @@ -25,6 +25,8 @@ enum ScalaSettingCategories(val prefixLetter: String) extends SettingCategory:
@@ -155,11 +157,7 @@ index 4c33b47ab2eed9af277b10368baa1698fae7fd57..c2ddd441dd8f277f1c6fe4261f16d5f3
  
  object ScalaSettings extends ScalaSettings
  
-@@ -40,10 +42,11 @@ abstract class ScalaSettings extends SettingGroup, AllScalaSettings:
-   val forkSettings: List[Setting[?]] = settingsByCategory(ForkSetting).sortBy(_.name)
-   val advancedSettings: List[Setting[?]] = settingsByCategory(AdvancedSetting).sortBy(_.name)
-   val verboseSettings: List[Setting[?]] = settingsByCategory(VerboseSetting).sortBy(_.name)
-+  val proscalaSettings: List[Setting[?]] = settingsByCategory(ProscalaSetting).sortBy(_.name)
+@@ -43,7 +45,7 @@ abstract class ScalaSettings extends SettingGroup, AllScalaSettings:
    val settingsByAliases: Map[String, Setting[?]] = allSettings.flatMap(s => s.aliases.map(_.name -> s)).toMap
  
  
@@ -168,7 +166,7 @@ index 4c33b47ab2eed9af277b10368baa1698fae7fd57..c2ddd441dd8f277f1c6fe4261f16d5f3
    self: SettingGroup =>
  
    /* Path related settings */
-@@ -633,3 +636,15 @@ private sealed trait YSettings:
+@@ -633,3 +635,15 @@ private sealed trait YSettings:
    val YoutputOnlyTasty: Setting[Boolean] = BooleanSetting(ForkSetting, "Youtput-only-tasty", "Used to only generate the TASTy file without the classfiles", deprecation = Deprecation.removed())
  end YSettings
  

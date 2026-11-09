@@ -1,0 +1,198 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Mon, 9 Nov 2026 20:09:03 +0900
+Subject: Give a method body its repeated parameters through a Gatherable
+ instance
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+A repeated parameter `xs: T*` is a `Seq[T]` in the body of its method. Code
+whose collections are not the standard library's — Soundness hides those
+behind opaque aliases — must convert every such parameter by hand before it
+can use it.
+
+Under -Zgatherable-varargs, desugaring rewrites
+
+    def f(xs: T*) = body
+
+to
+
+    def f(xs: T*) =
+      val xs$1 = xs
+      { val xs = scala.Gatherable.gather(xs$1); body }
+
+so the body sees `xs` as the `Out` of the `scala.Gatherable[T]` instance in
+scope at the definition, converted once on entry. The implicit search is the
+typer's own, at the parameter, and the method does not compile if no instance
+is in scope. The signature is unchanged, so callers are unaffected whether or
+not they are compiled with the flag.
+
+Constructors, compiler-generated methods, macros, `inline` parameters and
+by-name repeated parameters are left as upstream has them.
+
+`Gatherable` ships in the supplementary proscala-library jar. The conversion
+goes through the method `Gatherable.gather` rather than the instance's own
+member because, under capture checking, a member of a trait compiled without
+it cannot be applied at an element type that captures a capability, whereas a
+polymorphic method can.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: gatherable
+---
+ .../src/dotty/tools/dotc/ast/Desugar.scala    | 55 ++++++++++++++++++-
+ .../dotty/tools/dotc/core/Definitions.scala   |  4 ++
+ .../src/dotty/tools/dotc/core/StdNames.scala  |  1 +
+ library-proscala/src/scala/Gatherable.scala   | 50 +++++++++++++++++
+ 4 files changed, 109 insertions(+), 1 deletion(-)
+ create mode 100644 library-proscala/src/scala/Gatherable.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/ast/Desugar.scala b/compiler/src/dotty/tools/dotc/ast/Desugar.scala
+index 0145630276fc2448c1e2c4a07eaece56c842c0ae..c093ab13ee402f723c2c34be81ed810c6aba431a 100644
+--- a/compiler/src/dotty/tools/dotc/ast/Desugar.scala
++++ b/compiler/src/dotty/tools/dotc/ast/Desugar.scala
+@@ -265,7 +265,60 @@ object desugar {
+    *      def f$default$2[T](x: Int) = x + "m"
+    */
+   private def defDef(meth: DefDef, isPrimaryConstructor: Boolean = false)(using Context): Tree =
+-    addDefaultGetters(elimContextBounds(meth, isPrimaryConstructor).asInstanceOf[DefDef])
++    addDefaultGetters(elimContextBounds(gatherVarargs(meth), isPrimaryConstructor).asInstanceOf[DefDef])
++
++  /** Under `-Zgatherable-varargs`, give the body of a method its repeated
++   *  parameters through the `scala.Gatherable` instance in scope:
++   *
++   *      def f(xs: T*) = body
++   *  ==>
++   *      def f(xs: T*) =
++   *        val xs$1 = xs
++   *        { val xs = scala.Gatherable.gather(xs$1); body }
++   *
++   *  The signature is untouched, so callers are unaffected; only the body sees
++   *  `xs` as the instance's `Out`. The two blocks keep the parameter reachable
++   *  for the conversion while the gathered value shadows it in the body. The
++   *  implicit search for the instance is the typer's, at the parameter's
++   *  position, and fails there if no instance is in scope.
++   *
++   *  Left as upstream has them: constructors (a class parameter is a member,
++   *  which a block cannot shadow), compiler-generated methods, macros (whose
++   *  right-hand side must be the splice itself), `inline` parameters (which a
++   *  macro inspects as written) and by-name repeated parameters (which the
++   *  conversion would force).
++   */
++  private def gatherVarargs(meth: DefDef)(using Context): DefDef =
++    def gathered(param: ValDef): Boolean =
++      !param.mods.is(Inline) && (unsplice(param.tpt) match
++        case PostfixOp(_, Ident(tpnme.raw.STAR)) => true
++        case _ => false)
++    def isMacro(rhs: Tree): Boolean = rhs match
++      case _: Splice | _: MacroTree => true
++      case _ => false
++    if !config.Proscala.enabled(config.Proscala.GatherableVarargs)
++       || meth.name.isConstructorName || meth.rhs.isEmpty || meth.mods.is(Synthetic)
++       || isMacro(meth.rhs)
++    then meth
++    else
++      val params = meth.paramss.flatMap(_.collect { case param: ValDef if gathered(param) => param })
++      if params.isEmpty then meth
++      else if !defn.GatherableModule.exists then
++        report.error(
++          em"-Zgatherable-varargs needs scala.Gatherable, from proscala-library, on the classpath",
++          params.head.srcPos)
++        meth
++      else
++        val seqNames = params.map(param => UniqueName.fresh(param.name))
++        val seqs = params.lazyZip(seqNames).map: (param, seqName) =>
++          ValDef(seqName, TypeTree(), Ident(param.name).withSpan(param.span))
++            .withMods(Modifiers(Synthetic)).withSpan(param.span)
++        val gathers = params.lazyZip(seqNames).map: (param, seqName) =>
++          val gather = Select(ref(defn.GatherableModule.termRef), nme.gather).withSpan(param.span)
++          ValDef(param.name, TypeTree(), Apply(gather, Ident(seqName) :: Nil).withSpan(param.span))
++            .withMods(Modifiers(Synthetic)).withSpan(param.span)
++        val body = Block(gathers, meth.rhs).withSpan(meth.rhs.span)
++        cpy.DefDef(meth)(rhs = Block(seqs, body).withSpan(meth.rhs.span))
+ 
+   /** Drop context bounds in given TypeDef, replacing them with evidence ValDefs that
+    *  get added to a buffer.
+diff --git a/compiler/src/dotty/tools/dotc/core/Definitions.scala b/compiler/src/dotty/tools/dotc/core/Definitions.scala
+index 969e0766088d79bd7f0a6ea418e5a1534d950607..007aa0445f56f71408446dc5f976e864f5117c6e 100644
+--- a/compiler/src/dotty/tools/dotc/core/Definitions.scala
++++ b/compiler/src/dotty/tools/dotc/core/Definitions.scala
+@@ -1007,6 +1007,10 @@ class Definitions {
+   @tu lazy val SpreadableClass: Symbol = getClassIfDefined("scala.Spreadable")
+     def Spreadable_spread(using Context): Symbol = SpreadableClass.requiredMethod(nme.spread)
+ 
++  // Looked up leniently, like Spreadable: only a method with a repeated parameter
++  // compiled under `-Zgatherable-varargs` refers to it, and reports its absence.
++  @tu lazy val GatherableModule: Symbol = getModuleIfDefined("scala.Gatherable")
++
+   // Looked up leniently, like Spreadable: a literal consults it only when an
+   // instance can possibly be in scope, so a library without `scala.Literate`
+   // never searches. `convert` is deliberately not a member of the trait (a
+diff --git a/compiler/src/dotty/tools/dotc/core/StdNames.scala b/compiler/src/dotty/tools/dotc/core/StdNames.scala
+index 3c271737a2b6f5cf879823616f7e636aabccb0ab..3ef4863494488d244a1dcfcd98043820d2eebe05 100644
+--- a/compiler/src/dotty/tools/dotc/core/StdNames.scala
++++ b/compiler/src/dotty/tools/dotc/core/StdNames.scala
+@@ -512,6 +512,7 @@ object StdNames {
+     val fresh: N                = "fresh"
+     val fromDigits: N           = "fromDigits"
+     val fromProduct: N          = "fromProduct"
++    val gather: N               = "gather"
+     val genericArrayOps: N      = "genericArrayOps"
+     val genericClass: N         = "genericClass"
+     val get: N                  = "get"
+diff --git a/library-proscala/src/scala/Gatherable.scala b/library-proscala/src/scala/Gatherable.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..4875879c559af8672ae5863b90010b2cd785825a
+--- /dev/null
++++ b/library-proscala/src/scala/Gatherable.scala
+@@ -0,0 +1,50 @@
++package scala
++
++import scala.annotation.{experimental, implicitNotFound}
++
++/** Decides the type a method body sees its repeated parameters of element type
++ *  `T` as, in code compiled with `-Zgatherable-varargs`.
++ *
++ *  A `T*` parameter is a `Seq[T]`: that is what callers pass, and what the body
++ *  of `def f(xs: T*)` normally sees `xs` as. Under `-Zgatherable-varargs` the
++ *  body sees `xs` as the `Out` of the `Gatherable[T]` instance in scope where
++ *  the method is defined, converted once on entry by `gather`. The method's
++ *  signature is unchanged, so callers — compiled with the flag or without — are
++ *  unaffected, and the choice of `Out` is private to the definition.
++ *
++ *  ```scala
++ *  given [e] => (Gatherable[e] { type Out = Series[e] }) =
++ *    new Gatherable[e]:
++ *      type Out = Series[e]
++ *      def gather(elements: Seq[e]): Series[e] = Series.from(elements)
++ *
++ *  def total(xs: Int*): Int = xs.sum    // `xs` is a `Series[Int]` here
++ *  ```
++ *
++ *  There is no default instance: a method with a repeated parameter does not
++ *  compile under the flag unless one is in scope.
++ */
++@experimental
++@implicitNotFound("-Zgatherable-varargs: no given scala.Gatherable[${T}] is in scope to receive this repeated parameter")
++trait Gatherable[T]:
++
++  /** The type the body sees a repeated parameter of element type `T` as. An
++   *  instance must specify it concretely, e.g.
++   *  `Gatherable[e] { type Out = Series[e] }`.
++   */
++  type Out
++
++  /** Convert the sequence of arguments the caller passed. Called once, on entry
++   *  to the method.
++   */
++  def gather(elements: Seq[T]): Out
++
++@experimental
++object Gatherable:
++
++  /** What the compiler elaborates the reception of a repeated parameter to: the
++   *  arguments the caller passed, gathered by the instance in scope for their
++   *  element type.
++   */
++  def gather[T](elements: Seq[T])(using gatherable: Gatherable[T]): gatherable.Out =
++    gatherable.gather(elements)

@@ -181,8 +181,8 @@ new versions once their changes are confirmed identical.
 
 The bounds give the streams different patch sets:
 
-    stream 3.9    42 patches   carries castbox, depset, splicealias, samstateful, staleread, virtualdir
-    stream 3.10   48 patches   adds anonascribe, anonspec, anykindcap, boolunapply, closurerecheck, definefurther, exportuses, implicitparts, inlinedclosures, integratemap, macrosingleton, modulepath, proxycap, refinealias, unioncaps; drops those six, and nullreceiver, permitlazy and rootclassify (fixed upstream); macroalias applies to 3.10.0 only, and prunecomplete only before upstream #27247
+    stream 3.9    43 patches   carries castbox, depset, splicealias, samstateful, staleread, virtualdir
+    stream 3.10   49 patches   adds anonascribe, anonspec, anykindcap, boolunapply, closurerecheck, definefurther, exportuses, implicitparts, inlinedclosures, integratemap, macrosingleton, modulepath, proxycap, refinealias, unioncaps; drops those six, and nullreceiver, permitlazy and rootclassify (fixed upstream); macroalias applies to 3.10.0 only, and prunecomplete only before upstream #27247
 
 (The counts exclude `zflags`.)
 
@@ -637,7 +637,7 @@ Scala releases**: `scala-library`, `scala3-library_3`, `scala3-interfaces`,
 `scalaOrganization := "dev.propensive"` swap the fork in wholesale. Two are the
 fork's own: `proscala-library_3` and `proscala-library_sjs1_3`, the
 **supplementary library** holding the standard-library additions
-(`scala.Literate`, `scala.Spreadable`, `scala.caps.SharedUnscoped`,
+(`scala.Literate`, `scala.Spreadable`, `scala.Gatherable`, `scala.caps.SharedUnscoped`,
 `scala.annotation.internal.diagnostic`)
 from `library-proscala/src` in the tree (added by patches), built into their own jar so
 `scala-library` stays byte-identical to upstream's from the same sources.
