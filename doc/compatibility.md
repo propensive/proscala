@@ -114,9 +114,11 @@ these freely.
 
 **Recorded in the module's own artifacts, but complete there.**
 `literate-literals` and `spreadable-varargs` change how a literal or a
-splice is typed at its use site, and the result is pickled into that
-module's TASTy like any other typed tree; a consumer needs the library
-types (`scala.Literate`, `scala.Spreadable`), not the flag. Inline methods
+splice is typed at its use site, and `gatherable-varargs` how the body of a
+method receives its repeated parameters; the result is pickled into that
+module's TASTy like any other typed tree, and a consumer needs the library
+types (`scala.Literate`, `scala.Spreadable`, `scala.Gatherable`), not the
+flag. Inline methods
 are no exception: a literal inside an inlined body is never re-typed at the
 expansion site, so what a consumer expands is what the defining module
 compiled.
@@ -150,9 +152,18 @@ an artifact — including expanding an inline method containing a backed
 splice — and running it require that class on the classpath. Source using
 the feature does not compile under vanilla Scala.
 
-That class does not live in Proscala's `scala3-library`. The fork's four
+[gatherable](gatherable/gatherable.md) adds `scala.Gatherable`
+(`@experimental`) to the same library. A method with a repeated parameter
+compiled under `-Zgatherable-varargs` calls `scala.Gatherable.gather` on
+entry, so its classfiles — and, for an inline method, the code its callers
+expand — need that class on the classpath. Its signature is exactly what
+upstream produces: a caller, with or without the flag, on Proscala or on
+vanilla Scala, compiles and links against it unchanged.
+
+Those classes do not live in Proscala's `scala3-library`. The fork's five
 standard-library additions — `scala.Literate`, `scala.Spreadable`,
-`scala.caps.SharedUnscoped` and `scala.annotation.internal.diagnostic` — are
+`scala.Gatherable`, `scala.caps.SharedUnscoped` and
+`scala.annotation.internal.diagnostic` — are
 built from `library-proscala/src`
 into a **supplementary jar**, `proscala-library_3` (and `proscala-library_sjs1_3`
 for Scala.js, `proscala-library_native0.5_3` for Scala Native), so the `scala-library` and `scalajs-scalalib` jars Proscala
