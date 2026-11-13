@@ -1,0 +1,2 @@
+variant 61d32193238e.patch 1 61d32193238e1bbf90e7c81e57a798754a6e48f7
+needed-from a4e1b441306d129813fdb8c5739edac0bfe7b9cd   # upstream #25937 replaced catching StackOverflowError with fuel, and introduced the ten-slot array

@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 13 Nov 2026 17:53:56 +0900
+Subject: Give an uninitialized ContextBase the default fuel for recursive
+ operations
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The operations `handleRecursive` tracks are kept in an array on the context
+base whose length is the limit on their depth. `ContextBase.initialize` sizes
+it from `-Xmax-fuel` (550 by default), but until then it had ten slots, "so a
+few calls to handleRecursive work for trivial things before the compiler has
+really started". A base that is never initialized, such as one made only to
+parse source and traverse the trees, therefore threw RecursionOverflow at the
+eleventh nested tree: folding over `1 + 2 + … + 12` was enough.
+
+The array now starts at the setting's default, so such a base has the room for
+recursion that a compiler run with no `-Xmax-fuel` has.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: fuelslots
+---
+ compiler/src/dotty/tools/dotc/core/Contexts.scala | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/compiler/src/dotty/tools/dotc/core/Contexts.scala b/compiler/src/dotty/tools/dotc/core/Contexts.scala
+index c2ad40caae23260d8f10eebf4037609fbc2a97fd..9b490bcb1bfce1ce7f8405e5384af9a343272306 100644
+--- a/compiler/src/dotty/tools/dotc/core/Contexts.scala
++++ b/compiler/src/dotty/tools/dotc/core/Contexts.scala
+@@ -1070,11 +1070,13 @@ object Contexts {
+      */
+     private[dotc] var coverage: Coverage | Null = null
+ 
+-    // The array will be initialized with a number of slots corresponding to the max fuel,
+-    // for now give it 10 slots so a few calls to handleRecursive work for trivial things
+-    // before the compiler has really started
++    // The array has a number of slots corresponding to the max fuel: the configured one
++    // once `initialize` has run, and the default until then, so that a base which is never
++    // initialized (one made only to parse and traverse trees, say) has the same room for
++    // recursion as a compiler run with no `-Xmax-fuel`.
+     private[dotc] var recursiveDepth: Int = 0
+-    private[dotc] var recursiveOperations: Array[RecursiveOperation] = Array.fill(10)(RecursiveOperation.blank())
++    private[dotc] var recursiveOperations: Array[RecursiveOperation] =
++      Array.fill(ScalaSettings.XmaxFuel.valueIn(ScalaSettings.defaultState))(RecursiveOperation.blank())
+ 
+     // Types state
+     /** A table for hash consing unique types */

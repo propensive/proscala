@@ -1,6 +1,6 @@
-# Reduce match aliases in an inline call's arguments before exposing opaque types
+# Follow aliases in an inline call's arguments before exposing opaque types
 
-Lets an inline method of an opaque type be called on a value whose type, read from TASTy, is a match-type alias that reduces to that opaque type.
+Lets an inline method of an opaque type be called on a value whose type names that opaque type only through an alias below the top of the type: a match-type alias read from TASTy, or an ordinary alias under a refinement or in a type argument.
 
 ## Context
 
@@ -56,6 +56,21 @@ Fields are declared `Atomic[X]` throughout, so most of Soundness could not be
 recompiled from its TASTy (which fume does, to insert coverage probes):
 `parasite-core` alone gave 21 errors.
 
+## The same through an ordinary alias
+
+A match alias is the case `dealias` never follows. An ordinary alias it does
+follow — but only at the top of a type. `export Ops.O` gives an opaque type a
+second name that is an ordinary alias, and a type that mentions it lower down
+keeps the alias: `O { type Form = Int }` is a refinement whose *parent* is the
+alias, and `List[O]` has it as an argument. Neither mentions `Ops`, so no proxy
+was made, in a single compilation too, with nothing read from TASTy.
+
+Soundness reaches this through its proof idiom: an `Ordinal` confined to a
+value is `Ordinal { type Form = xs.type }`, and `Ordinal` is exported from the
+object that declares it, so every inline extension on a confined ordinal failed
+unless the receiver was first ascribed to plain `Ordinal`.
+[`repro2/`](repro2/) is that shape in one file.
+
 ## Reproduction
 
 [`repro/`](repro/) — no flags. A library, a unit declaring a `Cell[String]`,
@@ -85,34 +100,37 @@ index.getAndIncrement`).
 
 ## Solution
 
-`mapOpaquesInValueArg` (`inlines/Inliner.scala`) now reduces the match aliases
-in the argument's type before looking through it:
+`mapOpaquesInValueArg` (`inlines/Inliner.scala`) now follows the aliases in the
+argument's type, at any depth, before looking through it:
 
 ```scala
-private def reduceMatchAliases(tp: Type)(using Context): Type =
-  val reduce = new TypeMap:
+private def followAliases(tp: Type)(using Context): Type =
+  val follow = new TypeMap:
     def apply(t: Type) = t match
       case t: AppliedType if t.isMatchAlias =>
         val reduced = t.tryNormalize
         if reduced.exists then apply(reduced) else mapOver(t)
+      case t: (TypeRef | AppliedType) =>
+        val dealiased = t.dealiasKeepAnnots
+        if dealiased ne t then apply(dealiased) else mapOver(t)
       case _ => mapOver(t)
-  reduce(tp)
+  follow(tp)
 
 private def mapOpaquesInValueArg(arg: Tree)(using Context): Tree =
-  val argType = reduceMatchAliases(arg.tpe.widenDealias)
+  val argType = followAliases(arg.tpe.widenDealias)
 ```
 
-It reduces at any depth, since the alias may be an argument of the type
-(`List[Cell[String]]` passed for a `List[Cell.Ref[value]]`), and leaves an
-alias that cannot be reduced — its scrutinee still abstract — as it is. The
+A match alias is reduced where it can be, and left as it is where its scrutinee
+is still abstract; any other alias is replaced by what it stands for, keeping
+its annotations (capture sets among them). An opaque type is not an alias from
+outside the object that declares it, so it is where the following stops. The
 result is used exactly as before: only to find the proxies and to form the
 cast, which is added only if the proxies change the type. An argument with no
-match alias in its type is untouched, and one whose alias reduces to something
-with no opaque type gets no cast.
+alias below the top of its type is untouched.
 
-`Typer`'s own `simplified` would do the reduction too, but it also instantiates
-type variables, which an inliner running during typing (for a transparent
-inline method) must not do.
+`Typer`'s own `simplified` would reduce the match aliases too, but it also
+instantiates type variables, which an inliner running during typing (for a
+transparent inline method) must not do.
 
 ## From source and from TASTy
 
@@ -128,7 +146,7 @@ and Java callers see the difference.
 
 This is upstream's behaviour in both published versions tried (3.3.6 and
 3.10.0), and is not specific to `-from-tasty`: `repro/client.scala` is an ordinary
-compilation. It is always on, since it only accepts programs that were
+compilation, and `repro2/` involves no TASTy at all. It is always on, since it only accepts programs that were
 rejected. Worth reporting upstream with the reproduction.
 
 A more general remedy would be for the unpickler to simplify an applied type
@@ -137,4 +155,6 @@ Typer does"); that would also restore the generic signature, but changes what ev
 not attempted here.
 
 `tests/pos/opaque-inline-match-alias` covers the separately compiled case, for
-both arms of the match and for a nested alias.
+both arms of the match and for a nested alias;
+`tests/pos/opaque-inline-export-alias.scala` and its counterpart under
+`tests/pos-custom-args/captures` cover the ordinary alias.

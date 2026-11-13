@@ -65,3 +65,7 @@ valuebased
 macroloader
 gatherable
 matchopaque
+readonlyadapt
+parenarrow
+blocktypeapply
+fuelslots

@@ -102,12 +102,12 @@ Proscala-Patch: semdiag
  .../tools/dotc/printing/Formatting.scala      |  68 +++++-
  .../tools/dotc/reporting/Diagnostic.scala     |   2 +-
  .../dotc/reporting/DiagnosticMarkup.scala     | 193 ++++++++++++++++++
- .../reporting/DiagnosticTypePickler.scala     | 130 ++++++++++++
+ .../reporting/DiagnosticTypePickler.scala     | 136 ++++++++++++
  .../dotty/tools/dotc/reporting/Message.scala  |   2 +
  .../dotc/reporting/MessageRendering.scala     |   8 +-
  .../tools/dotc/reporting/XmlReporter.scala    | 102 +++++++++
  .../dotty/tools/dotc/reporting/messages.scala | 140 +++++++------
- 9 files changed, 573 insertions(+), 74 deletions(-)
+ 9 files changed, 579 insertions(+), 74 deletions(-)
  create mode 100644 compiler/src/dotty/tools/dotc/reporting/DiagnosticMarkup.scala
  create mode 100644 compiler/src/dotty/tools/dotc/reporting/DiagnosticTypePickler.scala
  create mode 100644 compiler/src/dotty/tools/dotc/reporting/XmlReporter.scala
@@ -433,10 +433,10 @@ index 0000000000000000000000000000000000000000..095e1aff08cac6d0a752054b91a05aa5
 +      case _ => None
 diff --git a/compiler/src/dotty/tools/dotc/reporting/DiagnosticTypePickler.scala b/compiler/src/dotty/tools/dotc/reporting/DiagnosticTypePickler.scala
 new file mode 100644
-index 0000000000000000000000000000000000000000..74f0d65aa3f94fd3779b067b4687f3053bd181aa
+index 0000000000000000000000000000000000000000..b4e20d2139e620c5dda8af07ecbca4252bdb6c08
 --- /dev/null
 +++ b/compiler/src/dotty/tools/dotc/reporting/DiagnosticTypePickler.scala
-@@ -0,0 +1,130 @@
+@@ -0,0 +1,136 @@
 +package dotty.tools
 +package dotc
 +package reporting
@@ -474,6 +474,12 @@ index 0000000000000000000000000000000000000000..74f0d65aa3f94fd3779b067b4687f305
 +   *  cannot be pickled. Never throws: a diagnostic must not become a crash.
 +   */
 +  def pickle(tp: Type)(using Context): Option[Pickled] =
++    // Pickling formats types of its own, in the messages of its assertions and in
++    // what it prints when one fails. With the markup active those would be marked
++    // too, each by pickling it in turn: the type that failed to pickle would be
++    // pickled again to say so, without end. Nothing formatted from here on is part
++    // of the diagnostic, so it is formatted plainly.
++    given Context = ctx.fresh.dropProperty(DiagnosticMarkup.Active)
 +    try
 +      val cleaner = Cleaner()
 +      val cleaned = cleaner(tp)

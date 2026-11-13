@@ -1,0 +1,65 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 13 Nov 2026 17:59:46 +0900
+Subject: Apply type arguments to a lifted application's expression, not its
+ block
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+An application whose arguments must be evaluated once and in order — because a
+default argument refers to an earlier argument, a `using` argument among them
+— is lifted into a block: the arguments are bound to local values and the
+call follows as the block's expression. If the method has a type-parameter
+clause after the defaulted clause, Typer then applies the type arguments to
+what it has, the block, and `tpd.TypeApply` asserts that it was given a
+function: "unexpected tree for type application: Block(…)", a crash in typer.
+
+`appliedToTypeTrees` now applies the type arguments to a block's expression,
+inside the block. This is upstream's change 481fe77b7ef ("Allow
+`appliedToTypeTrees` to operate on block expressions", #26259), which is on
+`main` and every 3.10 release but not on the 3.9 line.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: blocktypeapply
+---
+ compiler/src/dotty/tools/dotc/ast/tpd.scala |  4 +++-
+ tests/pos/typeapply-lifted-default.scala    | 12 ++++++++++++
+ 2 files changed, 15 insertions(+), 1 deletion(-)
+ create mode 100644 tests/pos/typeapply-lifted-default.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/ast/tpd.scala b/compiler/src/dotty/tools/dotc/ast/tpd.scala
+index 16b36c940bc4ae317445ac6482b160bce6593a14..7b0dc10cbe8b3b881c20b38220ad22579211aed0 100644
+--- a/compiler/src/dotty/tools/dotc/ast/tpd.scala
++++ b/compiler/src/dotty/tools/dotc/ast/tpd.scala
+@@ -1028,7 +1028,9 @@ object tpd extends Trees.Instance[Type] with TypedTreeInfo {
+ 
+     /** The current tree applied to given type argument list: `tree[targs(0), ..., targs(targs.length - 1)]` */
+     def appliedToTypeTrees(targs: List[Tree])(using Context): Tree =
+-      if targs.isEmpty then tree else TypeApply(tree, targs)
++      if targs.isEmpty then tree else tree match
++        case Block(stmts, expr) if stmts.nonEmpty => Block(stmts, TypeApply(expr, targs))
++        case _ => TypeApply(tree, targs)
+ 
+     /** Apply to `()` unless tree's widened type is parameterless */
+     def ensureApplied(using Context): Tree =
+diff --git a/tests/pos/typeapply-lifted-default.scala b/tests/pos/typeapply-lifted-default.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..842e7de3b6d8342b3787c1d4a7d0380495d72c27
+--- /dev/null
++++ b/tests/pos/typeapply-lifted-default.scala
+@@ -0,0 +1,12 @@
++// A default argument in a clause before an interleaved type-parameter clause, in an
++// application that is lifted into a block: the type arguments have to be applied to
++// the block's expression, not to the block.
++
++trait TC
++given tc0: TC = new TC {}
++
++def f(using tc: TC)(flags: List[String] = Nil)[C](g: Int => C): C = g(0)
++def h(tc: TC)(flags: List[String] = Nil)[C](g: Int => C): C = g(0)
++
++val viaUsing = f()(identity)
++val viaImpure = h(new TC {})()(identity)
