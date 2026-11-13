@@ -1,0 +1,126 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 13 Nov 2026 15:42:17 +0900
+Subject: Reduce match aliases in an inline call's arguments before exposing
+ opaque types
+
+When an inline method defined beside an opaque type is called, the inliner
+looks through each value argument's type for references to the object that
+owns the opaque type, and casts the argument to the same type seen through a
+proxy that exposes the alias, so that the inlined body can use the argument as
+its underlying type. It looked at the widened, dealiased type, which leaves an
+applied match alias as it is: for
+
+    type Cell[value] = value match
+      case Int => Cell.Whole
+      case _   => Cell.Ref[value]
+
+an argument of type `Cell[String]` mentions neither `Cell.Ref` nor the object
+`Cell`, so it was not cast, and the body's `ref.get()` was typed against the
+still-opaque `Cell.Ref[String]`: "expression does not take parameters".
+
+Typer hides this, because it simplifies the type of every tree it types, the
+declared type of a definition included, and simplifying reduces match aliases.
+A definition read from TASTy keeps its type as written. So the call failed
+whenever the argument was a member of a separately compiled class declared
+with such a type, and for every such call in a unit recompiled with
+`-from-tasty`.
+
+The argument's type now has its reducible match aliases reduced, at any depth,
+before the opaque references are sought in it.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: matchopaque
+---
+ .../dotty/tools/dotc/inlines/Inliner.scala    | 17 ++++++++++-
+ .../pos/opaque-inline-match-alias/Lib_1.scala | 29 +++++++++++++++++++
+ .../opaque-inline-match-alias/Test_2.scala    | 10 +++++++
+ 3 files changed, 55 insertions(+), 1 deletion(-)
+ create mode 100644 tests/pos/opaque-inline-match-alias/Lib_1.scala
+ create mode 100644 tests/pos/opaque-inline-match-alias/Test_2.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/inlines/Inliner.scala b/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
+index a23ad9127b45e0b2977df167c9028e8531e26f31..b5afbfc4c610f0af8938b1456de7ce196f1ff721 100644
+--- a/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
++++ b/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
+@@ -714,11 +714,26 @@ class Inliner(val call: tpd.Tree)(using Context):
+         .showing(i"transformed this binding exposing opaque aliases: $result", inlining)
+   end accountForOpaques
+ 
++  /** Reduce the applied match aliases in `tp` that can be reduced. Typer leaves no
++   *  such type in a tree, since it simplifies the type of every tree it types, but
++   *  the type of a definition read from TASTy is as it was written: a `Cell[String]`
++   *  that reduces to `Cell.Ref[String]` does not mention `Cell.Ref`, so the opaque
++   *  type it stands for would not be found in it.
++   */
++  private def reduceMatchAliases(tp: Type)(using Context): Type =
++    val reduce = new TypeMap:
++      def apply(t: Type) = t match
++        case t: AppliedType if t.isMatchAlias =>
++          val reduced = t.tryNormalize
++          if reduced.exists then apply(reduced) else mapOver(t)
++        case _ => mapOver(t)
++    reduce(tp)
++
+   /** If value argument contains references to objects that contain opaque types,
+    *  map them to their opaque proxies.
+    */
+   private def mapOpaquesInValueArg(arg: Tree)(using Context): Tree =
+-    val argType = arg.tpe.widenDealias
++    val argType = reduceMatchAliases(arg.tpe.widenDealias)
+     addOpaqueProxies(argType, arg.span, forThisProxy = false)
+     if opaqueProxies.nonEmpty then
+       val mappedType = mapOpaques.typeMap(argType)
+diff --git a/tests/pos/opaque-inline-match-alias/Lib_1.scala b/tests/pos/opaque-inline-match-alias/Lib_1.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..ea7db0d563996cc045fa6acc79d84faba446bcac
+--- /dev/null
++++ b/tests/pos/opaque-inline-match-alias/Lib_1.scala
+@@ -0,0 +1,29 @@
++package lib
++
++import java.util.concurrent.atomic as juca
++
++object Cell:
++  opaque type Whole = juca.AtomicInteger
++  opaque type Ref[value] = juca.AtomicReference[value]
++
++  def apply(initial: Int): Whole = juca.AtomicInteger(initial)
++  def apply[value](initial: value): Ref[value] = juca.AtomicReference(initial)
++
++  object Whole:
++    extension (whole: Whole) inline def apply(): Int = whole.get()
++
++  object Ref:
++    extension [value](ref: Ref[value])
++      inline def apply(): value = ref.get().nn
++      inline def swap(value: value): value = ref.getAndSet(value).nn
++
++type Cell[value] = value match
++  case Int => Cell.Whole
++  case _   => Cell.Ref[value]
++
++// The declared types of these are read from TASTy by `Test_2.scala`, where they
++// are unreduced applications of the match alias `Cell`.
++object Holder:
++  val ref: Cell[String] = Cell("a")
++  val whole: Cell[Int] = Cell(1)
++  val refs: List[Cell[String]] = List(Cell("a"))
+diff --git a/tests/pos/opaque-inline-match-alias/Test_2.scala b/tests/pos/opaque-inline-match-alias/Test_2.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..b86150fd18b9386e8c8f5078379dd30c513e27ac
+--- /dev/null
++++ b/tests/pos/opaque-inline-match-alias/Test_2.scala
+@@ -0,0 +1,10 @@
++import lib.*
++
++object Test:
++  inline def first[value](refs: List[Cell.Ref[value]]): value = refs.head()
++
++  def read(): String = Holder.ref()
++  def swap(): String = Holder.ref.swap("b")
++  def whole(): Int = Holder.whole()
++  def head(): String = Holder.refs.head()
++  def nested(): String = first(Holder.refs)
