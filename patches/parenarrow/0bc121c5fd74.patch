@@ -1,0 +1,73 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 13 Nov 2026 17:59:45 +0900
+Subject: Forget a parenthesized type's elements once it is not a parameter
+ list
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+`Parsers.typ` records, for each type it reads inside parentheses, whether it is
+an erased parameter, in case the parentheses turn out to be the parameter list
+of a function type. If they do not — no arrow follows — it goes on to read the
+rest of the type with those entries still recorded. Should that type then turn
+out to be the single parameter of a function type after all, as in
+
+    (A & B)^ ?=> T
+
+where the capture set comes between the parentheses and the arrow, one more
+entry was added for it, and `FunctionWithMods` was built with one parameter and
+two entries: an AssertionError out of the parser, with no diagnostic. With
+capture checking off, `^` is not read as part of the type and the same source
+gets an ordinary syntax error.
+
+The entries are now dropped when the parentheses are found not to be a
+parameter list. None of them can be `true` there: an erased element sends the
+parser down the function path.
+
+Upstream no longer has the buffer (0114fb812f6, "Simplify erased parameters"),
+so this is needed only before that.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: parenarrow
+---
+ compiler/src/dotty/tools/dotc/parsing/Parsers.scala  |  4 ++++
+ .../captures/paren-capturing-arrow.scala             | 12 ++++++++++++
+ 2 files changed, 16 insertions(+)
+ create mode 100644 tests/pos-custom-args/captures/paren-capturing-arrow.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/parsing/Parsers.scala b/compiler/src/dotty/tools/dotc/parsing/Parsers.scala
+index 875ac7cc461feb6517e213dfb71a64d622418f50..680cfdc2b621205ca49a438a35340774c60cc774 100644
+--- a/compiler/src/dotty/tools/dotc/parsing/Parsers.scala
++++ b/compiler/src/dotty/tools/dotc/parsing/Parsers.scala
+@@ -1842,6 +1842,10 @@ object Parsers {
+           if in.isArrow || isPureArrow || erasedArgs.contains(true) then
+             functionRest(args)
+           else
++            // The parenthesized types are not a function's parameters after all, so
++            // what was recorded for each as one does not describe the parameter
++            // that the whole type may yet turn out to be, as in `(A & B)^ => C`.
++            erasedArgs.clear()
+             val tuple = atSpan(start):
+               makeTupleOrParens(args.mapConserve(convertToElem))
+             typeRest:
+diff --git a/tests/pos-custom-args/captures/paren-capturing-arrow.scala b/tests/pos-custom-args/captures/paren-capturing-arrow.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..b9117749a4fb9b2a51e68382187d1f6e051672f3
+--- /dev/null
++++ b/tests/pos-custom-args/captures/paren-capturing-arrow.scala
+@@ -0,0 +1,12 @@
++// A parenthesized type with a capture set, as the parameter of a function type. The
++// types within the parentheses were counted as parameters of a function, and the
++// whole type then counted again as the one parameter it is.
++
++trait A
++trait B
++
++def context[T](block: (A & B)^ ?=> T): T = ???
++def impure[T](block: (A & B)^ => T): T = ???
++def pure[T](block: (A & B)^ -> T): T = ???
++type F[T] = (A & B)^ ?=> T
++type G[T] = ((A & B)^) ?=> T

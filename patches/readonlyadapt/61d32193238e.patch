@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 13 Nov 2026 17:53:55 +0900
+Subject: Keep the type arguments a read-only adaptation does not improve
+
+Adapting a read-only reference to an expected type of a different class goes
+through the actual type's base type: the base type's arguments are improved
+against the expected ones, and each improvement is carried back to the original
+argument it came from. The improvements were collected in a map and the map was
+then applied to every original argument as a function, so an argument with no
+improvement threw NoSuchElementException out of the capture checker: for
+`Right(r)` against `Either[Int, Ref^{r.rd}]`, only the second of `Right`'s two
+arguments is improved, and the first, `Nothing`, was not in the map.
+
+An argument without an improvement now stays as it is.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: readonlyadapt
+---
+ compiler/src/dotty/tools/dotc/cc/Mutability.scala  |  5 ++++-
+ .../captures/mutability-partial-improve.scala      | 14 ++++++++++++++
+ 2 files changed, 18 insertions(+), 1 deletion(-)
+ create mode 100644 tests/pos-custom-args/captures/mutability-partial-improve.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/Mutability.scala b/compiler/src/dotty/tools/dotc/cc/Mutability.scala
+index feb660c0f671c5f01c8638aac790441b215d77b4..d4d9c03d5e443d40397019e3fc9bae2ddeff70b2 100644
+--- a/compiler/src/dotty/tools/dotc/cc/Mutability.scala
++++ b/compiler/src/dotty/tools/dotc/cc/Mutability.scala
+@@ -229,7 +229,10 @@ object Mutability:
+                       if barg ne iarg
+                       aarg <- aargs.find(_ eq barg)
+                     yield (aarg, iarg)
+-                  if updates.nonEmpty then AppliedType(atycon, aargs.map(updates.toMap))
++                  if updates.nonEmpty then
++                    // only the improved arguments have an entry; the others stay as they are
++                    val improved = updates.toMap
++                    AppliedType(atycon, aargs.map(aarg => improved.getOrElse(aarg, aarg)))
+                   else actual
+                 else actual
+               case _ => actual
+diff --git a/tests/pos-custom-args/captures/mutability-partial-improve.scala b/tests/pos-custom-args/captures/mutability-partial-improve.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..487b606b16531e40771ef4b463d43bf52eaa9b3c
+--- /dev/null
++++ b/tests/pos-custom-args/captures/mutability-partial-improve.scala
+@@ -0,0 +1,14 @@
++// Adapting a read-only reference to an expected type through a base type improved only
++// one of `Right`'s two type arguments, and the other was then looked up in the map of
++// improvements: a NoSuchElementException in `Mutability.adaptReadOnlyToExpected`.
++
++import caps.*
++
++class Ref extends Mutable:
++  private var x: Int = 0
++  def get: Int = x
++  update def set(y: Int): Unit = x = y
++
++def right(r: Ref^): Either[Int, Ref^{r.rd}] = Right(r)
++def left(r: Ref^): Either[Ref^{r.rd}, Int] = Left(r)
++def either(r: Ref^, b: Boolean): Either[Int, Ref^{r.rd}] = if b then Right(r) else Left(0)

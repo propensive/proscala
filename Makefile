@@ -327,8 +327,21 @@ $(SCALA_LIB_JAR): $(COMMON_ARGS) $(DEPS_STAMP) $(LIBRARY_SRC) library/resources/
 	@cd $(BUILD)/refstd && jar xf $(JARS)/scala-library-$(REF_VERSION).jar
 	@# The reference stdlib ships matching .class + .tasty pairs; replace BOTH so
 	@# the overlaid classfile stays in sync with its TASTy (avoids -Werror warning).
-	@# Skips gracefully on trees without this file (grep -> empty list).
-	@for E in $$(grep -oE '"[^"]+"' project/ScalaLibraryFilesToCopy.scala 2>/dev/null | tr -d '"'); do \
+	@# Skips gracefully on trees without this file (empty lists).
+	@# The file may also list `filesToKeep`: companions of copied classes that must
+	@# stay as this build compiled them, because they hold Scala 3 members the
+	@# reference lacks (`applyUsing` on the FunctionN companions). Each kept
+	@# companion's classfile is set aside and put back after the splice, with the
+	@# TASTy it shares with its class, which is where those members are read from.
+	@rm -rf $(BUILD)/kept && mkdir -p $(BUILD)/kept
+	@for K in $$(awk '/filesToKeep/{k=1} k' project/ScalaLibraryFilesToCopy.scala 2>/dev/null | grep -oE '"[^"]+"' | tr -d '"'); do \
+	   for F in "$$K.class" "$${K%\$$}.tasty"; do \
+	     [ -f "$(CLASSES)/scala-library/$$F" ] || continue; \
+	     mkdir -p "$(BUILD)/kept/$$(dirname "$$F")"; \
+	     cp "$(CLASSES)/scala-library/$$F" "$(BUILD)/kept/$$F"; \
+	   done; \
+	 done
+	@for E in $$(awk '/filesToKeep/{k=1} !k' project/ScalaLibraryFilesToCopy.scala 2>/dev/null | grep -oE '"[^"]+"' | tr -d '"'); do \
 	   d=$$(dirname "$$E"); b=$$(basename "$$E"); \
 	   [ -d "$(BUILD)/refstd/$$d" ] || continue; \
 	   mkdir -p "$(CLASSES)/scala-library/$$d"; \
@@ -338,6 +351,13 @@ $(SCALA_LIB_JAR): $(COMMON_ARGS) $(DEPS_STAMP) $(LIBRARY_SRC) library/resources/
 	   find "$(BUILD)/refstd/$$d" -maxdepth 1 -type f \
 	     \( -name "$$b.class" -o -name "$$b\$$*.class" -o -name "$$b.tasty" -o -name "$$b\$$*.tasty" \) \
 	     -exec cp {} "$(CLASSES)/scala-library/$$d/" \; ; \
+	 done
+	@cp -R $(BUILD)/kept/. $(CLASSES)/scala-library/
+	@# The class beside a kept companion still comes from the reference, and names
+	@# the reference's TASTy; point it at ours, or it is "out of sync" under -Werror.
+	@for T in $$(cd $(BUILD)/kept && find . -name '*.tasty' | sed 's|^\./||'); do \
+	   java mk/TastySync.java "$(CLASSES)/scala-library/$${T%.tasty}.class" \
+	     "$(BUILD)/refstd/$$T" "$(CLASSES)/scala-library/$$T" || exit 1; \
 	 done
 	$(call jar_module,scala-library,$@,scala.library)
 

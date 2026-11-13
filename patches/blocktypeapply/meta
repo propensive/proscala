@@ -1,0 +1,2 @@
+variant 0bc121c5fd74.patch 1 0bc121c5fd74a0340dc56e0739ebab40de3333a2
+obsolete-from 481fe77b7ef95846c1dd22f4343109cf728b4959   # this is upstream #26259, on main and every 3.10 release but not backported to the 3.9 line

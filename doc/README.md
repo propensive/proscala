@@ -46,6 +46,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [anykindcap](anykindcap/anykindcap.md) | Do not constrain type arguments by an `AnyKind` bound's capture set | 3.10 | bug fix | yes | always on |
 | [assumeseparate](assumeseparate/assumeseparate.md) | Keep an `unsafeAssumeSeparate` operand's own type | 3.9, 3.10 | bug fix | yes (2: `repro`, `repro-element`) | always on |
 | [blockimport](blockimport/blockimport.md) | Recheck a block's result expression in its statements' context | 3.9, 3.10 | bug fix | yes | always on |
+| [blocktypeapply](blocktypeapply/blocktypeapply.md) | Apply type arguments to a lifted application's expression, not its block | 3.9 | bug fix (crash) | yes | always on |
 | [boolunapply](boolunapply/boolunapply.md) | Keep Boolean results of nullary case-class unapplies under capture checking | 3.10 | bug fix | yes | always on |
 | [boxcycle](boxcycle/boxcycle.md) | Guard against cyclic types in `boxDeeply` | 3.9, 3.10 | bug fix (crash) | FIXME | always on |
 | [castbox](castbox/castbox.md) | Box opaque-external type arguments in cast type applications | 3.9 | bug fix | yes | always on |
@@ -58,6 +59,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [depset](depset/depset.md) | Add a mutable IdentitySet to optimize variable dependencies in CC | 3.9 | backport (perf) | yes | always on |
 | [dictcaps](dictcaps/dictcaps.md) | Infer the capture set of recursive-implicit dictionary instances | 3.9, 3.10 | bug fix | yes | always on |
 | [exportuses](exportuses/exportuses.md) | Do not recheck the escaping uses of an export forwarder | 3.10 | bug fix | yes | always on |
+| [fuelslots](fuelslots/fuelslots.md) | Give an uninitialized `ContextBase` the default fuel for recursive operations | 3.10 | bug fix (crash) | yes | always on |
 | [givencache](givencache/givencache.md) | Keep given aliases cached when capture checking is enabled | 3.9, 3.10 | bug fix (crash) | yes | always on |
 | [givenprefix](givenprefix/givenprefix.md) | Seal package-object prefixes on implicit candidate references | 3.9, 3.10 | bug fix | yes | `-Zgiven-prefixes` |
 | [iarraypure](iarraypure/iarraypure.md) | Treat `IArray` as pure under capture checking | 3.9, 3.10 | bug fix | yes | `-Zpure-iarrays` |
@@ -73,13 +75,16 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [macroalias](macroalias/macroalias.md) | Strip ordinary aliases when the macro-expansion check reveals opaques | — | bug fix | yes | always on |
 | [macroloader](macroloader/macroloader.md) | Resolve a macro's classes from the compilation classpath, not the compiler's host | 3.9, 3.10 | bug fix | yes | `-Zisolated-macros` |
 | [macrosingleton](macrosingleton/macrosingleton.md) | Reveal an opaque type behind a singleton in the macro-expansion check | 3.10 | bug fix | yes | always on |
+| [matchopaque](matchopaque/matchopaque.md) | Follow aliases in an inline call's arguments before exposing opaque types | 3.9, 3.10 | bug fix | yes (2: `repro`, `repro2`) | always on |
 | [modulepath](modulepath/modulepath.md) | Give an inline accessor for a module the module's `TermRef` | 3.10 | bug fix | yes | always on |
 | [movestatics](movestatics/movestatics.md) | Test a symbol's owner before its annotations in `MoveStatics` | 3.9, 3.10 | bug fix (crash) | FIXME | always on |
 | [nullreceiver](nullreceiver/nullreceiver.md) | Widen bottom-typed call receivers to Object in the backend | 3.9 | bug fix (crash) | yes | always on |
+| [parenarrow](parenarrow/parenarrow.md) | Forget a parenthesized type's elements once it is not a parameter list | 3.9 | bug fix (crash) | yes | always on |
 | [permitlazy](permitlazy/permitlazy.md) | Lazy resolution of permitted subclasses in classfile parsing | 3.9 | bug fix | yes | always on |
 | [proxycap](proxycap/proxycap.md) | Capture-check inline argument proxies within their parameters' bounds | 3.10 | bug fix | yes | always on |
 | [proxyskolem](proxyskolem/proxyskolem.md) | No skolem-typed inline argument proxies under capture checking | 3.9, 3.10 | bug fix | yes (2: `repro`, `repro2`) | always on |
 | [prunecomplete](prunecomplete/prunecomplete.md) | Do not force completion when filtering prunable inline methods | — | bug fix (crash) | yes | always on |
+| [readonlyadapt](readonlyadapt/readonlyadapt.md) | Keep the type arguments a read-only adaptation does not improve | 3.9, 3.10 | bug fix (crash) | yes | always on |
 | [refinealias](refinealias/refinealias.md) | Drop the implied capture set from a type alias in a refinement | 3.10 | bug fix | yes | always on |
 | [retainbounds](retainbounds/retainbounds.md) | Sanitize `TypeBounds` in `@retains` arguments to the top capability | 3.9, 3.10 | bug fix | yes | `-Zretains-bounds` |
 | [returnavoid](returnavoid/returnavoid.md) | Avoid only pattern-bound term symbols in rechecked returns | 3.9, 3.10 | bug fix | yes | always on |
@@ -87,7 +92,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [sambox](sambox/sambox.md) | Capability-implied captures on SAM anonymous-class type members | 3.9, 3.10 | bug fix | yes | always on |
 | [samstateful](samstateful/samstateful.md) | Read-only views of constant method-result capture sets | 3.9 | bug fix | yes | always on |
 | [searchdiag](searchdiag/searchdiag.md) | Preserve an `@internal.diagnostic` candidate's errors as the search-failure message | 3.9, 3.10 | feature | yes | `-Zdiagnostic-givens` |
-| [semdiag](semdiag/semdiag.md) | `-Zsemantic-diagnostics`: XML error output with TASTy-encoded types | 3.9, 3.10 | feature | yes | `-Zsemantic-diagnostics` |
+| [semdiag](semdiag/semdiag.md) | `-Zsemantic-diagnostics`: XML error output with TASTy-encoded types | 3.9, 3.10 | feature | yes (2: `repro`, `repro-recursion`) | `-Zsemantic-diagnostics` |
 | [sharedunscoped](sharedunscoped/sharedunscoped.md) | A shared, level-exempt classifier: `caps.SharedUnscoped` | 3.9, 3.10 | feature | yes | always on |
 | [skolemcap](skolemcap/skolemcap.md) | Widen skolems in retains sets to the top capability | 3.9, 3.10 | bug fix | yes | `-Zretains-skolems` |
 | [smap](smap/smap.md) | `-Zinline-source-maps`: JSR-45 SMAP attributes mapping inlined code to its source files | 3.9, 3.10 | feature | yes | `-Zinline-source-maps` |

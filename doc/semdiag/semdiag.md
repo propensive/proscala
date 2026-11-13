@@ -104,6 +104,11 @@ placeholder table wherever it finds a `ConstantType` string starting with
 
 ## Limitations
 
+- A type that cannot be pickled at all — a reference to a method's parameter
+  outside its method type is one — is emitted without `tasty=`. While a type is
+  being pickled nothing is marked up: the pickler formats types in its own
+  failure messages, and marking those would pickle the failing type again,
+  without end ([`repro-recursion/`](repro-recursion/)).
 - The composite-phrase helpers in `typer/ErrorReporting.scala` (`refStr`,
   `infoString`, `expectedTypeStr`, …) still pre-render their entities; the
   marker format supports converting them (markers nest, and `Styled` can
