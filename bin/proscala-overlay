@@ -8,7 +8,8 @@
 #
 # The build lives on `main`: the Makefile, the per-stream config (mk/), the
 # Scala.js scalalib support sources (library-js-aux/), the Scala 2 stdlib-overlay
-# list (project/ScalaLibraryFilesToCopy.scala) and the vendored Scala.js IR. This
+# list (project/ScalaLibraryFilesToCopy.scala, for a tree with none of its own) and
+# the vendored Scala.js IR. This
 # copies them into the current worktree as untracked files and adds them (plus
 # the build output dirs) to this worktree's git exclude list, so `git status`
 # still shows only the tree's own commits. Then just run `make`.
@@ -55,9 +56,16 @@ git rev-parse --verify --quiet "$MAIN_REF:mk/scalajs-ir/$ir" >/dev/null 2>&1 \
 echo ">> overlaying build files from $MAIN_REF (stream $stream, $flavour IR)"
 
 # Always-overlaid build files, at their natural paths.
-mapfile -t mkfiles < <(git ls-tree --name-only "$MAIN_REF" mk/ | grep '\.mk$')
-git archive "$MAIN_REF" Makefile "${mkfiles[@]}" \
-    library-js-aux project/ScalaLibraryFilesToCopy.scala | tar -x
+mapfile -t mkfiles < <(git ls-tree --name-only "$MAIN_REF" mk/ | grep -E '\.(mk|java)$')
+git archive "$MAIN_REF" Makefile "${mkfiles[@]}" library-js-aux | tar -x
+
+# The Scala 2 stdlib-overlay list is upstream's own file and changes with it (which
+# classes are still specialized, which companions must be kept), so a tree that has
+# one builds with its own; only a tree without gets main's copy.
+list=project/ScalaLibraryFilesToCopy.scala
+if git ls-files --error-unmatch "$list" >/dev/null 2>&1; then git checkout -q -- "$list"
+else git archive "$MAIN_REF" "$list" | tar -x
+fi
 
 # Selected vendored IR -> compiler/src-scalajs-ir.
 rm -rf compiler/src-scalajs-ir

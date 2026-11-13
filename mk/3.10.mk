@@ -8,8 +8,8 @@ VERSION            := 3.10.2-dev-propensive
 # onto it), and the scala/scala3 branch it is taken from. Authoritative: the
 # docs are checked against both. An upstream bump changes UPSTREAM_SHA.
 UPSTREAM_REF       := main
-UPSTREAM_SHA       := a6d308066747aa3015972a0d974c1028cb9ff3c5
-REF_VERSION        := 3.10.1-RC2
+UPSTREAM_SHA       := 61d32193238e1bbf90e7c81e57a798754a6e48f7
+REF_VERSION        := 3.10.1
 BASE_SCALAJS_VERSION    := 1.22.0
 # The Scala version whose stock Scala Native artifacts (nscplugin, scala3lib) the
 # Native variants of tasty-core and proscala-library are built with. None here:
