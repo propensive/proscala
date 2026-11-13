@@ -37,27 +37,46 @@ argument of type `O { type Form = Int }` or `List[O]` names the opaque type
 The argument's type now has its aliases followed at any depth, match aliases
 reduced where they can be, before the opaque references are sought in it.
 
+The following is confined to what upstream missed, in two ways. It is done only
+for an argument whose type, as it stands, mentions no object with opaque
+members: one that does is cast exactly as upstream casts it, so that with
+`type Bytes = Frozen[Byte]` a `Frozen[Bytes]` keeps `Bytes` as its element type
+and is not given `Array[Byte]` elements, which separation checking rejects
+where the caller expects a `Frozen[Byte]` back. And it stops at an opaque type
+even where that is an alias, as it is through the opaque proxy of an enclosing
+inline call: a lambda over `$proxy1.Scribe[Char]`, passed on to a second inline
+method, was otherwise cast to a function of the representation, and could no
+longer be applied to an opaque value made in the inlined body.
+
 Written with LLM assistance (Claude Code); reviewed content.
 
 Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
 Proscala-Patch: matchopaque
 ---
- .../dotty/tools/dotc/inlines/Inliner.scala    | 24 ++++++++++++++-
- .../captures/opaque-inline-export-alias.scala | 25 ++++++++++++++++
- tests/pos/opaque-inline-export-alias.scala    | 22 ++++++++++++++
- .../pos/opaque-inline-match-alias/Lib_1.scala | 29 +++++++++++++++++++
- .../opaque-inline-match-alias/Test_2.scala    | 10 +++++++
- 5 files changed, 109 insertions(+), 1 deletion(-)
+ .../dotty/tools/dotc/inlines/Inliner.scala    | 47 +++++++++++++++++++
+ .../opaque-inline-alias-element/Lib_1.scala   | 19 ++++++++
+ .../opaque-inline-alias-element/Test_2.scala  |  8 ++++
+ .../captures/opaque-inline-export-alias.scala | 25 ++++++++++
+ tests/pos/opaque-inline-export-alias.scala    | 22 +++++++++
+ .../pos/opaque-inline-match-alias/Lib_1.scala | 29 ++++++++++++
+ .../opaque-inline-match-alias/Test_2.scala    | 10 ++++
+ .../opaque-inline-nested-lambda/Lib_1.scala   | 28 +++++++++++
+ .../opaque-inline-nested-lambda/Test_2.scala  |  6 +++
+ 9 files changed, 194 insertions(+)
+ create mode 100644 tests/pos-custom-args/captures/opaque-inline-alias-element/Lib_1.scala
+ create mode 100644 tests/pos-custom-args/captures/opaque-inline-alias-element/Test_2.scala
  create mode 100644 tests/pos-custom-args/captures/opaque-inline-export-alias.scala
  create mode 100644 tests/pos/opaque-inline-export-alias.scala
  create mode 100644 tests/pos/opaque-inline-match-alias/Lib_1.scala
  create mode 100644 tests/pos/opaque-inline-match-alias/Test_2.scala
+ create mode 100644 tests/pos/opaque-inline-nested-lambda/Lib_1.scala
+ create mode 100644 tests/pos/opaque-inline-nested-lambda/Test_2.scala
 
 diff --git a/compiler/src/dotty/tools/dotc/inlines/Inliner.scala b/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
-index a23ad9127b45e0b2977df167c9028e8531e26f31..00beed3f9e3d71a46d36ca06ff02f6d8f625d798 100644
+index a23ad9127b45e0b2977df167c9028e8531e26f31..0f683b3ca22ba7df1e537466164143709bec96fb 100644
 --- a/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
 +++ b/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
-@@ -714,11 +714,33 @@ class Inliner(val call: tpd.Tree)(using Context):
+@@ -714,11 +714,58 @@ class Inliner(val call: tpd.Tree)(using Context):
          .showing(i"transformed this binding exposing opaque aliases: $result", inlining)
    end accountForOpaques
  
@@ -70,10 +89,19 @@ index a23ad9127b45e0b2977df167c9028e8531e26f31..00beed3f9e3d71a46d36ca06ff02f6d8
 +   *     it types, but the type of a definition read from TASTy is as it was written;
 +   *   - an `O { type Form = Int }` or a `List[O]`, where `O` is an alias of `Ops.O`
 +   *     (such as an `export Ops.O` makes), does not mention `Ops`.
++   *
++   *  An opaque type is where the following stops, also where it is an alias: inside
++   *  the scope that declares it, and seen through the opaque proxy of an enclosing
++   *  inline call (`$proxy1.Scribe[Char]`, in an argument that call passes on to another
++   *  inline method). It names its owner already, and replacing it by its representation
++   *  would cast the argument to a type of the representation, which an opaque value
++   *  made in the inlined body does not conform to.
 +   */
 +  private def followAliases(tp: Type)(using Context): Type =
 +    val follow = new TypeMap:
 +      def apply(t: Type) = t match
++        case t: TypeRef if t.symbol.isOpaqueAlias => t
++        case AppliedType(tycon: TypeRef, _) if tycon.symbol.isOpaqueAlias => mapOver(t)
 +        case t: AppliedType if t.isMatchAlias =>
 +          val reduced = t.tryNormalize
 +          if reduced.exists then apply(reduced) else mapOver(t)
@@ -85,13 +113,67 @@ index a23ad9127b45e0b2977df167c9028e8531e26f31..00beed3f9e3d71a46d36ca06ff02f6d8
 +
    /** If value argument contains references to objects that contain opaque types,
     *  map them to their opaque proxies.
++   *
++   *  The aliases in the argument's type are followed (see `followAliases`) only if the
++   *  type as it stands mentions no such object. Where it does, the argument is cast
++   *  exactly as it always was, and an alias elsewhere in its type keeps its name:
++   *  with `type Bytes = Frozen[Byte]`, a `Frozen[Bytes]` is seen as `$proxy1.Frozen[Bytes]`,
++   *  whose elements are still the `Bytes` the caller expects back.
     */
    private def mapOpaquesInValueArg(arg: Tree)(using Context): Tree =
--    val argType = arg.tpe.widenDealias
-+    val argType = followAliases(arg.tpe.widenDealias)
+     val argType = arg.tpe.widenDealias
++    val cast = castToOpaqueProxies(arg, argType)
++    if cast ne arg then cast
++    else
++      val followed = followAliases(argType)
++      if followed ne argType then castToOpaqueProxies(arg, followed) else arg
++
++  /** `arg`, cast to `argType` as seen through the opaque proxies of the objects it
++   *  mentions, or as it is if it mentions none.
++   */
++  private def castToOpaqueProxies(arg: Tree, argType: Type)(using Context): Tree =
      addOpaqueProxies(argType, arg.span, forThisProxy = false)
      if opaqueProxies.nonEmpty then
        val mappedType = mapOpaques.typeMap(argType)
+diff --git a/tests/pos-custom-args/captures/opaque-inline-alias-element/Lib_1.scala b/tests/pos-custom-args/captures/opaque-inline-alias-element/Lib_1.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..3d80d95804d7451e89948b39f417caeef2f3718f
+--- /dev/null
++++ b/tests/pos-custom-args/captures/opaque-inline-alias-element/Lib_1.scala
+@@ -0,0 +1,19 @@
++// An inline read from an opaque array whose element type is an alias of the same
++// opaque type. The receiver names the opaque type's owner as it is written, so it is
++// cast as upstream casts it, and the alias in the element position is left alone:
++// following it too would give the read the representation's type, `Array[Byte]`, which
++// separation checking does not accept as the `Frozen[Byte]` the caller expects.
++
++package lib
++
++import language.experimental.captureChecking
++import language.experimental.separationChecking
++
++opaque type Frozen[element] = Array[element]
++
++object Frozen:
++  def apply[element](array: Array[element]): Frozen[element]^{} =
++    array.asInstanceOf[Frozen[element]^{}]
++
++  extension [element, C^](buffer: Frozen[element]^{C})
++    inline def read(index: Int): element = buffer(index)
+diff --git a/tests/pos-custom-args/captures/opaque-inline-alias-element/Test_2.scala b/tests/pos-custom-args/captures/opaque-inline-alias-element/Test_2.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..ff2f1702a817cd27afa608d275591f9e6be4d73c
+--- /dev/null
++++ b/tests/pos-custom-args/captures/opaque-inline-alias-element/Test_2.scala
+@@ -0,0 +1,8 @@
++package app
++
++import language.experimental.captureChecking
++import language.experimental.separationChecking
++import lib.*
++
++type Bytes = Frozen[Byte]^{}
++def first(nested: Frozen[Bytes]^{}): Bytes = nested.read(0)
 diff --git a/tests/pos-custom-args/captures/opaque-inline-export-alias.scala b/tests/pos-custom-args/captures/opaque-inline-export-alias.scala
 new file mode 100644
 index 0000000000000000000000000000000000000000..98f2474181de355e7276b6fe1872cc37cc4a1dff
@@ -202,3 +284,49 @@ index 0000000000000000000000000000000000000000..b86150fd18b9386e8c8f5078379dd30c
 +  def whole(): Int = Holder.whole()
 +  def head(): String = Holder.refs.head()
 +  def nested(): String = first(Holder.refs)
+diff --git a/tests/pos/opaque-inline-nested-lambda/Lib_1.scala b/tests/pos/opaque-inline-nested-lambda/Lib_1.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..21270e84734c736752b86f5b2c41d1aba95e16f2
+--- /dev/null
++++ b/tests/pos/opaque-inline-nested-lambda/Lib_1.scala
+@@ -0,0 +1,28 @@
++// An inline method beside an opaque type, taking a lambda over that type, and called
++// from another inline method: the second call's argument has the lambda's type as the
++// first call left it, naming the opaque type through that call's proxy, where it is an
++// alias of its representation. Following that alias cast the lambda to a function of
++// the representation, which the opaque value it is applied to is not.
++
++package lib
++
++opaque type Scribe[element] = Scribe.Core
++
++object Scribe:
++  final class Core(val buffer: AnyRef)
++
++  def apply[element](buffer: AnyRef): Scribe[element] = new Core(buffer)
++
++  inline def over[element, result](buffer: AnyRef)
++    ( inline lambda: (scribe: Scribe[element]) => Int => result )
++  :   result =
++
++    val scribe = Scribe[element](buffer)
++    lambda(scribe)(0)
++
++extension (companion: Array.type)
++  inline def scribe[element](size: Int)
++    ( inline lambda: (scribe: Scribe[element]) => Int => Unit )
++  :   Unit =
++
++    Scribe.over[element, Unit](new Object)(lambda)
+diff --git a/tests/pos/opaque-inline-nested-lambda/Test_2.scala b/tests/pos/opaque-inline-nested-lambda/Test_2.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..ef0e171a14d48ebd60b0963dfee8f7177a12bcaf
+--- /dev/null
++++ b/tests/pos/opaque-inline-nested-lambda/Test_2.scala
+@@ -0,0 +1,6 @@
++package app
++
++import lib.*
++
++def fill(length: Int): Unit = Array.scribe[Char](length): scribe =>
++  _ => ()
