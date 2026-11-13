@@ -114,6 +114,16 @@ with no opaque type gets no cast.
 type variables, which an inliner running during typing (for a transparent
 inline method) must not do.
 
+## From source and from TASTy
+
+With the patch a unit recompiles from its TASTy to the same instructions as it
+compiles to from source, but not to the same bytes. A definition declared with
+the match alias keeps its unreduced type when read from TASTy, so the generic
+signature derived from it is missing: `val ref: Cell[String]` becomes a field
+with the signature `AtomicReference<String>` from source, and a raw
+`AtomicReference` from TASTy. Nothing at run time depends on it; reflection
+and Java callers see the difference.
+
 ## Upstream
 
 This is upstream's behaviour in both published versions tried (3.3.6 and
@@ -123,8 +133,7 @@ rejected. Worth reporting upstream with the reproduction.
 
 A more general remedy would be for the unpickler to simplify an applied type
 tree as Typer does (it already does so for a match type tree, "as that's what
-Typer does"); that would also restore the generic signature noted in the
-reproduction's README, but changes what every reader of TASTy sees, so it is
+Typer does"); that would also restore the generic signature, but changes what every reader of TASTy sees, so it is
 not attempted here.
 
 `tests/pos/opaque-inline-match-alias` covers the separately compiled case, for
