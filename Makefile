@@ -405,8 +405,18 @@ COMPILER_CP  := $(call cpjoin,$(SCALA_LIB_JAR) $(INTERFACES_JAR) $(TASTY_JAR) \
   $(TREE_ASM_JARS) $(JARS)/compiler-interface-$(COMPILER_IFACE_VER).jar \
   $(JARS)/util-interface-$(UTIL_IFACE_VER).jar)
 
-$(COMPILER_JAR): $(COMMON_ARGS) $(SCALA_LIB_JAR) $(INTERFACES_JAR) $(TASTY_JAR) $(COMPILER_SRC)
+# The bolt-code registry is mk/bolt-codes.tel, a copy of the `bolt` repository's
+# p.tel. The code of each of its keys goes in the jar beside
+# reporting.BoltCodes, which reads it under -Zbolt-codes.
+# The compiler is not built while any of its messages lacks a code there: a
+# message new in this upstream must be assigned one first (bin/proscala-bolt).
+# `make BOLT_CHECK=` builds regardless; such messages are then ↯/p.2.1.
+BOLT_CODES := mk/bolt-codes.tel
+BOLT_CHECK ?= 1
+
+$(COMPILER_JAR): $(COMMON_ARGS) $(SCALA_LIB_JAR) $(INTERFACES_JAR) $(TASTY_JAR) $(COMPILER_SRC) $(BOLT_CODES)
 	@echo ">> scala3-compiler ($(words $(COMPILER_SRC)) sources)"
+	@if [ -n "$(BOLT_CHECK)" ]; then python3 bin/proscala-bolt --check $(BOLT_CODES) .; fi
 	@rm -rf $(CLASSES)/compiler && mkdir -p $(CLASSES)/compiler $(LIB)
 	@cp $(COMMON_ARGS) $(CLASSES)/compiler.args
 	@printf '%s\n' \
@@ -426,6 +436,7 @@ $(COMPILER_JAR): $(COMMON_ARGS) $(SCALA_LIB_JAR) $(INTERFACES_JAR) $(TASTY_JAR) 
 	  'git.hash=$(GITHASH)' \
 	  'copyright.string=Copyright 2002-$(YEAR), LAMP/EPFL' \
 	  > $(CLASSES)/compiler/compiler.properties
+	@python3 bin/proscala-bolt --keys $(BOLT_CODES) > $(CLASSES)/compiler/dotty/tools/dotc/reporting/bolt-codes.tsv
 	@printf 'Automatic-Module-Name: %s\nGit-Hash: %s\n' 'org.scala.lang.scala3.compiler' '$(GITHASH)' \
 	  > $(CLASSES)/compiler.mf
 	jar cfm $@ $(CLASSES)/compiler.mf -C $(CLASSES)/compiler .

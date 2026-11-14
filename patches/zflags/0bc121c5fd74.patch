@@ -20,9 +20,9 @@ Proscala-Patch: zflags
 ---
  .../dotty/tools/dotc/config/CliCommand.scala  |  6 +-
  .../tools/dotc/config/CompilerCommand.scala   |  3 +-
- .../dotty/tools/dotc/config/Proscala.scala    | 63 +++++++++++++++++++
+ .../dotty/tools/dotc/config/Proscala.scala    | 65 +++++++++++++++++++
  .../tools/dotc/config/ScalaSettings.scala     | 16 ++++-
- 4 files changed, 85 insertions(+), 3 deletions(-)
+ 4 files changed, 87 insertions(+), 3 deletions(-)
  create mode 100644 compiler/src/dotty/tools/dotc/config/Proscala.scala
 
 diff --git a/compiler/src/dotty/tools/dotc/config/CliCommand.scala b/compiler/src/dotty/tools/dotc/config/CliCommand.scala
@@ -77,10 +77,10 @@ index 3ad1585812b3435891e55720b0e085118e99833c..727872eea5e19f649ec9b862fcc347b3
      allSettings.exists(isHelping) || flags.exists(_.value)
 diff --git a/compiler/src/dotty/tools/dotc/config/Proscala.scala b/compiler/src/dotty/tools/dotc/config/Proscala.scala
 new file mode 100644
-index 0000000000000000000000000000000000000000..021412383fb15cbbf953c0d9039edf8da9826aac
+index 0000000000000000000000000000000000000000..01109633630286f5dcd4495f82004ef18c6551b3
 --- /dev/null
 +++ b/compiler/src/dotty/tools/dotc/config/Proscala.scala
-@@ -0,0 +1,63 @@
+@@ -0,0 +1,65 @@
 +package dotty.tools.dotc
 +package config
 +
@@ -100,6 +100,8 @@ index 0000000000000000000000000000000000000000..021412383fb15cbbf953c0d9039edf8d
 +  enum Feature(val name: String, val patch: String, val help: String):
 +    case AliasCaptures extends Feature("alias-captures", "aliascap",
 +      "Keep root capabilities global in type alias infos under capture checking.")
++    case BoltCodes extends Feature("bolt-codes", "boltcodes",
++      "Label every error and warning with its bolt code, as in [↯/p.1.7].")
 +    case InlinedClosures extends Feature("check-inlined-closures", "inlinedclosures",
 +      "Capture-check the bodies of closures inlined from compiled code.")
 +    case DiagnosticGivens extends Feature("diagnostic-givens", "searchdiag",

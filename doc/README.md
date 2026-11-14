@@ -47,6 +47,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [assumeseparate](assumeseparate/assumeseparate.md) | Keep an `unsafeAssumeSeparate` operand's own type | 3.9, 3.10 | bug fix | yes (2: `repro`, `repro-element`) | always on |
 | [blockimport](blockimport/blockimport.md) | Recheck a block's result expression in its statements' context | 3.9, 3.10 | bug fix | yes | always on |
 | [blocktypeapply](blocktypeapply/blocktypeapply.md) | Apply type arguments to a lifted application's expression, not its block | 3.9 | bug fix (crash) | yes | always on |
+| [boltcodes](boltcodes/boltcodes.md) | `-Zbolt-codes`: every error and warning labelled with its bolt code | 3.9, 3.10 | feature | yes | `-Zbolt-codes` |
 | [boolunapply](boolunapply/boolunapply.md) | Keep Boolean results of nullary case-class unapplies under capture checking | 3.10 | bug fix | yes | always on |
 | [boxcycle](boxcycle/boxcycle.md) | Guard against cyclic types in `boxDeeply` | 3.9, 3.10 | bug fix (crash) | FIXME | always on |
 | [castbox](castbox/castbox.md) | Box opaque-external type arguments in cast type applications | 3.9 | bug fix | yes | always on |

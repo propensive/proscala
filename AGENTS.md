@@ -181,8 +181,8 @@ new versions once their changes are confirmed identical.
 
 The bounds give the streams different patch sets:
 
-    stream 3.9    47 patches   carries blocktypeapply, castbox, depset, parenarrow, splicealias, samstateful, staleread, virtualdir
-    stream 3.10   52 patches   adds anonascribe, anonspec, anykindcap, boolunapply, closurerecheck, definefurther, exportuses, fuelslots, implicitparts, inlinedclosures, integratemap, macrosingleton, modulepath, proxycap, refinealias, unioncaps; drops those eight, and nullreceiver, permitlazy and rootclassify (fixed upstream); macroalias applies to 3.10.0 only, and prunecomplete only before upstream #27247
+    stream 3.9    48 patches   carries blocktypeapply, castbox, depset, parenarrow, splicealias, samstateful, staleread, virtualdir
+    stream 3.10   53 patches   adds anonascribe, anonspec, anykindcap, boolunapply, closurerecheck, definefurther, exportuses, fuelslots, implicitparts, inlinedclosures, integratemap, macrosingleton, modulepath, proxycap, refinealias, unioncaps; drops those eight, and nullreceiver, permitlazy and rootclassify (fixed upstream); macroalias applies to 3.10.0 only, and prunecomplete only before upstream #27247
 
 (The counts exclude `zflags`.)
 
@@ -260,7 +260,7 @@ differ, the directory carries a clearly named variant file.
 
 ## The tools
 
-All need bash 4+ and git; building additionally needs GNU make, `curl`, `javac`,
+All need bash 4+ and git; building additionally needs GNU make, `curl`, `python3`, `javac`,
 `jar` and a JDK ≥ 17, and the release artefacts `zip`.
 
 ### Building any upstream: `bin/proscala-tree`
@@ -431,6 +431,26 @@ reproduction reproduces, and, run against a newer upstream, reveals a patch that
 upstream has made unnecessary. The release workflow runs `bin/proscala-test` on
 every target before releasing anything, and the Coverage workflow on its builds
 of upstream `main` and `lts-3.9`.
+
+### Bolt codes: `bin/proscala-bolt`
+
+    bin/proscala-bolt mk/bolt-codes.tel worktrees/3.10 worktrees/3.9   # assign what is new
+    bin/proscala-bolt --check mk/bolt-codes.tel worktrees/3.10        # exit 1 if anything is unassigned
+
+Under `-Zbolt-codes` (the `boltcodes` patch) every error and warning carries a
+bolt code, `↯/p.7.40`. The messages upstream does not number are known by the
+template of the `em"..."` string that makes them, and `mk/bolt-codes.tel` — which
+the build puts in the compiler's jar — gives each template its code.
+`bin/proscala-bolt <registry> <tree>...` (Python 3) reads the templates out of
+each tree and appends those the registry lacks, with the next free number of
+their subdivision; it never renumbers, and a code is never reused. Run it when a
+stream moves to a new upstream, newest tree first, and copy the result to
+`p.tel` in the `bolt` repository, of which `mk/bolt-codes.tel` is a copy.
+
+`make` runs the `--check` before it compiles the compiler, and **fails if any
+message in the tree has no code**: assign the new ones (the command above),
+commit the registry, and rebuild the tree. `make BOLT_CHECK=` skips the check,
+for a tree that is only being tried; its new messages are then `↯/p.2.1`.
 
 ### Covering a new target
 
