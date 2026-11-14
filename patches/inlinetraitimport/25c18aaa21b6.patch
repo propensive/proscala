@@ -1,0 +1,65 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 14 Nov 2026 20:42:48 +0900
+Subject: Leave an inline trait's imports out of the classes which extend it
+
+The statements of an inline trait are copied into each class which extends
+it. A definition is given a new symbol and its body inlined; any other
+statement is copied as it is, wrapped in an `Inlined` node. An import in the
+trait's body is such a statement, and the node made for it has the type of
+the import, which is not a type of a value: Erasure crashed on it, with
+"MatchError: ImportType(Ident(Ordinals))", whenever the trait and a class
+extending it were compiled in the same run.
+
+The trait's body is typed before it is copied, so its imports have nothing
+left to do, and they are now left out.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: inlinetraitimport
+---
+ .../src/dotty/tools/dotc/inlines/Inlines.scala |  4 ++++
+ tests/pos/inline-trait-import.scala            | 18 ++++++++++++++++++
+ 2 files changed, 22 insertions(+)
+ create mode 100644 tests/pos/inline-trait-import.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/inlines/Inlines.scala b/compiler/src/dotty/tools/dotc/inlines/Inlines.scala
+index a4136eb4c5b65df255f2904b241e24661bd0f82d..4ca4f47dfe3de335e34e07fd2a0adc930daf881a 100644
+--- a/compiler/src/dotty/tools/dotc/inlines/Inlines.scala
++++ b/compiler/src/dotty/tools/dotc/inlines/Inlines.scala
+@@ -996,6 +996,10 @@ object Inlines:
+       val stats = Inlines.defsToInline(parentSym)
+                          .filterNot(stat => overriddenDecls.contains(stat.symbol) && stat.symbol.is(Deferred))
+                          .filterNot(stat => stat.isDef && stat.symbol.isClass) // Inline traits may not define inner classes; error elsewhere but skip now for best effort error msgs
++                         // An import has served its purpose once the trait's body is typed, and
++                         // has no place in the child: copied, it is an `Inlined` node whose type
++                         // is an import type, which cannot be erased.
++                         .filterNot(_.isInstanceOf[Import])
+ 
+       val stats1 = stats.map{  // Private symbols must be entered before the RHSs are inlined
+         case member: MemberDef => Left((member, inlinedSym(member.symbol, overriddenDecls)))
+diff --git a/tests/pos/inline-trait-import.scala b/tests/pos/inline-trait-import.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..1a14f2db7d6a3b87909e6f5a0d0ece549aab886d
+--- /dev/null
++++ b/tests/pos/inline-trait-import.scala
+@@ -0,0 +1,18 @@
++//> using options -experimental -language:experimental.inlineTraits
++
++// An inline trait with an import in its body, and a class extending it in the same
++// run. The import was copied into the class with the trait's other statements, as an
++// `Inlined` node whose type is an import type, and Erasure crashed on it:
++// "MatchError: ImportType(Ident(Ordinals))".
++
++object Ordinals:
++  extension (index: Int) inline def twice: Int = index + index
++
++inline trait Counter[operand]:
++  import Ordinals.*
++
++  var count: Int = 1
++
++  def advance(): Unit = count = count.twice
++
++class Doubler extends Counter[Byte]

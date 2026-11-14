@@ -69,6 +69,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [implicitparts](implicitparts/implicitparts.md) | Do not assert on an open type parameter reached through a term's info | 3.10 | bug fix (crash) | yes | always on |
 | [inertcache](inertcache/inertcache.md) | Cache inert types in capture-checking Setup | 3.9, 3.10 | bug fix (hang) | yes | always on |
 | [inlinedclosures](inlinedclosures/inlinedclosures.md) | Capture-check closures inlined from compiled code | 3.10 | bug fix | yes | `-Zcheck-inlined-closures` |
+| [inlinetraitimport](inlinetraitimport/inlinetraitimport.md) | Leave an inline trait's imports out of the classes which extend it | 3.10 | bug fix (crash) | yes | always on |
 | [inlinetraitprune](inlinetraitprune/inlinetraitprune.md) | Make an inline trait's members deferred whichever unit asks first | — | bug fix | yes | always on |
 | [inlinetraittrace](inlinetraittrace/inlinetraittrace.md) | Give the inline calls expanded in an inline trait's child their call traces | 3.10 | bug fix (crash) | yes | always on |
 | [inlineupdate](inlineupdate/inlineupdate.md) | Propagate update classification to inline accessors | 3.9, 3.10 | bug fix | yes | always on |
