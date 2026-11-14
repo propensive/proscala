@@ -1,0 +1,110 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 14 Nov 2026 18:21:04 +0900
+Subject: Do not suspend a unit read from TASTy for a macro with bytecode
+ beside it
+
+A unit which calls a macro defined in the same run is suspended and compiled
+in a second run, because the macro's bytecode does not exist until the first
+has finished. Whether a symbol is defined in the run is decided by whether its
+file is one of the run's, and under `-from-tasty` those are the TASTy files
+given: a macro among the inputs counted, and its callers were suspended,
+though its class file lies beside its TASTy file and the macro runs from it.
+
+The suspension is not only unnecessary there. A suspended unit read from
+TASTy is not read again: the second run starts from the tree the first had
+already transformed, so PostTyper adds the synthetic members of its case
+classes and enums a second time, and the run fails with "Conflicting
+definitions" as soon as another unit of the first run has referred to them.
+
+A symbol read from a TASTy file with a class file beside it no longer counts
+as awaiting its bytecode. One without is treated as before.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: tastymacro
+---
+ .../src/dotty/tools/dotc/inlines/Inliner.scala | 18 ++++++++++++++++--
+ .../from-tasty-macro-in-inputs/Macro_1.scala   |  7 +++++++
+ .../from-tasty-macro-in-inputs/Other_2.scala   |  4 ++++
+ .../from-tasty-macro-in-inputs/Use_2.scala     | 12 ++++++++++++
+ 4 files changed, 39 insertions(+), 2 deletions(-)
+ create mode 100644 tests/pos-macros/from-tasty-macro-in-inputs/Macro_1.scala
+ create mode 100644 tests/pos-macros/from-tasty-macro-in-inputs/Other_2.scala
+ create mode 100644 tests/pos-macros/from-tasty-macro-in-inputs/Use_2.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/inlines/Inliner.scala b/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
+index b7f568d9a2c5d6c923b83f41721f4498cfe0c608..3a9fce74b4e55ba517c32134021b90314bc7b940 100644
+--- a/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
++++ b/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
+@@ -1602,12 +1602,26 @@ class Inliner(val call: tpd.Tree)(using Context):
+         tree match {
+           case Closure(env, meth, tpt) if meth.symbol.isAnonymousFunction =>
+             this(syms, tpt :: env)
+-          case tree: RefTree if tree.isTerm && level == -1 && tree.symbol.isDefinedInCurrentRun && !tree.symbol.isLocal =>
++          case tree: RefTree if tree.isTerm && level == -1 && awaitsBytecode(tree.symbol) && !tree.symbol.isLocal =>
+             foldOver(tree.symbol :: syms, tree)
+-          case _: This if level == -1 && tree.symbol.isDefinedInCurrentRun =>
++          case _: This if level == -1 && awaitsBytecode(tree.symbol) =>
+             tree.symbol :: syms
+           case _: TypTree => syms
+           case _ => foldOver(syms, tree)
+         }
+     }.apply(Nil, tree)
++
++  /** Is `sym` defined in the current run, with no bytecode to interpret it from yet?
++   *  A symbol compiled from source has none until its unit has been through the backend,
++   *  which is why a unit calling a macro defined in the same run is suspended. A symbol
++   *  read from a TASTy file given to `-from-tasty` is defined in the current run too,
++   *  but its class file lies beside the TASTy file, and the macro can be run from that.
++   */
++  private def awaitsBytecode(sym: Symbol)(using Context): Boolean =
++    sym.isDefinedInCurrentRun && !(ctx.settings.fromTasty.value && hasClassFile(sym))
++
++  private def hasClassFile(sym: Symbol)(using Context): Boolean =
++    val file = sym.associatedFile
++    file != null && file.ext.isTasty
++    && file.resolveSiblingWithExtension(dotty.tools.io.FileExtension.Class) != null
+ end Inliner
+diff --git a/tests/pos-macros/from-tasty-macro-in-inputs/Macro_1.scala b/tests/pos-macros/from-tasty-macro-in-inputs/Macro_1.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..967205be164afcf7de25a74496860e2bcb3df46e
+--- /dev/null
++++ b/tests/pos-macros/from-tasty-macro-in-inputs/Macro_1.scala
+@@ -0,0 +1,7 @@
++package app
++
++import scala.quoted.*
++
++object Macro:
++  inline def twice(inline value: Int): Int = ${ impl('value) }
++  def impl(value: Expr[Int])(using Quotes): Expr[Int] = '{ $value + $value }
+diff --git a/tests/pos-macros/from-tasty-macro-in-inputs/Other_2.scala b/tests/pos-macros/from-tasty-macro-in-inputs/Other_2.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..6e3bf38a5e9f285255ee15cae50ef4c7246661b5
+--- /dev/null
++++ b/tests/pos-macros/from-tasty-macro-in-inputs/Other_2.scala
+@@ -0,0 +1,4 @@
++package app
++
++object Other:
++  def issue: Use.Issue = Use.Issue.Expect('x')
+diff --git a/tests/pos-macros/from-tasty-macro-in-inputs/Use_2.scala b/tests/pos-macros/from-tasty-macro-in-inputs/Use_2.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..43b1bfdbcb2c80c815d967ea37e438a15171cbf9
+--- /dev/null
++++ b/tests/pos-macros/from-tasty-macro-in-inputs/Use_2.scala
+@@ -0,0 +1,12 @@
++// With `Macro_1` and `Other_2`, the inputs of a `-from-tasty` run in which this unit was
++// suspended, although the macro it calls has its class file beside its TASTy file. The
++// second run met the transformed tree of the first: "Conflicting definitions".
++
++package app
++
++object Use:
++  enum Issue:
++    case Expect(char: Char)
++    case Missing
++
++  def four: Int = Macro.twice(2)

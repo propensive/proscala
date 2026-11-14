@@ -69,6 +69,9 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [implicitparts](implicitparts/implicitparts.md) | Do not assert on an open type parameter reached through a term's info | 3.10 | bug fix (crash) | yes | always on |
 | [inertcache](inertcache/inertcache.md) | Cache inert types in capture-checking Setup | 3.9, 3.10 | bug fix (hang) | yes | always on |
 | [inlinedclosures](inlinedclosures/inlinedclosures.md) | Capture-check closures inlined from compiled code | 3.10 | bug fix | yes | `-Zcheck-inlined-closures` |
+| [inlinetraitimport](inlinetraitimport/inlinetraitimport.md) | Leave an inline trait's imports out of the classes which extend it | 3.10 | bug fix (crash) | yes | always on |
+| [inlinetraitprune](inlinetraitprune/inlinetraitprune.md) | Make an inline trait's members deferred whichever unit asks first | — | bug fix | yes | always on |
+| [inlinetraittrace](inlinetraittrace/inlinetraittrace.md) | Give the inline calls expanded in an inline trait's child their call traces | 3.10 | bug fix (crash) | yes | always on |
 | [inlineupdate](inlineupdate/inlineupdate.md) | Propagate update classification to inline accessors | 3.9, 3.10 | bug fix | yes | always on |
 | [integratemap](integratemap/integratemap.md) | Evaluate IntegrateMap symbols in the spliced run context | 3.10 | bug fix (crash) | yes | always on |
 | [lazycycle](lazycycle/lazycycle.md) | Guard against cyclic LazyRef graphs in capture-checking Setup | 3.9, 3.10 | bug fix (crash) | FIXME (not triggered by current Soundness) | always on |
@@ -87,6 +90,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [prunecomplete](prunecomplete/prunecomplete.md) | Do not force completion when filtering prunable inline methods | — | bug fix (crash) | yes | always on |
 | [readonlyadapt](readonlyadapt/readonlyadapt.md) | Keep the type arguments a read-only adaptation does not improve | 3.9, 3.10 | bug fix (crash) | yes | always on |
 | [refinealias](refinealias/refinealias.md) | Drop the implied capture set from a type alias in a refinement | 3.10 | bug fix | yes | always on |
+| [refinedsingleton](refinedsingleton/refinedsingleton.md) | Check a refinement against the tracked value itself, not its widened type | 3.9, 3.10 | bug fix | yes | always on |
 | [retainbounds](retainbounds/retainbounds.md) | Sanitize `TypeBounds` in `@retains` arguments to the top capability | 3.9, 3.10 | bug fix | yes | `-Zretains-bounds` |
 | [returnavoid](returnavoid/returnavoid.md) | Avoid only pattern-bound term symbols in rechecked returns | 3.9, 3.10 | bug fix | yes | always on |
 | [rootclassify](rootclassify/rootclassify.md) | Give a differently-classified fresh capability its own root | 3.9 | bug fix | yes | always on |
@@ -101,6 +105,12 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [spreadable](spreadable/spreadable.md) | Splice any type with a `Spreadable` instance into a vararg position | 3.9, 3.10 | feature | yes (2: `repro`, `repro-cc`) | `-Zspreadable-varargs` |
 | [gatherable](gatherable/gatherable.md) | Receive repeated parameters as the type a `Gatherable` instance names | 3.9, 3.10 | feature | yes | `-Zgatherable-varargs` |
 | [staleread](staleread/staleread.md) | Tolerate reading newer denotations from stale run contexts | 3.9 | bug fix (crash) | yes | always on |
+| [tastybackquote](tastybackquote/tastybackquote.md) | Mark the stable identifiers of a pattern read from TASTy as backquoted | 3.9, 3.10 | bug fix | yes | always on |
+| [tastymacro](tastymacro/tastymacro.md) | Do not suspend a unit read from TASTy for a macro with bytecode beside it | 3.9, 3.10 | bug fix | yes | always on |
+| [tastynocc](tastynocc/tastynocc.md) | Do not check captures in a run which reads its units from TASTy | 3.9, 3.10 | bug fix | yes | always on |
+| [tastysource](tastysource/tastysource.md) | Compile a unit read from TASTy in the source its trees were written in | 3.9, 3.10 | bug fix | yes | always on |
+| [tastyspecialize](tastyspecialize/tastyspecialize.md) | Mark a unit read from TASTy which uses inline traits as having specializations | 3.10 | bug fix | yes | always on |
+| [tastythisprefix](tastythisprefix/tastythisprefix.md) | Recognise the prefix of an inline call by its class, not by type equality | 3.9, 3.10 | bug fix | yes | always on |
 | [unboxedpure](unboxedpure/unboxedpure.md) | Do not box pure types with vacuous or pure-tuple capture sets | 3.9, 3.10 | bug fix | yes | `-Zunboxed-pure-types` |
 | [unioncaps](unioncaps/unioncaps.md) | Classify and preserve capture information on union types | 3.10 | bug fix | yes | `-Zunion-captures` |
 | [valuebased](valuebased/valuebased.md) | Keep the synthetic `jdk.internal.ValueBased` class valid across runs | — | bug fix (crash) | yes | always on |

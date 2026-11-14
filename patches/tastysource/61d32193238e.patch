@@ -1,0 +1,123 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 14 Nov 2026 18:25:24 +0900
+Subject: Compile a unit read from TASTy in the source its trees were written
+ in
+
+The source of a unit read from TASTy is its TASTy file, while its trees are
+given the source file they were written in, whose path and line lengths TASTy
+records. Three things went by the unit's source where the trees' was meant.
+
+The backend named the TASTy file in the `SourceFile` attribute of every class
+it emitted for the unit, so a stack trace read `Trace.tasty`.
+
+When an `Inlined` node is dropped, code inlined from another file is moved to
+the position of the call, since a class file has one source, and code from the
+unit's own file keeps its position. Every tree of the unit was in another
+file than the unit's, so all inlined code was moved, and placed in the TASTy
+file, where its position fell on line 1.
+
+And each phase made its new trees in the context's source, which is the
+unit's, so synthesized code had no line at all.
+
+A unit now has a `treeSource`, the source of its tree where the unit was read
+from TASTy and its own source otherwise, which is what the backend names, what
+the inliner compares against and moves code to, and what a context for the
+unit has as its source. The unit's source is unchanged, and with it the files
+of the run and what counts as defined in it.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: tastysource
+---
+ compiler/src/dotty/tools/backend/jvm/BCodeHelpers.scala  | 4 ++--
+ .../src/dotty/tools/backend/jvm/BCodeSkelBuilder.scala   | 2 +-
+ compiler/src/dotty/tools/dotc/CompilationUnit.scala      | 9 +++++++++
+ compiler/src/dotty/tools/dotc/core/Contexts.scala        | 4 +++-
+ compiler/src/dotty/tools/dotc/inlines/Inlines.scala      | 2 +-
+ 5 files changed, 16 insertions(+), 5 deletions(-)
+
+diff --git a/compiler/src/dotty/tools/backend/jvm/BCodeHelpers.scala b/compiler/src/dotty/tools/backend/jvm/BCodeHelpers.scala
+index c6db3694783c938ad35bdbe61afcc083b03b2349..eec327add9a73c2d8c644b32a9bbf93e81f6445c 100644
+--- a/compiler/src/dotty/tools/backend/jvm/BCodeHelpers.scala
++++ b/compiler/src/dotty/tools/backend/jvm/BCodeHelpers.scala
+@@ -70,7 +70,7 @@ trait BCodeHelpers(val bTypeLoader: BTypeLoader) extends BCodeIdiomatic {
+     if usedLines.isEmpty then null else
+       ctx.compilationUnit.smapRegistry match {
+         case null     => null
+-        case registry => registry.serialize(ctx.compilationUnit.source.name, usedLines)
++        case registry => registry.serialize(ctx.compilationUnit.treeSource.name, usedLines)
+       }
+ 
+   def createScalaJAttribute()(using Context): asm.Attribute = {
+@@ -472,7 +472,7 @@ trait BCodeHelpers(val bTypeLoader: BTypeLoader) extends BCodeIdiomatic {
+       if (emitSource) {
+         // A mirror class holds only forwarders, which carry no line numbers of their own,
+         // so it never references a synthetic line and needs no SMAP.
+-        mirrorClass.visitSource("" + ctx.compilationUnit.source.name, null)
++        mirrorClass.visitSource("" + ctx.compilationUnit.treeSource.name, null)
+       }
+ 
+       mirrorClass.visitAttribute(createScalaJAttribute())
+diff --git a/compiler/src/dotty/tools/backend/jvm/BCodeSkelBuilder.scala b/compiler/src/dotty/tools/backend/jvm/BCodeSkelBuilder.scala
+index 324031b26ebd547067842a4c20b6e4dc45fa6bcb..d7ac35e362c3d681d70532d4db1f8eafafad4626 100644
+--- a/compiler/src/dotty/tools/backend/jvm/BCodeSkelBuilder.scala
++++ b/compiler/src/dotty/tools/backend/jvm/BCodeSkelBuilder.scala
+@@ -436,7 +436,7 @@ trait BCodeSkelBuilder(val bTypes: KnownBTypes) extends BCodeHelpers {
+ 
+       if (emitSource) {
+         // Runs after the class's methods have been emitted, so `usedSyntheticLines` is complete.
+-        cnode.visitSource(ctx.compilationUnit.source.name, sourceDebugExtension(usedSyntheticLines))
++        cnode.visitSource(ctx.compilationUnit.treeSource.name, sourceDebugExtension(usedSyntheticLines))
+       }
+ 
+       BCodeUtils.enclosingMethodAttribute(claszSymbol, bTypeLoader.classBTypeFromSymbol(_).internalName, bTypeLoader.methodBTypeFromSymbol(_).descriptor) match {
+diff --git a/compiler/src/dotty/tools/dotc/CompilationUnit.scala b/compiler/src/dotty/tools/dotc/CompilationUnit.scala
+index 665d5e785471d4199c51cc61712db1db242764fc..2a1a52cd7eaa2b22a9ca55fbf02084726c395083 100644
+--- a/compiler/src/dotty/tools/dotc/CompilationUnit.scala
++++ b/compiler/src/dotty/tools/dotc/CompilationUnit.scala
+@@ -41,6 +41,15 @@ class CompilationUnit protected (val source: SourceFile, val info: CompilationUn
+     val local = info
+     if local == null then None else local.tastyInfo
+ 
++  /** The source file the trees of this unit were written in. For a unit read from
++   *  TASTy that is not `source`, which is the TASTy file, but the source the trees
++   *  were given when they were unpickled, whose lines the TASTy file records.
++   */
++  def treeSource: SourceFile =
++    if source.file != null && source.file.ext.isTasty && tpdTree.source.exists
++    then tpdTree.source
++    else source
++
+ 
+   /** The source version for this unit, as determined by a language import */
+   var sourceVersion: Option[SourceVersion] = None
+diff --git a/compiler/src/dotty/tools/dotc/core/Contexts.scala b/compiler/src/dotty/tools/dotc/core/Contexts.scala
+index 9b490bcb1bfce1ce7f8405e5384af9a343272306..f9b76d180657fd4d5634459a70addb27738b6eaf 100644
+--- a/compiler/src/dotty/tools/dotc/core/Contexts.scala
++++ b/compiler/src/dotty/tools/dotc/core/Contexts.scala
+@@ -754,7 +754,9 @@ object Contexts {
+       this
+ 
+     def setCompilationUnit(compilationUnit: CompilationUnit): this.type = {
+-      setSource(compilationUnit.source)
++      // `treeSource`, so that a tree made while a unit read from TASTy is compiled is
++      // placed in the source the unit's own trees are in, not in the TASTy file
++      setSource(compilationUnit.treeSource)
+       updateStore(compilationUnitLoc, compilationUnit)
+     }
+ 
+diff --git a/compiler/src/dotty/tools/dotc/inlines/Inlines.scala b/compiler/src/dotty/tools/dotc/inlines/Inlines.scala
+index 0ef5f3f9737620bd74f9b940c4c62c14ebea3445..91cd91a2e884576224e0eb5103a9811d87187adb 100644
+--- a/compiler/src/dotty/tools/dotc/inlines/Inlines.scala
++++ b/compiler/src/dotty/tools/dotc/inlines/Inlines.scala
+@@ -634,7 +634,7 @@ object Inlines:
+   def reposition(tree: Tree, callSpan: Span)(using Context): Tree =
+     // Reference test tests/run/i4947b
+ 
+-    val curSource = ctx.compilationUnit.source
++    val curSource = ctx.compilationUnit.treeSource
+ 
+     // Tree copier that changes the source of all trees to `curSource`
+     val cpyWithNewSource = new TypedTreeCopier {

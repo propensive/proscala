@@ -1,0 +1,79 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 14 Nov 2026 18:22:17 +0900
+Subject: Recognise the prefix of an inline call by its class, not by type
+ equality
+
+When the body of an inline method refers to `C.this`, the inliner binds it to
+a proxy, `C_this`, unless it is the prefix of the call and the call is made
+inside `C`, where `C.this` means the same thing. A private member cannot be
+selected from the proxy, so for a local inline method which reads private
+members of its class it matters that no proxy is made.
+
+Whether `C.this` is the prefix was decided by comparing two `ThisType`s for
+equality. A `ThisType` read from TASTy need not hold the same type reference
+to the class as `cls.thisType` does, and then the two are unequal though they
+are the `this` of one class. So a class compiled from source did not recompile
+from its own TASTy: "value raster cannot be accessed as a member of
+(Encoder_this : (Encoder.this : app.Encoder))".
+
+The comparison is now `sameThis`, which compares the classes.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: tastythisprefix
+---
+ .../src/dotty/tools/dotc/inlines/Inliner.scala  | 10 +++++++++-
+ .../local-inline-private-param-from-tasty.scala | 17 +++++++++++++++++
+ 2 files changed, 26 insertions(+), 1 deletion(-)
+ create mode 100644 tests/pos/local-inline-private-param-from-tasty.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/inlines/Inliner.scala b/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
+index 5b7bd87abd912b38e06931112c719d9fab14552b..c3d2d89b529a39eeeacc7439e8a147ac29490f2a 100644
+--- a/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
++++ b/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
+@@ -604,11 +604,19 @@ class Inliner(val call: tpd.Tree)(using Context):
+     else arg
+ 
+   private def canElideThis(tpe: ThisType): Boolean =
+-    inlineCallPrefix.tpe == tpe && ctx.owner.isContainedIn(tpe.cls)
++    isCallPrefix(tpe) && ctx.owner.isContainedIn(tpe.cls)
+     || tpe.cls.isContainedIn(inlinedMethod)
+     || tpe.cls.is(Package)
+     || tpe.cls.isStaticOwner && !(tpe.cls.seesOpaques && inlinedMethod.isContainedIn(tpe.cls))
+ 
++  /** Is `tpe` the type of the call's prefix? Two `this` types of one class are the same
++   *  prefix though they are not equal, as they are not when one was read from TASTy,
++   *  which need not name the class by the type reference `cls.thisType` holds.
++   */
++  private def isCallPrefix(tpe: ThisType): Boolean = inlineCallPrefix.tpe match
++    case pre: ThisType => pre.sameThis(tpe)
++    case pre => pre == tpe
++
+   private def adaptToPrefix(tp: Type) = tp.asSeenFrom(inlineCallPrefix.tpe, inlinedMethod.owner)
+ 
+   def thisTypeProxyExists = !thisProxy.isEmpty
+diff --git a/tests/pos/local-inline-private-param-from-tasty.scala b/tests/pos/local-inline-private-param-from-tasty.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..fce6c17dc94193c3f338d469c0dee4d1e737f050
+--- /dev/null
++++ b/tests/pos/local-inline-private-param-from-tasty.scala
+@@ -0,0 +1,17 @@
++// A local inline method which reads private members of its class. Read back from TASTy,
++// `Encoder.this` in the method's body was not recognised as the prefix of the call, so
++// the inliner bound it to a proxy, through which a private member cannot be selected:
++// "value raster cannot be accessed as a member of (Encoder_this : ...)".
++
++final class Encoder(raster: Array[Int], width: Int):
++  def total(): Int =
++    inline def word(x: Int): Int = raster(x.min(width - 1))
++
++    var sum = 0
++    var x = 0
++
++    while x < width do
++      sum += word(x)
++      x += 1
++
++    sum

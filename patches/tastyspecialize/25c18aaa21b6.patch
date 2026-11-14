@@ -1,0 +1,103 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 14 Nov 2026 18:16:37 +0900
+Subject: Mark a unit read from TASTy which uses inline traits as having
+ specializations
+
+`CompilationUnit.hasSpecializations` says that a unit declares or extends an
+inline trait. The phases which finish the work of inline traits after
+pickling all do nothing without it: `PruneInlineTraits` and
+`PruneInlinedMethods`, which empty the trait's own definitions and mark it as
+having no initializer, and `Erasure`'s treatment of a specialized class. It is
+set in one place, the frontend phase `CheckInlineTraits`, which a unit read
+from TASTy does not pass through.
+
+So a unit declaring an inline trait did not recompile from its TASTy: the
+trait's body kept its inline calls, and `Erasure` reported each as "declared
+as `inline`, but was not inlined". A class extending an inline trait did
+recompile, to a constructor calling the trait's `$init$`, which does not
+exist: a `NoSuchMethodError` when the class is instantiated.
+
+`CompilationUnit.Force`, which already works out `needsInlining` and
+`needsStaging` for an unpickled tree, now works out `hasSpecializations` too,
+from the conditions `CheckInlineTraits` uses.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: tastyspecialize
+---
+ .../dotty/tools/dotc/CompilationUnit.scala    | 18 ++++++++++++-
+ tests/pos/inline-trait-unit-from-tasty.scala  | 26 +++++++++++++++++++
+ 2 files changed, 43 insertions(+), 1 deletion(-)
+ create mode 100644 tests/pos/inline-trait-unit-from-tasty.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/CompilationUnit.scala b/compiler/src/dotty/tools/dotc/CompilationUnit.scala
+index 79bc9f782ef7afa30331c212b12e6c0692e02a1e..eacb34291f1f2eb00cfc9c0183bd52847f514e68 100644
+--- a/compiler/src/dotty/tools/dotc/CompilationUnit.scala
++++ b/compiler/src/dotty/tools/dotc/CompilationUnit.scala
+@@ -176,7 +176,8 @@ object CompilationUnit {
+       val force = new Force
+       force.traverse(unit1.tpdTree)
+       unit1.needsStaging = force.containsQuote
+-      unit1.needsInlining = force.containsInline
++      unit1.needsInlining = force.containsInline || force.containsSpecialization
++      unit1.hasSpecializations = force.containsSpecialization
+       unit1.hasMacroAnnotations = force.containsMacroAnnotation
+     }
+     unit1
+@@ -220,7 +221,22 @@ object CompilationUnit {
+     var containsInline = false
+     var containsCaptureChecking = false
+     var containsMacroAnnotation = false
++    /** Does the tree declare or extend an inline trait, or summon a `Specialized`
++     *  instance? These are the conditions under which `CheckInlineTraits` sets
++     *  `hasSpecializations` for a unit compiled from source; a unit read from TASTy
++     *  does not pass through that phase.
++     */
++    var containsSpecialization = false
+     def traverse(tree: Tree)(using Context): Unit = {
++      tree match
++        case tree: tpd.TypeDef if tree.symbol.isInlineTrait =>
++          containsSpecialization = true
++        case tree: tpd.Template
++        if tree.parents.exists(parent => inlines.Inlines.symbolFromParent(parent).isInlineTrait) =>
++          containsSpecialization = true
++        case tree: tpd.Ident if tree.symbol == defn.SpecializedModule_apply =>
++          containsSpecialization = true
++        case _ =>
+       if tree.symbol.is(Flags.Inline) then
+         containsInline = true
+       tree match
+diff --git a/tests/pos/inline-trait-unit-from-tasty.scala b/tests/pos/inline-trait-unit-from-tasty.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..c675af3d035d67e8e6350e7326c8fe7908dadfb3
+--- /dev/null
++++ b/tests/pos/inline-trait-unit-from-tasty.scala
+@@ -0,0 +1,26 @@
++//> using options -experimental -language:experimental.inlineTraits
++
++// A unit which declares an inline trait and a class which extends it. Read back from
++// TASTy, it was not marked as having specializations, as `CheckInlineTraits` marks a
++// unit compiled from source: the trait's body kept its inline calls ("declared as
++// inline, but was not inlined"), and the class called an initializer the trait does
++// not have.
++
++import Counting.*
++
++object Counting:
++  extension (count: Int) inline def twice: Int = count + count
++
++inline trait Counter[operand]:
++  var count: Int = 1
++
++  def advance(): Unit = count = count.twice
++
++class Doubler extends Counter[Byte]
++
++object Test:
++  def main(args: Array[String]): Unit =
++    val doubler = Doubler()
++    doubler.advance()
++    doubler.advance()
++    println(doubler.count)

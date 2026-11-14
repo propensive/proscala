@@ -1,0 +1,92 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 14 Nov 2026 18:13:18 +0900
+Subject: Mark the stable identifiers of a pattern read from TASTy as
+ backquoted
+
+A pattern `case `label` =>` matches the value of `label`. Typer tells it from
+the variable pattern `case label =>` by the `Backquoted` attachment the parser
+puts on the identifier, and so do the pattern matcher, which discards a
+variable pattern as one that discerns nothing, and the exhaustivity checker.
+TASTy does not record the attachment, so in a unit read from TASTy the
+pattern matcher took the identifier for a variable pattern: the case matched
+every value, and the class was emitted without a diagnostic.
+
+A typed pattern binds a variable only with a `Bind`, so an identifier in one
+that has the name of a variable pattern, other than `_`, can only have been
+written in backquotes. The unpickler now marks it so when it reads a case.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: tastybackquote
+---
+ .../tools/dotc/core/tasty/TreeUnpickler.scala | 18 ++++++++++++++
+ tests/run/backquoted-pattern-from-tasty.scala | 24 +++++++++++++++++++
+ 2 files changed, 42 insertions(+)
+ create mode 100644 tests/run/backquoted-pattern-from-tasty.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/core/tasty/TreeUnpickler.scala b/compiler/src/dotty/tools/dotc/core/tasty/TreeUnpickler.scala
+index 16cc83bc13b0bddf8f4a54a633721dcccc80df25..30e66a1fa032a10c8340015e2d7f5d50939c5054 100644
+--- a/compiler/src/dotty/tools/dotc/core/tasty/TreeUnpickler.scala
++++ b/compiler/src/dotty/tools/dotc/core/tasty/TreeUnpickler.scala
+@@ -1794,11 +1794,29 @@ class TreeUnpickler(reader: TastyReader,
+       assert(readByte() == CASEDEF)
+       val end = readEnd()
+       val pat = readTree()
++      markStableIdents(pat)
+       val rhs = readTree()
+       val guard = ifBefore(end)(readTree(), EmptyTree)
+       setSpan(start, CaseDef(pat, guard, rhs))
+     }
+ 
++    /** Mark as backquoted every identifier in pattern `pat` which has the name of a
++     *  variable pattern. A typed pattern binds a variable only with a `Bind`, so such
++     *  an identifier, unless it is `_`, refers to a stable value, and can only have been
++     *  written in backquotes. TASTy does not record that, and without the mark the
++     *  pattern matcher and the exhaustivity checker take the identifier for a variable
++     *  pattern, which matches anything.
++     */
++    private def markStableIdents(pat: Tree): Unit = pat match
++      case pat: Ident =>
++        if pat.name != nme.WILDCARD && pat.name.isVarPattern then
++          pat.putAttachment(Backquoted, ())
++      case Bind(_, body) => markStableIdents(body)
++      case Typed(expr, _) => markStableIdents(expr)
++      case Alternative(pats) => pats.foreach(markStableIdents)
++      case UnApply(_, _, pats) => pats.foreach(markStableIdents)
++      case _ =>
++
+     def readHole(end: Addr, isTerm: Boolean)(using Context): Tree =
+       val idx = readNat()
+       val tpe = readType()
+diff --git a/tests/run/backquoted-pattern-from-tasty.scala b/tests/run/backquoted-pattern-from-tasty.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..ab163ef930bc6de72f041571d2744e0db5646b90
+--- /dev/null
++++ b/tests/run/backquoted-pattern-from-tasty.scala
+@@ -0,0 +1,24 @@
++// A backquoted identifier in a pattern refers to a stable value. Read back from TASTy,
++// which does not record the backquotes, it was taken for a variable pattern and matched
++// anything: the first three assertions failed when this test was run from its own TASTy.
++
++object Test:
++  def nested(label: String, value: (String, Int)): Int = value match
++    case (`label`, number) => number
++    case _                 => -1
++
++  def direct(label: String, value: String): Int = value match
++    case `label` => 1
++    case _       => -1
++
++  def alternative(label: String, other: String, value: String): Int = value match
++    case bound @ (`label` | `other`) => 2
++    case _                           => -1
++
++  def main(args: Array[String]): Unit =
++    assert(nested("a", "z" -> 5) == -1)
++    assert(direct("a", "z") == -1)
++    assert(alternative("a", "b", "z") == -1)
++    assert(nested("a", "a" -> 5) == 5)
++    assert(direct("a", "a") == 1)
++    assert(alternative("a", "b", "b") == 2)

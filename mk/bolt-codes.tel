@@ -757,6 +757,7 @@ project p proscala
     error 130
       source dotc/parsing/Parsers.scala
       template  Implementation restriction: polymorphic function types cannot wrap function types that have capture sets
+      template  Implementation restriction: polymorphic function types cannot wrap impure function types if capture checking is enabled. |Workaround: introduce an empty term-parameter list right after the type binder, e.g. `[A] => () -> B => C`.
     error 131
       source dotc/parsing/Parsers.scala
       text  Reach capability is no longer supported
@@ -2239,6 +2240,7 @@ project p proscala
     error 60
       source dotc/transform/CheckInlineTraits.scala
       text  implementation restriction: inline traits cannot have non-local private members. This also means no retained inline methods.
+      template  implementation restriction: inline traits cannot have non-local private members. This also means no retained inline methods.
     error 61
       source dotc/transform/CheckInlineTraits.scala
       text  Only inline traits and inline functions may take Specialized type parameters

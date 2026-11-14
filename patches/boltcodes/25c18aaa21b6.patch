@@ -1,0 +1,409 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 13 Nov 2026 23:51:18 +0900
+Subject: Label every error and warning with its bolt code under -Zbolt-codes
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+A bolt code names a diagnostic in one form across Propensive's projects:
+↯/p.1.7 is Proscala's subdivision 1, error 7. Subdivision 1 is upstream's
+own numbering, so E007 is ↯/p.1.7. A message upstream leaves unnumbered is
+known by the template of the em"..." string that made it, which the
+interpolator now records, and whose code is looked up in the registry the
+build puts in the compiler's jar. A message reported by a macro is ↯/p.2.2,
+and carries the macro's own bolt code if its text began with one, as the
+compound ↯/p.2.2/s.87.1.2.
+
+The code replaces upstream's number in the console heading, and is given
+to semdiag's XML, sbt's bridge and the presentation compiler.
+
+Written with the assistance of Claude (an LLM).
+
+Proscala-Patch: boltcodes
+---
+ .../dotty/tools/dotc/core/Decorators.scala    |   2 +-
+ .../tools/dotc/reporting/BoltCodes.scala      | 141 ++++++++++++++++++
+ .../dotty/tools/dotc/reporting/Message.scala  |  61 +++++---
+ .../dotc/reporting/MessageRendering.scala     |   6 +-
+ .../dotty/tools/dotc/reporting/Reporter.scala |   2 +-
+ .../tools/dotc/reporting/XmlReporter.scala    |   2 +
+ .../quoted/runtime/impl/QuotesImpl.scala      |  12 +-
+ .../dotty/tools/pc/DiagnosticProvider.scala   |   4 +-
+ .../dotty/tools/xsbt/DelegatingReporter.java  |   2 +-
+ 9 files changed, 199 insertions(+), 33 deletions(-)
+ create mode 100644 compiler/src/dotty/tools/dotc/reporting/BoltCodes.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/core/Decorators.scala b/compiler/src/dotty/tools/dotc/core/Decorators.scala
+index f19d58f4166665c06d77df0dc9ed6daa5d419a52..e6843d415eec7a80f2bd2839e232c5c690af3b6f 100644
+--- a/compiler/src/dotty/tools/dotc/core/Decorators.scala
++++ b/compiler/src/dotty/tools/dotc/core/Decorators.scala
+@@ -335,7 +335,7 @@ object Decorators {
+      *  the formatting defined in Message.
+      */
+     def em(args: Shown*)(using Context): NoExplanation =
+-      NoExplanation(i(args*))
++      NoExplanation(i(args*)).withBoltOrigin(sc)
+ 
+   extension [T <: AnyRef](arr: Array[T])
+     def binarySearch(x: T | Null): Int = java.util.Arrays.binarySearch(arr.asInstanceOf[Array[Object | Null]], x)
+diff --git a/compiler/src/dotty/tools/dotc/reporting/BoltCodes.scala b/compiler/src/dotty/tools/dotc/reporting/BoltCodes.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..3cf34060291981bc00bc6cc75c4f7ce674a3e2ce
+--- /dev/null
++++ b/compiler/src/dotty/tools/dotc/reporting/BoltCodes.scala
+@@ -0,0 +1,141 @@
++package dotty.tools.dotc
++package reporting
++
++import core.Contexts.*
++
++/** Bolt codes: the codes by which Propensive's tools name their diagnostics, such
++ *  as `↯/p.1.7`. A code is `↯`, and one or more parts each begun by `/`: the
++ *  letter of a project (`p` is Proscala) and, after a `.`, a group of numbers,
++ *  which are a subdivision of the project, a message in it, and optionally a
++ *  variant and a call site.
++ *
++ *  Proscala's subdivision 1 is upstream's own numbering, so `E007` is
++ *  `↯/p.1.7`. A message upstream leaves unnumbered is known by its template —
++ *  the constant parts of the `em"..."` string that made it — whose code is
++ *  looked up in the registry the build puts beside this class; one given as a
++ *  plain string is known by the registry key its text fits. A message from
++ *  a macro is `↯/p.2.2`; if the macro began its message with a bolt code of its
++ *  own, that code is carried after it, so a macro reporting `[↯/s.87.1.2] ...`
++ *  gives `↯/p.2.2/s.87.1.2`.
++ */
++object BoltCodes:
++
++  /** The group of a message which has no code of its own. */
++  final val Unassigned = "2.1"
++
++  /** The group of a message reported by a macro. */
++  final val Macro = "2.2"
++
++  /** How a message reported by a macro is known: by the parts of the bolt code
++   *  the macro gave it, such as `/s.87.1.2`, or nothing if it gave none.
++   */
++  final class MacroOrigin(val cause: String)
++
++  def enabled(using Context): Boolean =
++    config.Proscala.enabled(config.Proscala.BoltCodes)
++
++  /** The origin of a message that is not a diagnostic at all, such as the count
++   *  of errors found, and so has no code.
++   */
++  object Uncoded
++
++  /** Is this message, at this level, given a code? Errors and warnings are. */
++  def applies(level: Int, msg: Message): Boolean =
++    level >= interfaces.Diagnostic.WARNING && (msg.boltOrigin ne Uncoded)
++
++  private val Space = "[ \t\r\n\f]+".r
++
++  /** The key of a message's template: its constant parts around `{}`, with each
++   *  run of whitespace a single space. `bin/proscala-bolt` computes the same key
++   *  from the source.
++   */
++  def key(template: StringContext): String =
++    Space.replaceAllIn(template.parts.mkString("{}"), " ").trim.nn
++
++  /** The registry's codes for unnumbered messages, by key: the build writes
++   *  the code and the key of each on a line of `bolt-codes.tsv`.
++   */
++  private lazy val assigned: Map[String, String] =
++    val stream = getClass.getResourceAsStream("bolt-codes.tsv")
++    if stream == null then Map.empty
++    else
++      val source = scala.io.Source.fromInputStream(stream, "UTF-8")
++      try
++        source.getLines().flatMap: line =>
++          line.split("\t", 2) match
++            case Array(code, key) if key.nonEmpty => Some(key -> code)
++            case _ => None
++        .toMap
++      finally source.close()
++
++  private val TextKey = "text:"
++
++  /** The keys of messages given as plain strings, as the pattern their text
++   *  must fit, with the number of characters it fixes and its code.
++   */
++  private lazy val texts: List[(java.util.regex.Pattern, Int, String)] =
++    import java.util.regex.Pattern
++    assigned.toList.collect:
++      case (key, code) if key.startsWith(TextKey) =>
++        val fixed = key.substring(TextKey.length).nn.split("\\{\\}", -1).map(_.nn)
++        (Pattern.compile(fixed.map(Pattern.quote(_)).mkString(".*"), Pattern.DOTALL).nn, fixed.map(_.length).sum, code)
++
++  /** The group of a message which was given as a plain string: that of the key
++   *  its text fits, and of the one fixing most of it if it fits several.
++   */
++  private def ofText(text: String): String =
++    val plain = Space.replaceAllIn(text, " ").trim.nn
++    assigned.get(TextKey + plain).getOrElse:
++      texts.filter(_._1.matcher(plain).nn.matches).maxByOption(_._2).fold(Unassigned)(_._3)
++
++  /** The bolt code of a message. */
++  def code(msg: Message): String =
++    if msg.errorId != ErrorMessageID.NoExplanationID then s"↯/p.1.${msg.errorId.errorNumber}"
++    else msg.boltOrigin match
++      case template: StringContext => "↯/p." + assigned.getOrElse(key(template), Unassigned)
++      case origin: MacroOrigin => s"↯/p.$Macro${origin.cause}"
++      case _ => "↯/p." + ofText(msg.message)
++
++  /** The code a build tool is given for a diagnostic: its bolt code when those
++   *  are enabled, and upstream's error number otherwise.
++   */
++  def diagnosticCode(dia: Diagnostic)(using Context): String =
++    if enabled && applies(dia.level, dia.msg) then code(dia.msg) else dia.msg.errorId.errorNumber.toString
++
++  private val Escape = "\u001b\\[[0-9;]*m".r
++  private val Group = "[0-9]+(?:\\.[0-9]+)*"
++  private val Prefix = s"^\\[?↯((?:/[a-z]\\.$Group)+)\\]?[ ]?".r
++
++  /** The message for text reported by a macro. A bolt code the text begins with,
++   *  bracketed or not and coloured or not, is taken out of the text and kept as
++   *  the message's origin.
++   */
++  def fromMacro(text: String)(using Context): Message =
++    if !enabled then NoExplanation(text)(using NoContext)
++    else
++      val plain = Escape.replaceAllIn(text, "")
++      Prefix.findPrefixMatchOf(plain) match
++        case Some(found) =>
++          NoExplanation(drop(text, found.end))(using NoContext)
++            .withBoltOrigin(MacroOrigin(found.group(1).nn))
++        case _ =>
++          NoExplanation(text)(using NoContext).withBoltOrigin(MacroOrigin(""))
++
++  /** `text` without its first `count` characters, not counting colour escapes,
++   *  nor the escapes which follow them.
++   */
++  private def drop(text: String, count: Int): String =
++    def escape(index: Int): Int = Escape.findPrefixMatchOf(text.substring(index).nn).fold(0)(_.end)
++    var index = 0
++    var left = count
++    var done = false
++    while !done do
++      val skip = if index < text.length then escape(index) else 0
++      if skip > 0 then index += skip
++      else if left > 0 && index < text.length then
++        index += 1
++        left -= 1
++      else done = true
++    text.substring(index).nn
++
++end BoltCodes
+diff --git a/compiler/src/dotty/tools/dotc/reporting/Message.scala b/compiler/src/dotty/tools/dotc/reporting/Message.scala
+index dd0ba3ae0352e612e90c256c676d6af57528d18f..20c3c05f3d71a750c1c0e95defb63b32223eadb3 100644
+--- a/compiler/src/dotty/tools/dotc/reporting/Message.scala
++++ b/compiler/src/dotty/tools/dotc/reporting/Message.scala
+@@ -363,6 +363,17 @@ end Message
+ abstract class Message(val errorId: ErrorMessageID)(using Context) { self =>
+   import Message.*
+ 
++  private var myBoltOrigin: AnyRef | Null = null
++
++  /** What an unnumbered message is known by, for its bolt code: the template of
++   *  the `em"..."` string that made it, or a `BoltCodes.MacroOrigin`.
++   */
++  def boltOrigin: AnyRef | Null = myBoltOrigin
++
++  def withBoltOrigin(origin: AnyRef | Null): this.type =
++    myBoltOrigin = origin
++    this
++
+   /** The kind of the error message, e.g. "Syntax" or "Type Mismatch".
+     * This will be printed as "$kind Error", "$kind Warning", etc, on the first
+     * line of the message.
+@@ -452,31 +463,37 @@ abstract class Message(val errorId: ErrorMessageID)(using Context) { self =>
+     * forcing its `msg` and `explanation` vals and dropping the implicit context
+     * that was captured in the original message.
+     */
+-  def persist: Message = new Message(errorId)(using NoContext):
+-    val kind  = self.kind
+-    private val persistedMsg = self.message
+-    private val persistedExplain = self.explanation
+-    def msg(using Context) = persistedMsg
+-    def explain(using Context) = persistedExplain
+-    override val canExplain = self.canExplain
+-    override def isNonSensical = self.isNonSensical
++  def persist: Message =
++    val persisted = new Message(errorId)(using NoContext):
++      val kind  = self.kind
++      private val persistedMsg = self.message
++      private val persistedExplain = self.explanation
++      def msg(using Context) = persistedMsg
++      def explain(using Context) = persistedExplain
++      override val canExplain = self.canExplain
++      override def isNonSensical = self.isNonSensical
++    persisted.withBoltOrigin(boltOrigin)
+ 
+   def append(suffix: => String): Message = mapMsg(_ ++ suffix)
+   def prepend(prefix: => String): Message = mapMsg(prefix ++ _)
+ 
+-  def mapMsg(f: String => String): Message = new Message(errorId):
+-    val kind = self.kind
+-    def msg(using Context) = f(self.msg)
+-    override def msgPostscript(using Context) = self.msgPostscript
+-    def explain(using Context) = self.explain
+-    override def canExplain = self.canExplain
+-
+-  def appendExplanation(suffix: => String): Message = new Message(errorId):
+-    val kind = self.kind
+-    def msg(using Context) = self.msg
+-    override def msgPostscript(using Context) = self.msgPostscript
+-    def explain(using Context) = self.explain ++ suffix
+-    override def canExplain = true
++  def mapMsg(f: String => String): Message =
++    val mapped = new Message(errorId):
++      val kind = self.kind
++      def msg(using Context) = f(self.msg)
++      override def msgPostscript(using Context) = self.msgPostscript
++      def explain(using Context) = self.explain
++      override def canExplain = self.canExplain
++    mapped.withBoltOrigin(boltOrigin)
++
++  def appendExplanation(suffix: => String): Message =
++    val appended = new Message(errorId):
++      val kind = self.kind
++      def msg(using Context) = self.msg
++      override def msgPostscript(using Context) = self.msgPostscript
++      def explain(using Context) = self.explain ++ suffix
++      override def canExplain = true
++    appended.withBoltOrigin(boltOrigin)
+ 
+   /** Override with `true` for messages that should always be shown even if their
+    *  position overlaps another message of a different class. On the other hand
+@@ -508,7 +525,7 @@ final class NoExplanation(msgFn: Context ?=> String, actions: List[CodeAction] =
+   override def toString(): String = msg
+ 
+   def withActions(actions: CodeAction*): NoExplanation =
+-    new NoExplanation(msgFn, actions.toList)
++    new NoExplanation(msgFn, actions.toList).withBoltOrigin(boltOrigin)
+ }
+ 
+ /** The extractor for `NoExplanation` can be used to check whether any error
+diff --git a/compiler/src/dotty/tools/dotc/reporting/MessageRendering.scala b/compiler/src/dotty/tools/dotc/reporting/MessageRendering.scala
+index 24caae927389b989ddbef3796a30c172fc0194c1..66a1941c6f7a963b0ac12a67541cb8386e25c88d 100644
+--- a/compiler/src/dotty/tools/dotc/reporting/MessageRendering.scala
++++ b/compiler/src/dotty/tools/dotc/reporting/MessageRendering.scala
+@@ -197,7 +197,9 @@ trait MessageRendering {
+         val realPos = pos.nonInlined
+         val fileAndPos = posFileStr(realPos)
+         val errId =
+-          if (message.errorId != ErrorMessageID.NoExplanationID) then
++          if BoltCodes.enabled then
++            if BoltCodes.applies(summon[Level].value, message) then s"[${BoltCodes.code(message)}] " else ""
++          else if (message.errorId != ErrorMessageID.NoExplanationID) then
+             val errorNumber = message.errorId.errorNumber
+             s"[E${"0" * (3 - errorNumber.toString.length) + errorNumber}] "
+           else ""
+@@ -293,6 +295,8 @@ trait MessageRendering {
+     val sb = StringBuilder()
+     val posString = posStr(pos1, msg, diagnosticLevel(dia))
+     if posString.nonEmpty then sb.append(posString).append(EOL)
++    else if BoltCodes.enabled && BoltCodes.applies(dia.level, msg) then
++      sb.append(s"[${BoltCodes.code(msg)}] ")
+     if pos.exists && pos1.exists && pos1.source.file != null && pos1.source.file.exists then
+       val (srcBefore, srcAfter, offset) = sourceLines(pos1)
+       val marker = positionMarker(pos1)
+diff --git a/compiler/src/dotty/tools/dotc/reporting/Reporter.scala b/compiler/src/dotty/tools/dotc/reporting/Reporter.scala
+index 664a0c26821bf1ff50f21127019faf198530f254..dfac948ba409b18df0d693b3ad4bb7bcd8a62c91 100644
+--- a/compiler/src/dotty/tools/dotc/reporting/Reporter.scala
++++ b/compiler/src/dotty/tools/dotc/reporting/Reporter.scala
+@@ -269,7 +269,7 @@ abstract class Reporter extends interfaces.ReporterResult {
+   /** Print the summary of warnings and errors */
+   def printSummary()(using Context): Unit =
+     val s = summary
+-    if !s.isEmpty then doReport(Warning(s.toMessage, NoSourcePosition))
++    if !s.isEmpty then doReport(Warning(s.toMessage.withBoltOrigin(BoltCodes.Uncoded), NoSourcePosition))
+ 
+   /** Returns a string meaning "n elements". */
+   protected def countString(n: Int, elements: String): String = n match {
+diff --git a/compiler/src/dotty/tools/dotc/reporting/XmlReporter.scala b/compiler/src/dotty/tools/dotc/reporting/XmlReporter.scala
+index b4e48be87f12dac50d814ee55caa9f5a02700e11..f9fa549bf950da55c5a54e1510ff9302546e1d9b 100644
+--- a/compiler/src/dotty/tools/dotc/reporting/XmlReporter.scala
++++ b/compiler/src/dotty/tools/dotc/reporting/XmlReporter.scala
+@@ -81,6 +81,8 @@ extends Reporter with UniqueMessagePositions with HideNonSensicalMessages:
+     if msg.errorId.errorNumber >= 0 then
+       sb.append(attr("errorId", msg.errorId.toString))
+       sb.append(attr("errorNumber", msg.errorId.errorNumber.toString))
++    if BoltCodes.enabled && BoltCodes.applies(dia.level, msg) then
++      sb.append(attr("boltCode", BoltCodes.code(msg)))
+     sb.append(attr("compilerVersion", config.Properties.versionNumberString))
+     sb.append(attr("tastyVersion",
+       s"${dotty.tools.tasty.TastyFormat.MajorVersion}.${dotty.tools.tasty.TastyFormat.MinorVersion}"
+diff --git a/compiler/src/scala/quoted/runtime/impl/QuotesImpl.scala b/compiler/src/scala/quoted/runtime/impl/QuotesImpl.scala
+index bbc6f117b58eeea4e20cee7c42b2016860c815b1..a8769939d101575791f53e43994c238638f39ba5 100644
+--- a/compiler/src/scala/quoted/runtime/impl/QuotesImpl.scala
++++ b/compiler/src/scala/quoted/runtime/impl/QuotesImpl.scala
+@@ -3415,13 +3415,13 @@ class QuotesImpl private (using val ctx: Context) extends Quotes, QuoteUnpickler
+     object report extends reportModule:
+ 
+       def error(msg: String): Unit =
+-        dotc.report.error(msg, Position.ofMacroExpansion)
++        dotc.report.error(dotc.reporting.BoltCodes.fromMacro(msg), Position.ofMacroExpansion)
+ 
+       def error(msg: String, expr: Expr[Any]): Unit =
+-        dotc.report.error(msg, asTerm(expr).pos)
++        dotc.report.error(dotc.reporting.BoltCodes.fromMacro(msg), asTerm(expr).pos)
+ 
+       def error(msg: String, pos: Position): Unit =
+-        dotc.report.error(msg, pos)
++        dotc.report.error(dotc.reporting.BoltCodes.fromMacro(msg), pos)
+ 
+       def throwError(msg: String): Nothing =
+         errorAndAbort(msg)
+@@ -3445,13 +3445,13 @@ class QuotesImpl private (using val ctx: Context) extends Quotes, QuoteUnpickler
+         throw new scala.quoted.runtime.StopMacroExpansion
+ 
+       def warning(msg: String): Unit =
+-        dotc.report.warning(msg, Position.ofMacroExpansion)
++        dotc.report.warning(dotc.reporting.BoltCodes.fromMacro(msg), Position.ofMacroExpansion)
+ 
+       def warning(msg: String, expr: Expr[Any]): Unit =
+-        dotc.report.warning(msg, asTerm(expr).pos)
++        dotc.report.warning(dotc.reporting.BoltCodes.fromMacro(msg), asTerm(expr).pos)
+ 
+       def warning(msg: String, pos: Position): Unit =
+-        dotc.report.warning(msg, pos)
++        dotc.report.warning(dotc.reporting.BoltCodes.fromMacro(msg), pos)
+ 
+       def info(msg: String): Unit =
+         dotc.report.echo(msg, Position.ofMacroExpansion)
+diff --git a/presentation-compiler/src/main/dotty/tools/pc/DiagnosticProvider.scala b/presentation-compiler/src/main/dotty/tools/pc/DiagnosticProvider.scala
+index b4d408a24c86238a80835d6177e177ed3a915e25..c0bb746266096247ee86e987ccd27e92f8616c94 100644
+--- a/presentation-compiler/src/main/dotty/tools/pc/DiagnosticProvider.scala
++++ b/presentation-compiler/src/main/dotty/tools/pc/DiagnosticProvider.scala
+@@ -6,6 +6,7 @@ import scala.meta.pc.VirtualFileParams
+ import dotty.tools.dotc.core.Contexts.Context
+ import dotty.tools.dotc.interactive.InteractiveDriver
+ import dotty.tools.dotc.interfaces.Diagnostic as DiagnosticInterfaces
++import dotty.tools.dotc.reporting.BoltCodes
+ import dotty.tools.dotc.reporting.CodeAction
+ import dotty.tools.dotc.reporting.Diagnostic
+ import dotty.tools.dotc.reporting.ErrorMessageID
+@@ -48,7 +49,8 @@ class DiagnosticProvider(driver: InteractiveDriver, params: VirtualFileParams):
+         toDiagnosticSeverity(diag.level),
+         "presentation compiler"
+       )
+-      lspDiag.setCode(diag.msg.errorId.errorNumber)
++      if BoltCodes.enabled && BoltCodes.applies(diag.level, diag.msg) then lspDiag.setCode(BoltCodes.code(diag.msg))
++      else lspDiag.setCode(diag.msg.errorId.errorNumber)
+ 
+       val actions = diag.msg.actions.map(toLspScalaAction).asJava
+ 
+diff --git a/sbt-bridge/src/dotty/tools/xsbt/DelegatingReporter.java b/sbt-bridge/src/dotty/tools/xsbt/DelegatingReporter.java
+index 474c5c364ab8ff5e4dd7952aefecbc61b0e22299..c2b9fefc92684dfe131f928f3c05d93d6d6acc4e 100644
+--- a/sbt-bridge/src/dotty/tools/xsbt/DelegatingReporter.java
++++ b/sbt-bridge/src/dotty/tools/xsbt/DelegatingReporter.java
+@@ -55,7 +55,7 @@ final public class DelegatingReporter extends AbstractReporter {
+     else
+       text = message.message();
+     String rendered = messageAndPos(dia, ctx);
+-    String diagnosticCode = String.valueOf(message.errorId().errorNumber());
++    String diagnosticCode = dotty.tools.dotc.reporting.BoltCodes.diagnosticCode(dia, ctx);
+     List<CodeAction> actions = CollectionConverters.asJava(message.actions(ctx));
+     // Forward the diagnostic's structured related information (scalameta/metals#3214). The concrete
+     // RelatedInformation carries both position and message, so Problem derives its xsbti view from

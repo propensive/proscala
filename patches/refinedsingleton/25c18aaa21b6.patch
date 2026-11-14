@@ -1,0 +1,113 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 14 Nov 2026 19:26:05 +0900
+Subject: Check a refinement against the tracked value itself, not its widened
+ type
+
+Under capture checking a tracked value did not conform to a refinement of its
+own type which mentions the value:
+
+    def same(reader: Reader^): (Reader { type Topic = reader.Topic })^{reader} = reader
+
+Against a capturing type, the comparer first accounts for the captures of the
+left-hand side, here `{reader}`, and then compares what is left with the
+parent of the right. For a singleton it tried two things: its widened type
+with the capture set stripped, `Reader`, which no longer says which value it
+is, so that `Topic = reader.Topic` cannot be shown; and the singleton as it
+stands, which is not a subtype of the pure class beneath the refinement,
+because its capture set, though already accounted for, is not empty. So the
+conformance failed with "capability `any` cannot flow into capture set
+{reader}", though it holds without capture checking.
+
+Where the parent is a refined type, a singleton is now also compared in two
+parts: its widened, stripped type with what lies beneath the refinements, and
+each refinement with the member of the singleton itself.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: refinedsingleton
+---
+ .../dotty/tools/dotc/core/TypeComparer.scala  | 16 ++++++++++++++++
+ .../captures/refined-singleton.scala          | 12 ++++++++++++
+ .../captures/refined-singleton.scala          | 19 +++++++++++++++++++
+ 3 files changed, 47 insertions(+)
+ create mode 100644 tests/neg-custom-args/captures/refined-singleton.scala
+ create mode 100644 tests/pos-custom-args/captures/refined-singleton.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/core/TypeComparer.scala b/compiler/src/dotty/tools/dotc/core/TypeComparer.scala
+index 8ccde6f9d7d4fa385dba263e7e572a874a6b9566..079b492262c961a460736c0dd62b8ba56b2efdab 100644
+--- a/compiler/src/dotty/tools/dotc/core/TypeComparer.scala
++++ b/compiler/src/dotty/tools/dotc/core/TypeComparer.scala
+@@ -928,12 +928,28 @@ class TypeComparer(@constructorOnly initctx: Context) extends ConstraintHandling
+                     recur(tp1.widen, tp2)
+                   case _ =>
+                     false
++                // A refinement of `parent2` may mention the singleton `tp1` itself, as in
++                // `x: C^ <: C { type T = x.T }^{x}`. Its widened type no longer says which
++                // value it is, and `tp1` as it stands is not a subtype of the pure class
++                // under the refinement, since its capture set, already accounted for by
++                // `refs2`, is not empty. So compare the widened type with what is under
++                // the refinements, and each refinement with the member of `tp1` itself.
++                def refinedOK(tp1: SingletonType, parent2: Type): Boolean = parent2 match
++                  case parent2: RefinedType if !defn.isRefinedFunction(parent2) =>
++                    refinedOK(tp1, parent2.parent)
++                    && hasMatchingMember(parent2.refinedName, tp1, parent2)
++                  case _ =>
++                    recur(tp1.widen.stripOneCapturing, parent2)
++                def singletonRefinedOK = tp1 match
++                  case tp1: SingletonType => parent2.isInstanceOf[RefinedType] && refinedOK(tp1, parent2)
++                  case _ => false
+                 singletonOK
+                 || compareCaptures(tp1, refs1, tp2)
+                     && (recur(tp1.widen.stripOneCapturing, parent2)
+                       || tp1.isInstanceOf[SingletonType] && recur(tp1, parent2)
+                           // this alternative is needed in case the right hand side is a
+                           // capturing type that contains the lhs as an alternative of a union type.
++                      || singletonRefinedOK
+                       )
+           catch case ex: AssertionError =>
+             println(i"assertion failed while compare captured $tp1 <:< $tp2")
+diff --git a/tests/neg-custom-args/captures/refined-singleton.scala b/tests/neg-custom-args/captures/refined-singleton.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..c23f35116cb90f80fada871a4b8503db4c8e2fa4
+--- /dev/null
++++ b/tests/neg-custom-args/captures/refined-singleton.scala
+@@ -0,0 +1,12 @@
++import language.experimental.captureChecking
++
++// What tests/pos-custom-args/captures/refined-singleton.scala accepts must not extend
++// to a value whose capture set the expected type does not account for, or to a
++// refinement the value's own member does not meet.
++
++class Terrain
++abstract class Reader(val view: Terrain^) { type Topic; val terrain: Terrain^ }
++
++def pure(reader: Reader^): Reader { type Topic = reader.Topic } = reader // error
++def less(reader: Reader^, other: Reader^): (Reader { type Topic = reader.Topic })^{other} = reader // error
++def member(reader: Reader^): (Reader { val terrain: Terrain })^{reader} = reader // error
+diff --git a/tests/pos-custom-args/captures/refined-singleton.scala b/tests/pos-custom-args/captures/refined-singleton.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..75a4ce304616557acdd1fad2176e71e1c971fde1
+--- /dev/null
++++ b/tests/pos-custom-args/captures/refined-singleton.scala
+@@ -0,0 +1,19 @@
++import language.experimental.captureChecking
++
++// A tracked value conforms to a refinement of its type which mentions the value
++// itself. Its capture set is that of the expected type, or part of it, but the
++// refinement was then checked against the value's widened type, which no longer
++// says which value it is: "capability `any` cannot flow into capture set {reader}".
++
++class Terrain
++abstract class Reader(val view: Terrain^) { type Topic; val terrain: Terrain^ }
++
++def same(reader: Reader^): (Reader { type Topic = reader.Topic })^{reader} = reader
++
++def member(reader: Reader^)
++:   (Reader { type Topic = reader.Topic; val terrain: Terrain^{reader.terrain} })^{reader} =
++  reader
++
++def function(reader: Reader^): Int =
++  val read: (Reader { type Topic = reader.Topic })^ => Int = _ => 0
++  read(reader)

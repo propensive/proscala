@@ -181,8 +181,8 @@ new versions once their changes are confirmed identical.
 
 The bounds give the streams different patch sets:
 
-    stream 3.9    48 patches   carries blocktypeapply, castbox, depset, parenarrow, splicealias, samstateful, staleread, virtualdir
-    stream 3.10   53 patches   adds anonascribe, anonspec, anykindcap, boolunapply, closurerecheck, definefurther, exportuses, fuelslots, implicitparts, inlinedclosures, integratemap, macrosingleton, modulepath, proxycap, refinealias, unioncaps; drops those eight, and nullreceiver, permitlazy and rootclassify (fixed upstream); macroalias applies to 3.10.0 only, and prunecomplete only before upstream #27247
+    stream 3.9    54 patches   carries blocktypeapply, castbox, depset, parenarrow, splicealias, samstateful, staleread, virtualdir
+    stream 3.10   62 patches   adds anonascribe, anonspec, anykindcap, boolunapply, closurerecheck, definefurther, exportuses, fuelslots, implicitparts, inlinedclosures, inlinetraitimport, inlinetraittrace, integratemap, macrosingleton, modulepath, proxycap, refinealias, tastyspecialize, unioncaps; drops those eight, and nullreceiver, permitlazy and rootclassify (fixed upstream); macroalias applies to 3.10.0 only, prunecomplete only before upstream #27247, and inlinetraitprune only between upstream #26842 and #27302
 
 (The counts exclude `zflags`.)
 
