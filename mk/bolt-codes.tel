@@ -1,0 +1,3126 @@
+tel 1.0 propensive.dev/bolt
+
+# Bolt codes of Proscala: `subdivision 1` / `error 7` is ↯/p.1.7.
+# Maintained by Proscala's bin/proscala-bolt.
+
+project p proscala
+
+  subdivision 1 standard
+    error 1 EmptyCatchBlock
+    error 2 EmptyCatchAndFinallyBlock
+    error 3 DeprecatedWithOperator
+    error 4 CaseClassMissingParamList
+    error 5 DuplicateBind
+    error 6 MissingIdent
+    error 7 TypeMismatch
+    error 8 NotAMember
+    error 9 EarlyDefinitionsNotSupported
+    error 10 TopLevelImplicitClass retired
+    error 11 ImplicitCaseClass
+    error 12 ImplicitClassPrimaryConstructorArity
+    error 13 ObjectMayNotHaveSelfType
+    error 14 TupleTooLong retired
+    error 15 RepeatedModifier
+    error 16 InterpolatedStringError
+    error 17 UnboundPlaceholderParameter
+    error 18 IllegalStartSimpleExpr
+    error 19 MissingReturnType
+    error 20 YieldOrDoExpectedInForComprehension
+    error 21 ProperDefinitionNotFound
+    error 22 ByNameParameterNotSupported
+    error 23 WrongNumberOfTypeArgs
+    error 24 IllegalVariableInPatternAlternative
+    error 25 IdentifierExpected
+    error 26 AuxConstructorNeedsNonImplicitParameter
+    error 27 VarArgsParamMustComeLast
+    error 28 IllegalLiteral
+    error 29 PatternMatchExhaustivity
+    error 30 MatchCaseUnreachable
+    error 31 SeqWildcardPatternPos
+    error 32 IllegalStartOfSimplePattern
+    error 33 PkgDuplicateSymbol
+    error 34 ExistentialTypesNoLongerSupported
+    error 35 UnboundWildcardType
+    error 36 DanglingThisInPath retired
+    error 37 OverridesNothing
+    error 38 OverridesNothingButNameExists
+    error 39 ForwardReferenceExtendsOverDefinition
+    error 40 ExpectedTokenButFound
+    error 41 MixedLeftAndRightAssociativeOps
+    error 42 CantInstantiateAbstractClassOrTrait
+    error 43 UnreducibleApplication
+    error 44 OverloadedOrRecursiveMethodNeedsResultType
+    error 45 RecursiveValueNeedsResultType
+    error 46 CyclicReferenceInvolving
+    error 47 CyclicReferenceInvolvingImplicit
+    error 48 SuperQualMustBeParent
+    error 49 AmbiguousReference
+    error 50 AmbiguousOverload
+    error 51 ReassignmentToVal
+    error 52 TypeDoesNotTakeParameters
+    error 53 ParameterizedTypeLacksArguments retired
+    error 54 VarValParametersMayNotBeCallByName
+    error 55 MissingTypeParameterFor
+    error 56 DoesNotConformToBound
+    error 57 DoesNotConformToSelfType
+    error 58 DoesNotConformToSelfTypeCantBeInstantiated
+    error 59 AbstractMemberMayNotHaveModifier
+    error 60 TopLevelCantBeImplicit retired
+    error 61 TypesAndTraitsCantBeImplicit
+    error 62 OnlyClassesCanBeAbstract
+    error 63 AbstractOverrideOnlyInTraits
+    error 64 TraitsMayNotBeFinal
+    error 65 NativeMembersMayNotHaveImplementation
+    error 66 OnlyClassesCanHaveDeclaredButUndefinedMembers
+    error 67 CannotExtendAnyVal
+    error 68 CannotHaveSameNameAs
+    error 69 ValueClassesMayNotDefineInner
+    error 70 ValueClassesMayNotDefineNonParameterField
+    error 71 ValueClassesMayNotDefineASecondaryConstructor
+    error 72 ValueClassesMayNotContainInitalization
+    error 73 ValueClassesMayNotBeAbstract
+    error 74 ValueClassesMayNotBeContainted
+    error 75 ValueClassesMayNotWrapAnotherValueClass
+    error 76 ValueClassParameterMayNotBeAVar
+    error 77 ValueClassNeedsExactlyOneValParam
+    error 78 OnlyCaseClassOrCaseObjectAllowed retired
+    error 79 ExpectedTopLevelDef retired
+    error 80 AnonymousFunctionMissingParamType
+    error 81 SuperCallsNotAllowedInlineable
+    error 82 NotAPath
+    error 83 WildcardOnTypeArgumentNotAllowedOnNew
+    error 84 FunctionTypeNeedsNonEmptyParameterList retired
+    error 85 WrongNumberOfParameters
+    error 86 DuplicatePrivateProtectedQualifier
+    error 87 ExpectedStartOfTopLevelDefinition
+    error 88 MissingReturnTypeWithReturnStatement
+    error 89 NoReturnFromInlineable
+    error 90 ReturnOutsideMethodDefinition
+    error 91 UncheckedTypePattern
+    error 92 ExtendFinalClass
+    error 93 EnumCaseDefinitionInNonEnumOwner retired
+    error 94 ExpectedTypeBoundOrEquals
+    error 95 ClassAndCompanionNameClash
+    error 96 TailrecNotApplicable
+    error 97 FailureToEliminateExistential
+    error 98 OnlyFunctionsCanBeFollowedByUnderscore
+    error 99 MissingEmptyArgumentList
+    error 100 DuplicateNamedTypeParameter
+    error 101 UndefinedNamedTypeParameter
+    error 102 IllegalStartOfStatement
+    error 103 TraitIsExpected
+    error 104 TraitRedefinedFinalMethodFromAnyRef retired
+    error 105 PackageNameAlreadyDefined
+    error 106 UnapplyInvalidNumberOfArguments
+    error 107 UnapplyInvalidReturnType
+    error 108 StaticFieldsOnlyAllowedInObjects
+    error 109 CyclicInheritance
+    error 110 BadSymbolicReference
+    error 111 UnableToExtendSealedClass
+    error 112 SymbolHasUnparsableVersionNumber
+    error 113 SymbolChangedSemanticsInVersion
+    error 114 UnableToEmitSwitch
+    error 115 MissingCompanionForStatic
+    error 116 PolymorphicMethodMissingTypeInParent
+    error 117 ParamsNoInline
+    error 118 SymbolIsNotAValue
+    error 119 DoubleDefinition
+    error 120 MatchCaseOnlyNullWarning
+    error 121 ImportedTwice
+    error 122 TypeTestAlwaysDiverges
+    error 123 TermMemberNeedsNeedsResultTypeForImplicitSearch
+    error 124 ClassCannotExtendEnum
+    error 125 ValueClassParameterMayNotBeCallByName
+    error 126 NotAnExtractor
+    error 127 MemberWithSameNameAsStatic
+    error 128 PureExpressionInStatementPosition
+    error 129 TraitCompanionWithMutableStatic
+    error 130 LazyStaticField
+    error 131 StaticOverridingNonStaticMembers
+    error 132 OverloadInRefinement
+    error 133 NoMatchingOverload
+    error 134 StableIdentPattern
+    error 135 StaticFieldsShouldPrecedeNonStatic
+    error 136 IllegalSuperAccessor
+    error 137 TraitParameterUsedAsParentPrefix
+    error 138 UnknownNamedEnclosingClassOrObject
+    error 139 IllegalCyclicTypeReference
+    error 140 MissingTypeParameterInTypeApp
+    error 141 SkolemInInferred retired
+    error 142 ErasedTypesCanOnlyBeFunctionTypes
+    error 143 CaseClassMissingNonImplicitParamList
+    error 144 EnumerationsShouldNotBeEmpty
+    error 145 IllegalParameterInit
+    error 146 RedundantModifier
+    error 147 TypedCaseDoesNotExplicitlyExtendTypedEnum
+    error 148 IllegalRedefinitionOfStandardKind
+    error 149 NoExtensionMethodAllowed retired
+    error 150 ExtensionMethodCannotHaveTypeParams retired
+    error 151 ExtensionCanOnlyHaveDefs retired
+    error 152 UnexpectedPatternForSummonFrom
+    error 153 AnonymousInstanceCannotBeEmpty
+    error 154 TypeSpliceInValPattern retired
+    error 155 ModifierNotAllowedForDefinition
+    error 156 CannotExtendJavaEnum
+    error 157 InvalidReferenceInImplicitNotFoundAnnotation
+    error 158 TraitMayNotDefineNativeMethod
+    error 159 JavaEnumParentArgs
+    error 160 AlreadyDefined
+    error 161 CaseClassInInlinedCode
+    error 162 OverrideTypeMismatchError retired
+    error 163 OverrideError
+    error 164 MatchableWarning
+    error 165 CannotExtendFunction
+    error 166 LossyWideningConstantConversion
+    error 167 ImplicitSearchTooLarge
+    error 168 TargetNameOnTopLevelClass
+    error 169 NotClassType
+    error 170 MissingArgument
+    error 171 MissingImplicitArgument
+    error 172 CannotBeAccessed
+    error 173 InlineGivenShouldNotBeFunction
+    error 174 ValueDiscarding
+    error 175 UnusedNonUnitValue
+    error 176 ConstrProxyShadows
+    error 177 MissingArgumentList
+    error 178 MatchTypeScrutineeCannotBeHigherKinded
+    error 179 AmbiguousExtensionMethod
+    error 180 UnqualifiedCallToAnyRefMethod
+    error 181 NotConstant
+    error 182 ClosureCannotHaveInternalParameterDependencies
+    error 183 MatchTypeNoCases
+    error 184 UnimportedAndImported
+    error 185 ImplausiblePatternWarning
+    error 186 SynchronizedCallOnValueClass
+    error 187 VarArgsParamCannotBeGiven
+    error 188 ExtractorNotFound
+    error 189 PureUnitExpression
+    error 190 MatchTypeLegacyPattern
+    error 191 UnstableInlineAccessor
+    error 192 VolatileOnVal
+    error 193 ExtensionNullifiedByMember
+    error 194 PhantomSymbolNotValue
+    error 195 ContextBoundCompanionNotValue retired
+    error 196 InlinedAnonClassWarning
+    error 197 UnusedSymbol
+    error 198 TailrecNestedCall
+    error 199 FinalLocalDef
+    error 200 NonNamedArgumentInJavaAnnotation
+    error 201 QuotedTypeMissing
+    error 202 DeprecatedAssignmentSyntax
+    error 203 DeprecatedInfixNamedArgumentSyntax
+    error 204 GivenSearchPriority
+    error 205 EnumMayNotBeValueClasses
+    error 206 IllegalUnrollPlacement
+    error 207 ExtensionHasDefault
+    error 208 FormatInterpolationError
+    error 209 ValueClassCannotExtendAliasOfAnyVal
+    error 210 MatchIsNotPartialFunction
+    error 211 OnlyFullyDependentAppliedConstructorType
+    error 212 PointlessAppliedConstructorType
+    error 213 IllegalContextBounds
+    error 214 NamedPatternNotApplicable
+    error 215 ErasedNotPure
+    error 216 IllegalErasedDef
+    error 217 CannotInstantiateQuotedTypeVar
+    error 218 DefaultShadowsGiven
+    error 219 RecurseWithDefault
+    error 220 EncodedPackageName
+    error 221 CannotBeIncluded
+    error 222 OverrideClass
+    error 223 InferUnionWarning
+    error 224 TypeParameterShadowsType
+    error 225 PrivateShadowsType
+    error 226 AmbiguousTemplateName
+    error 227 IndentationWarning
+    error 228 IllegalIdentifier
+    error 229 ConcreteClassHasUnimplementedMethods
+    error 230 UseOfAnyMethodAsInterpolator
+    error 231 IllegalUseOfSpecialized
+    error 232 VarianceInSpecializedTraitsLimitation
+    error 233 UnreasonableCatch
+    error 234 BadErased
+
+  subdivision 2 general
+    description  messages with no subdivision of their own
+    error 1 Unassigned
+      description  a message with no bolt code of its own
+    error 2 Macro
+      description  a message reported by a macro; carries the macro's own bolt code, if it gave one
+
+  subdivision 3 driver
+    description  command line, settings, classpath and everything not listed below
+    error 1
+      source dotc/CompilationUnit.scala
+      template  expected file, received directory '{}'
+    error 2
+      source dotc/CompilationUnit.scala
+      template  source file not found: {}
+    error 3
+      source dotc/Driver.scala
+      template  Not a reporter: {}
+    error 4
+      source dotc/Driver.scala
+      template  Could not create reporter {}: {}
+    error 5
+      source dotc/Driver.scala
+      template  File does not exist: {}
+    error 6
+      source dotc/Driver.scala
+      template  Could not load classname from: {}
+    error 7
+      source dotc/Driver.scala
+      template  File extension used with -from-tasty is not `tasty` or `jar`: {}
+    error 8
+      source dotc/Run.scala
+      template  Cyclic macro dependencies {} |Compilation stopped since no further progress can be made. | |To fix this, place macros in one set of files and their callers in another.{}
+    error 9
+      source dotc/config/Feature.scala
+      template  Option -language:{} is deprecated: {}
+    error 10
+      source dotc/fromtasty/ReadTasty.scala
+      template  class {} cannot be unpickled because {}
+    error 11
+      source dotc/fromtasty/TASTYRun.scala
+      template  File extension given to TASTY compiler is not `tasty` or `jar`: {}
+    error 12
+      source dotc/plugins/Plugins.scala
+      template  Missing required plugin: {}
+    error 13
+      source dotc/plugins/Plugins.scala
+      template  bad option: -P:{}
+    error 14
+      source dotc/report.scala
+      template  {} {} be enabled |by adding the import clause 'import {}' |or by setting the compiler option -language:{}.{}{}
+    error 15
+      source dotc/report.scala
+      template  Unsuccessful best-effort compilation. |{} |Cause: | {} |{}
+    error 16
+      source dotc/reporting/Reporter.scala
+      template  there {} {}; re-run with {} for details
+    error 17
+      source dotc/sbt/ExtractDependencies.scala
+      template  Internal error in the incremental compiler while compiling {}: {}
+    error 18
+      source dotc/sbt/package.scala
+      template  signaling {} phase completion
+    error 19
+      source dotc/util/SourceFile.scala
+      template  original source file not found: {}
+    error 20
+      source dotc/Driver.scala
+      template  File extension is not `tasty` or `jar`: {}
+    error 21
+      source dotc/report.scala
+      template  {} {} be enabled |by adding the import clause 'import {}' |or by setting the compiler option -language:{}.{}
+    error 22
+      source dotc/sbt/package.scala
+      template  signaling API and Dependencies phases completion
+    error 23
+      source io/FileWriters.scala
+      template  path component is special Windows device: {}
+    error 24
+      source io/FileWriters.scala
+      template  error writing {}: {}
+    error 25
+      source io/FileWriters.scala
+      template  error writing {}: {} {}
+    error 26
+      source debug/ExtractExpression.scala
+      text  Evaluation of local lazy val not supported
+    error 27
+      source debug/ResolveReflectEval.scala
+      text  No capture found for {} in {}
+    error 28
+      source debug/ResolveReflectEval.scala
+      text  Cannot access local val {} in {} as field
+    error 29
+      source debug/ResolveReflectEval.scala
+      text  Cannot access local var {} in {} as field
+    error 30
+      source debug/ResolveReflectEval.scala
+      text  Unknown captured variable {} in {}
+    error 31
+      source debug/ResolveReflectEval.scala
+      text  Unknown captured variable {} in {} of {}
+    error 32
+      source dotc/Driver.scala
+      text  Stack overflow in the compiler. {}
+    error 33
+      source dotc/Run.scala
+      text  Invalid message filter {}
+    error 34
+      source dotc/Run.scala
+      text  @nowarn annotation does not suppress any warnings{}
+    error 35
+      source dotc/printing/MessageLimiter.scala
+      text  Exceeded recursion depth attempting to print.
+    error 36
+      source dotc/reporting/WConf.scala
+      text  Failed to parse `-Wconf` configuration: {} {}{}
+    error 37
+      source dotc/sbt/ExtractDependencies.scala
+      text  No class, trait or object is defined in the compilation unit. The incremental compiler cannot record the dependency information in such case. Some errors like unused import referring to a non-existent class might not be reported.
+    error 38
+      source dotc/semanticdb/TypeOps.scala
+      text  Internal error in extracting SemanticDB while compiling {}: {}
+
+  subdivision 4 parsing
+    description  scanners and parsers
+    error 1
+      source dotc/parsing/JavaParsers.scala
+      template  {} expected but {} found.
+    error 2
+      source dotc/parsing/JavaParsers.scala
+      template  illegal start of type
+    error 3
+      source dotc/parsing/JavaParsers.scala
+      template  Identifier '{}' is not allowed here
+    error 4
+      source dotc/parsing/JavaParsers.scala
+      template  illegal import
+    error 5
+      source dotc/parsing/JavaParsers.scala
+      template  A type declaration that has a permits clause should have a sealed modifier
+    error 6
+      source dotc/parsing/JavaParsers.scala
+      template  illegal start of type declaration
+    error 7
+      source dotc/parsing/JavaScanners.scala
+      template  unclosed string literal
+    error 8
+      source dotc/parsing/JavaScanners.scala
+      template  unclosed character literal
+    error 9
+      source dotc/parsing/JavaScanners.scala
+      template  `.` character expected
+    error 10
+      source dotc/parsing/JavaScanners.scala
+      template  illegal character
+    error 11
+      source dotc/parsing/JavaScanners.scala
+      template  illegal character: {}
+    error 12
+      source dotc/parsing/JavaScanners.scala
+      template  unclosed comment
+    error 13
+      source dotc/parsing/JavaScanners.scala
+      template  illegal text block open delimiter sequence, missing line terminator
+    error 14
+      source dotc/parsing/JavaScanners.scala
+      template  unclosed text block
+    error 15
+      source dotc/parsing/JavaScanners.scala
+      template  malformed integer number
+    error 16
+      source dotc/parsing/JavaScanners.scala
+      template  integer number too large
+    error 17
+      source dotc/parsing/JavaScanners.scala
+      template  floating point number too large
+    error 18
+      source dotc/parsing/JavaScanners.scala
+      template  malformed floating point number
+    error 19
+      source dotc/parsing/Parsers.scala
+      template  `{}` expected
+    error 20
+      source dotc/parsing/Parsers.scala
+      template  duplicate end marker
+    error 21
+      source dotc/parsing/Parsers.scala
+      template  end of {} expected but {} found{}
+    error 22
+      source dotc/parsing/Parsers.scala
+      template  This construct is not allowed under {}.{}
+    error 23
+      source dotc/parsing/Parsers.scala
+      template  parentheses are required around the parameter of a lambda{}
+    error 24
+      source dotc/parsing/Parsers.scala
+      template  not a legal formal parameter for a function literal
+    error 25
+      source dotc/parsing/Parsers.scala
+      template  XML literals are no longer supported. |See https://docs.scala-lang.org/scala3/reference/dropped-features/xml.html
+    error 26
+      source dotc/parsing/Parsers.scala
+      template  Can't have two single line lambdas on the same line, enclose the second in parentheses
+    error 27
+      source dotc/parsing/Parsers.scala
+      template  spread operator `*` not allowed here; must come last in a parameter list
+    error 28
+      source dotc/parsing/Parsers.scala
+      template  symbol literal '{} is no longer supported, |use a string literal "{}" or an application Symbol("{}") instead, |or enclose in braces '{{}} if you want a quoted expression. |For now, you can also `import language.deprecated.symbolLiterals` to accept |the idiom, but this possibility might no longer be available in the future.
+    error 29
+      source dotc/parsing/Parsers.scala
+      template  Dedented string literal must start with newline after opening quotes
+    error 30
+      source dotc/parsing/Parsers.scala
+      template  Last line of dedented string literal must contain only whitespace before closing delimiter
+    error 31
+      source dotc/parsing/Parsers.scala
+      template  Line in dedented string literal must be indented at least as much as the closing delimiter |This indent : {} |Closing indent: {}
+    error 32
+      source dotc/parsing/Parsers.scala
+      template  indented definitions expected, {} found
+    error 33
+      source dotc/parsing/Parsers.scala
+      template  This opening brace will start a new statement in Scala 3. |It needs to be indented to the right to keep being treated as |an argument to the previous expression.{}
+    error 34
+      source dotc/parsing/Parsers.scala
+      template  misaligned end marker
+    error 35
+      source dotc/parsing/Parsers.scala
+      template  illegal parameter list for type lambda
+    error 36
+      source dotc/parsing/Parsers.scala
+      template  parameter of type lambda may not be call-by-name
+    error 37
+      source dotc/parsing/Parsers.scala
+      template  context function types require at least one parameter
+    error 38
+      source dotc/parsing/Parsers.scala
+      template  Erased function parameter must be named
+    error 39
+      source dotc/parsing/Parsers.scala
+      template  context bounds are not allowed in {}
+    error 40
+      source dotc/parsing/Parsers.scala
+      template  {}\n\nHint: {}
+    error 41
+      source dotc/parsing/Parsers.scala
+      template  `_` is deprecated for wildcard arguments of types: use `?` instead{}
+    error 42
+      source dotc/parsing/Parsers.scala
+      template  λ requires a single argument of the form X => ... or (X, Y) => ...
+    error 43
+      source dotc/parsing/Parsers.scala
+      template  Multiple context bounds should be enclosed in `{ ... }`
+    error 44
+      source dotc/parsing/Parsers.scala
+      template  view bounds `<%' are no longer supported, use a context bound `:' instead
+    error 45
+      source dotc/parsing/Parsers.scala
+      template  `implicit` lambdas are no longer supported, use a lambda with `?=>` instead
+    error 46
+      source dotc/parsing/Parsers.scala
+      template  Implementation restriction: polymorphic function literals must have a value parameter
+    error 47
+      source dotc/parsing/Parsers.scala
+      template  `do <body> while <cond>` is no longer supported, |use `while <body> ; <cond> do ()` instead.{}
+    error 48
+      source dotc/parsing/Parsers.scala
+      template  `inline` must be followed by an `if` or a `match`
+    error 49
+      source dotc/parsing/Parsers.scala
+      template  The syntax `x: _*` is no longer supported for vararg splices; use `x*` instead{}
+    error 50
+      source dotc/parsing/Parsers.scala
+      template  `_*` can be used only for last argument of method application. |It is no longer allowed in operands of infix operations.
+    error 51
+      source dotc/parsing/Parsers.scala
+      template  This syntax is no longer supported; parameter needs to be enclosed in (...){}
+    error 52
+      source dotc/parsing/Parsers.scala
+      template  context function literals require at least one formal parameter
+    error 53
+      source dotc/parsing/Parsers.scala
+      template  Misleading indentation: this expression forms part of the preceding case. |If this is intended, it should be indented for clarity. |Otherwise, if the handler is intended to be empty, use a multi-line match or catch with |an indented case.
+    error 54
+      source dotc/parsing/Parsers.scala
+      template  Typed pattern is not a variable pattern but could be written `{} @ (_: {})`
+    error 55
+      source dotc/parsing/Parsers.scala
+      template  Type ascriptions after patterns other than: | * variable pattern, e.g. `case x: String =>` | * number literal pattern, e.g. `case 10.5: Double =>` |are no longer supported. Remove the type ascription or move it to a separate variable pattern.
+    error 56
+      source dotc/parsing/Parsers.scala
+      template  `*` must follow pattern variable
+    error 57
+      source dotc/parsing/Parsers.scala
+      template  bad use of `*` - sequence pattern not allowed here
+    error 58
+      source dotc/parsing/Parsers.scala
+      template  Ignoring [this] qualifier. |The syntax `{}[this]` will be deprecated in the future; just write `{}` instead. |See: https://docs.scala-lang.org/scala3/reference/dropped-features/this-qualifier.html{}
+    error 59
+      source dotc/parsing/Parsers.scala
+      template  Type parameter lists must be separated by a term or using parameter list
+    error 60
+      source dotc/parsing/Parsers.scala
+      template  no `+/-` variance annotation allowed here
+    error 61
+      source dotc/parsing/Parsers.scala
+      template  `implicit` parameters are no longer supported, use a `using` clause instead{}
+    error 62
+      source dotc/parsing/Parsers.scala
+      template  `using` is already implied here, should not be given explicitly
+    error 63
+      source dotc/parsing/Parsers.scala
+      template  `val` or `var` expected
+    error 64
+      source dotc/parsing/Parsers.scala
+      template  `using` expected
+    error 65
+      source dotc/parsing/Parsers.scala
+      template  Erased method parameter must be named
+    error 66
+      source dotc/parsing/Parsers.scala
+      template  this language import is only allowed at the toplevel
+    error 67
+      source dotc/parsing/Parsers.scala
+      template  source version import is only allowed at the toplevel
+    error 68
+      source dotc/parsing/Parsers.scala
+      template  duplicate source version import
+    error 69
+      source dotc/parsing/Parsers.scala
+      template  `{}` is not a valid source version
+    error 70
+      source dotc/parsing/Parsers.scala
+      template  `_` is no longer supported for a wildcard {}; use `*` instead{}
+    error 71
+      source dotc/parsing/Parsers.scala
+      template  The {} renaming `a => b` is no longer supported ; use `a as b` instead{}
+    error 72
+      source dotc/parsing/Parsers.scala
+      template  named {}s cannot follow wildcard {}s
+    error 73
+      source dotc/parsing/Parsers.scala
+      template  `= _` has been deprecated; use `= uninitialized` instead. |`uninitialized` can be imported with `scala.compiletime.uninitialized`.{}
+    error 74
+      source dotc/parsing/Parsers.scala
+      template  Procedure syntax no longer supported; `{}` should be inserted here{}
+    error 75
+      source dotc/parsing/Parsers.scala
+      template  no type parameters allowed here
+    error 76
+      source dotc/parsing/Parsers.scala
+      template  cannot combine lower bound and match type alias
+    error 77
+      source dotc/parsing/Parsers.scala
+      template  cannot combine bound and alias
+    error 78
+      source dotc/parsing/Parsers.scala
+      template  This modifier is not allowed on an enum{}
+    error 79
+      source dotc/parsing/Parsers.scala
+      template  Ambiguous Scaladoc comment on multiple cases is ignored. |Remove the comment or make separate cases to add Scaladoc comments to each of them.
+    error 80
+      source dotc/parsing/Parsers.scala
+      template  no extension method allowed here since leading parameter was already given
+    error 81
+      source dotc/parsing/Parsers.scala
+      template  an extension method is required here
+    error 82
+      source dotc/parsing/Parsers.scala
+      template  extension method cannot have type parameters since some were already given previously
+    error 83
+      source dotc/parsing/Parsers.scala
+      template  extension method cannot be abstract
+    error 84
+      source dotc/parsing/Parsers.scala
+      template  extension clause can only define methods
+    error 85
+      source dotc/parsing/Parsers.scala
+      template  method parameter {} may not be a `val`
+    error 86
+      source dotc/parsing/Parsers.scala
+      template  This old given syntax is no longer supported; use `=>` instead of `:`
+    error 87
+      source dotc/parsing/Parsers.scala
+      template  Anonymous given cannot be abstract, or maybe you want to define a concrete given and are missing a `()` argument?
+    error 88
+      source dotc/parsing/Parsers.scala
+      template  This defines an abstract given, which is no longer supported. Use a `deferred` given instead. |Or, if you intend to define a concrete given, follow the type with `()` arguments.
+    error 89
+      source dotc/parsing/Parsers.scala
+      template  no `:` expected here
+    error 90
+      source dotc/parsing/Parsers.scala
+      template  Extension without extension methods
+    error 91
+      source dotc/parsing/Parsers.scala
+      template  imports are not allowed inside extensions
+    error 92
+      source dotc/parsing/Parsers.scala
+      template  values are not allowed inside extensions
+    error 93
+      source dotc/parsing/Parsers.scala
+      template  types are not allowed inside extensions
+    error 94
+      source dotc/parsing/Parsers.scala
+      template  `def` expected
+    error 95
+      source dotc/parsing/Parsers.scala
+      template  `extends` must be followed by at least one parent
+    error 96
+      source dotc/parsing/Parsers.scala
+      template  Given member definitions starting with `with` are no longer supported; use `{...}` or `:` followed by newline instead
+    error 97
+      source dotc/parsing/Parsers.scala
+      template  `=>` expected after self type
+    error 98
+      source dotc/parsing/Parsers.scala
+      template  refinement cannot be {}
+    error 99
+      source dotc/parsing/Parsers.scala
+      template  refinement cannot have default arguments
+    error 100
+      source dotc/parsing/Parsers.scala
+      template  refinement cannot have a right-hand side
+    error 101
+      source dotc/parsing/Parsers.scala
+      template  refinement cannot be a class or trait
+    error 102
+      source dotc/parsing/Parsers.scala
+      template  this kind of definition cannot be a refinement
+    error 103
+      source dotc/parsing/Scanners.scala
+      template  Identifier may not contain '$' in safe mode
+    error 104
+      source dotc/parsing/Scanners.scala
+      template  trailing separator is not allowed
+    error 105
+      source dotc/parsing/Scanners.scala
+      template  illegal combination of -rewrite targets: {} and {}
+    error 106
+      source dotc/parsing/Scanners.scala
+      template  {} is now a keyword, write `{}` instead of {} to keep it as an identifier{}
+    error 107
+      source dotc/parsing/Scanners.scala
+      template  {} starts with an operator; |it is now treated as a continuation of the {}, |not as a separate statement.
+    error 108
+      source dotc/parsing/Scanners.scala
+      template  The start of this line does not match any of the previous indentation widths. |Indentation width of current line : {} |This falls between previous widths: {} and {}
+    error 109
+      source dotc/parsing/Scanners.scala
+      template  Incompatible combinations of tabs and spaces in indentation prefixes. |Previous indent : {} |Latest indent : {}
+    error 110
+      source dotc/parsing/Scanners.scala
+      template  `:` after symbolic operator is deprecated; use backticks around operator instead
+    error 111
+      source dotc/parsing/Scanners.scala
+      template  illegal character '{}{}'
+    error 112
+      source dotc/parsing/Scanners.scala
+      template  illegal character '{}' missing low surrogate
+    error 113
+      source dotc/parsing/Scanners.scala
+      template  empty character literal (use '\\'' for single quote)
+    error 114
+      source dotc/parsing/Scanners.scala
+      template  illegal codepoint in Char constant: {}
+    error 115
+      source dotc/parsing/Scanners.scala
+      template  empty character literal
+    error 116
+      source dotc/parsing/Scanners.scala
+      template  The unicode arrow `⇒` is deprecated, use `=>` instead. If you still wish to display it as one character, consider using a font with programming ligatures such as Fira Code.
+    error 117
+      source dotc/parsing/Scanners.scala
+      template  The unicode arrow `←` is deprecated, use `<-` instead. If you still wish to display it as one character, consider using a font with programming ligatures such as Fira Code.
+    error 118
+      source dotc/parsing/Scanners.scala
+      template  illegal character '{}'
+    error 119
+      source dotc/parsing/Scanners.scala
+      template  empty quoted identifier
+    error 120
+      source dotc/parsing/Scanners.scala
+      template  wildcard invalid as backquoted identifier
+    error 121
+      source dotc/parsing/Scanners.scala
+      template  unclosed quoted identifier
+    error 122
+      source dotc/parsing/Scanners.scala
+      template  unclosed multi-line string literal
+    error 123
+      source dotc/parsing/Scanners.scala
+      template  invalid string interpolation: `$$`, `${}`, `$`ident or `$`BlockExpr expected
+    error 124
+      source dotc/parsing/Scanners.scala
+      template  Invalid literal number
+    error 125
+      source dotc/parsing/Scanners.scala
+      template  invalid literal number
+    error 126
+      source dotc/parsing/Scanners.scala
+      template  unexpected end of input: possible missing '}' in XML block
+    error 127
+      source dotc/parsing/xml/MarkupParsers.scala
+      template  missing end tag in XML literal for <{}>
+    error 128
+      source dotc/parsing/Parsers.scala
+      template  invalid parameter definition syntax in tuple value
+    error 129
+      source dotc/parsing/Parsers.scala
+      template  Implementation restriction: polymorphic function {}s must have a value parameter
+    error 130
+      source dotc/parsing/Parsers.scala
+      template  Implementation restriction: polymorphic function types cannot wrap function types that have capture sets
+    error 131
+      source dotc/parsing/Parsers.scala
+      text  Reach capability is no longer supported
+
+  subdivision 5 ast
+    description  trees and desugaring
+    error 1
+      source dotc/ast/Desugar.scala
+      template  no matching symbol for {} in {} / {}
+    error 2
+      source dotc/ast/Desugar.scala
+      template  -Zgatherable-varargs needs scala.Gatherable, from proscala-library, on the classpath
+    error 3
+      source dotc/ast/Desugar.scala
+      template  implementation restriction: traits cannot have by name parameters
+    error 4
+      source dotc/ast/Desugar.scala
+      template  right-associative extension method {}
+    error 5
+      source dotc/ast/Desugar.scala
+      template  {} patterns are not allowed in a {} definition, |please bind to an identifier and use an alias given.
+    error 6
+      source dotc/ast/Desugar.scala
+      template  opaque type must have a right-hand side
+    error 7
+      source dotc/ast/Desugar.scala
+      template  Duplicate tuple element name
+    error 8
+      source dotc/ast/Desugar.scala
+      template  {} cannot be used as the name of a tuple element because it is a regular tuple selector
+    error 9
+      source dotc/ast/Desugar.scala
+      template  Illegal combination of named and unnamed tuple elements
+    error 10
+      source dotc/ast/Desugar.scala
+      template  Duplicate named pattern
+    error 11
+      source dotc/ast/Desugar.scala
+      template  No element named `{}` is defined in selector type {}
+    error 12
+      source dotc/ast/DesugarEnums.scala
+      template  cannot determine type argument for enum parent {}, |type parameter {} {}
+    error 13
+      source dotc/ast/DesugarEnums.scala
+      template  illegal reference to type parameter {} from enum case
+    error 14
+      source dotc/ast/MainProxies.scala
+      template  {} method cannot have implicit parameters
+    error 15
+      source dotc/ast/MainProxies.scala
+      template  varargs parameter of {} method must come last
+    error 16
+      source dotc/ast/MainProxies.scala
+      template  {} method is not statically accessible
+    error 17
+      source dotc/ast/MainProxies.scala
+      template  {} method cannot have type parameters
+    error 18
+      source dotc/ast/MainProxies.scala
+      template  {} can only annotate a method
+    error 19
+      source dotc/ast/Trees.scala
+      template  no member {} . {}
+    error 20
+      source dotc/ast/tpd.scala
+      template  cannot construct a tree referring to {} because of skolem prefix {}
+    error 21
+      source dotc/ast/tpd.scala
+      template  cannot establish a reference to {}
+    error 22
+      source dotc/ast/tpd.scala
+      template  cannot construct a tree referring to skolem {}
+    error 23
+      source dotc/ast/tpd.scala
+      template  conversion from {} to {} will always fail at runtime.
+    error 24
+      source dotc/ast/untpd.scala
+      template  {} {} cannot be {}
+    error 25
+      source dotc/ast/MainProxies.scala
+      template  @main method cannot have implicit parameters
+    error 26
+      source dotc/ast/MainProxies.scala
+      template  varargs parameter of @main method must come last
+    error 27
+      source dotc/ast/MainProxies.scala
+      template  @main method is not statically accessible
+    error 28
+      source dotc/ast/MainProxies.scala
+      template  @main method cannot have type parameters
+    error 29
+      source dotc/ast/MainProxies.scala
+      template  @main can only annotate a method
+    error 30
+      source dotc/ast/Desugar.scala
+      text  inline given instances cannot be transparent
+    error 31
+      source dotc/ast/Desugar.scala
+      text  Quoted pattern variable names starting with $ are not supported anymore. Use lower cases type pattern name instead.
+
+  subdivision 6 core
+    description  symbols, types, classfile and TASTy readers
+    error 1
+      source dotc/core/Comments.scala
+      template  ${} reference does not refer to anything in comment for {}
+    error 2
+      source dotc/core/Comments.scala
+      template  Variable ${} undefined in comment for {}.\n(You can escape with \"\\$\" to produce a single '$' if necessary)
+    error 3
+      source dotc/core/ConstraintHandling.scala
+      template  Could not decrease the nesting level of {} from {} to {} in {}
+    error 4
+      source dotc/core/Contexts.scala
+      template  invalid file path: {}
+    error 5
+      source dotc/core/Denotations.scala
+      template  {} does not have a member {} {}{}
+    error 6
+      source dotc/core/Denotations.scala
+      template  missing: {} {}{}
+    error 7
+      source dotc/core/Denotations.scala
+      template  Failure to disambiguate overloaded reference with | {}: {} and | {}: {}
+    error 8
+      source dotc/core/Denotations.scala
+      template  Cyclic macro dependency; macro refers to a toplevel symbol in {} from which the macro is called
+    error 9
+      source dotc/core/GadtConstraint.scala
+      template  illegal recursive reference involving {}
+    error 10
+      source dotc/core/NamerOps.scala
+      template  no companion {} in {}
+    error 11
+      source dotc/core/RecursiveOperation.scala
+      template  Recursion limit exceeded. |Maybe there is an illegal cyclic reference? |If that's not the case, you could try to increase the fuel and stack size: https://docs.scala-lang.org/overviews/compiler-options/compiling-deeply-nested-code.html |For the unprocessed stack overflow trace, compile with -Xno-enrich-error-messages. |A recurring operation is (inner to outer): |{}
+    error 12
+      source dotc/core/SymDenotations.scala
+      template  {} |One of these files should be removed from the classpath.
+    error 13
+      source dotc/core/SymDenotations.scala
+      template  {} |Keeping only the definition in {}
+    error 14
+      source dotc/core/SymbolLoaders.scala
+      template  {} contains object and package with same name: {}. |This indicates that there are several versions of the Scala standard library on the classpath. |The build should be reconfigured so that only one version of the standard library is on the classpath.
+    error 15
+      source dotc/core/SymbolLoaders.scala
+      template  {} contains object and package with same name: {} |one of them needs to be removed from classpath
+    error 16
+      source dotc/core/SymbolLoaders.scala
+      template  i/o error while loading {}
+    error 17
+      source dotc/core/SymbolLoaders.scala
+      template  error while loading {}, |{}
+    error 18
+      source dotc/core/SymbolLoaders.scala
+      template  Cannot read Best Effort TASTy {} without the {} option
+    error 19
+      source dotc/core/TypeErasure.scala
+      template  Cannot resolve reference to {}
+    error 20
+      source dotc/core/TypeErrors.scala
+      template  malformed type: {} is not a legal prefix for {} because it contains abstract type member{} {}
+    error 21
+      source dotc/core/TypeErrors.scala
+      template  Cannot resolve reference to type {}.{}. |{}.
+    error 22
+      source dotc/core/TypeErrors.scala
+      template  Could not read definition {}{}. Caused by the following exception: |{}{}
+    error 23
+      source dotc/core/TypeUtils.scala
+      template  Malformed NamedTuple: names must be string types, but {} was found.
+    error 24
+      source dotc/core/Types.scala
+      template  bad parameter reference {} at {} |the parameter is {} but the prefix {} |does not define any corresponding arguments. |idx = {}, args = {}%, %, |constraint = {}
+    error 25
+      source dotc/core/Types.scala
+      template  invalid new prefix {} cannot replace {} in type {}
+    error 26
+      source dotc/core/Types.scala
+      template  {} is not a value type, cannot be used {}
+    error 27
+      source dotc/core/Types.scala
+      template  error message from previous run no longer available
+    error 28
+      source dotc/core/Types.scala
+      template  unspecified error
+    error 29
+      source dotc/core/Uniques.scala
+      template  invalid prefix {} when trying to form {} . {}
+    error 30
+      source dotc/core/classfile/ClassfileParser.scala
+      template  no linked class for java enum {} in {}. A referencing class file might be missing an InnerClasses entry.
+    error 31
+      source dotc/core/classfile/ClassfileParser.scala
+      template  Error while parsing annotations in {}: annotation class {} not present on classpath
+    error 32
+      source dotc/core/classfile/ClassfileParser.scala
+      template  Caught: {} while parsing annotations in {}
+    error 33
+      source dotc/core/classfile/ClassfileParser.scala
+      template  Invalid constant in attribute of {} while parsing {}
+    error 34
+      source dotc/core/classfile/ClassfileParser.scala
+      template  No RuntimeVisibleAnnotations in classfile with ScalaSignature attribute: {}
+    error 35
+      source dotc/core/tasty/TreePickler.scala
+      template  pickling reference to as yet undefined {} with symbol {}
+    error 36
+      source dotc/core/unpickleScala2/Scala2Erasure.scala
+      template  Unsupported Scala 2 type: Component {} of intersection is annotated.
+    error 37
+      source dotc/core/unpickleScala2/Scala2Erasure.scala
+      template  Unsupported Scala 2 type: Prefix {} of intersection component is an intersection or refinement.
+    error 38
+      source dotc/core/TypeErrors.scala
+      template  Recursion limit exceeded. |Maybe there is an illegal cyclic reference? |If that's not the case, you could also try to increase the stacksize using the -Xss JVM option. |For the unprocessed stack trace, compile with -Xno-enrich-error-messages. |A recurring operation is (inner to outer): |{}
+    error 39
+      source dotc/core/Definitions.scala
+      text  error: bad preamble import {}
+    error 40
+      source dotc/core/SymbolLoaders.scala
+      text  Resolving package/object name conflict in favor of package {}. The object will be inaccessible.
+    error 41
+      source dotc/core/SymbolLoaders.scala
+      text  Resolving package/object name conflict in favor of object {}. The package will be inaccessible.
+    error 42
+      source dotc/core/SymbolLoaders.scala
+      text  {} {} is in the wrong directory. It was declared to be in package {} But it is found in directory {}
+    error 43
+      source dotc/core/classfile/ClassfileParser.scala
+      text  Loading Scala 3 binary from {}. It should have been loaded from `.tasty` file. {}
+    error 44
+      source dotc/core/Contexts.scala
+      text  expected file, received directory '{}'
+    error 45
+      source dotc/core/classfile/ClassfileTastyUUIDParser.scala
+      text  {} is out of sync with its TASTy file. Loaded TASTy file. Try cleaning the project to fix this issue
+    error 46
+      source dotc/core/classfile/ClassfileTastyUUIDParser.scala
+      text  Found a TASTY attribute with a length different from 16 in {}. This is likely a bug in the compiler. Please report.
+
+  subdivision 7 typer
+    description  naming, typing and checking
+    error 1
+      source dotc/typer/Applications.scala
+      template  Overloaded reference to {} is not allowed in extractor
+    error 2
+      source dotc/typer/Applications.scala
+      template  Sequence wildcard pattern is not allowed for {}, only unapplySeq is allowed
+    error 3
+      source dotc/typer/Applications.scala
+      template  Sequence wildcard pattern is not allowed when the extractor also defines unapply, only unapplySeq is allowed
+    error 4
+      source dotc/typer/Applications.scala
+      template  Only one spread pattern allowed in sequence
+    error 5
+      source dotc/typer/Applications.scala
+      template  {} does not take parameters
+    error 6
+      source dotc/typer/Applications.scala
+      template  naming parameter {} is deprecated{}
+    error 7
+      source dotc/typer/Applications.scala
+      template  the parameter name {} is deprecated{}: use {} instead
+    error 8
+      source dotc/typer/Applications.scala
+      template  parameter {} of {} is already instantiated
+    error 9
+      source dotc/typer/Applications.scala
+      template  {} does not have a parameter {}
+    error 10
+      source dotc/typer/Applications.scala
+      template  Sequence argument type annotation `*` cannot be used here:\n{}
+    error 11
+      source dotc/typer/Applications.scala
+      template  can't supply unit value with infix notation because nullary {} takes no arguments; use dotted invocation instead: (...).{}()
+    error 12
+      source dotc/typer/Applications.scala
+      template  too many arguments for {}
+    error 13
+      source dotc/typer/Applications.scala
+      template  argument to summonFrom must be a pattern matching closure
+    error 14
+      source dotc/typer/Applications.scala
+      template  unexpected function type: {}
+    error 15
+      source dotc/typer/Applications.scala
+      template  Named type arguments are experimental, |they must be enabled with a `experimental.namedTypeArguments` language import or setting
+    error 16
+      source dotc/typer/Applications.scala
+      template  invalid pattern
+    error 17
+      source dotc/typer/Applications.scala
+      template  Implementation restriction: A higher-order pattern must carry value arguments
+    error 18
+      source dotc/typer/Applications.scala
+      template  illegal repeated type application |You might have meant something like: |{}[{}]
+    error 19
+      source dotc/typer/Applications.scala
+      template  Structural unapply is not supported
+    error 20
+      source dotc/typer/Checking.scala
+      template  {} has possibly conflicting bounds {}
+    error 21
+      source dotc/typer/Checking.scala
+      template  no wildcard type allowed here
+    error 22
+      source dotc/typer/Checking.scala
+      template  Type argument {} does not have the same kind as its bound {}
+    error 23
+      source dotc/typer/Checking.scala
+      template  {} is not a legal {}\nsince it{}
+    error 24
+      source dotc/typer/Checking.scala
+      template  illegal trait inheritance: super{} does not derive from {}'s super{}
+    error 25
+      source dotc/typer/Checking.scala
+      template  cyclic reference involving type {}
+    error 26
+      source dotc/typer/Checking.scala
+      template  `implicit` classes are no longer supported. They can usually be replaced |by extension methods. Example: | | extension ({}: {}) | // class methods go here, replace `this` by `{}` | |Alternatively, convert to a regular class and define |a given `Conversion` instance into that class. Example: | | class {} ... | given Conversion[{}, {}] = {}({}) | |
+    error 27
+      source dotc/typer/Checking.scala
+      template  `implicit` conversion methods are no longer supported. They can usually be |replaced by given instances of class `Conversion`. Example: | | given Conversion[{}, {}] = {} => ... | |
+    error 28
+      source dotc/typer/Checking.scala
+      template  `implicit` defs are no longer supported, use a `given` clause instead. Example: | | given {}: {} = ... | |
+    error 29
+      source dotc/typer/Checking.scala
+      template  `implicit` vals are no longer supported, use a `given` clause instead. Example: | | given {}: {} = ...{} | |
+    error 30
+      source dotc/typer/Checking.scala
+      template  illegal combination of modifiers: `{}` and `{}` for: {}
+    error 31
+      source dotc/typer/Checking.scala
+      template  `transparent` can only be used for extensible classes and traits
+    error 32
+      source dotc/typer/Checking.scala
+      template  `transparent` can only be used for inline methods{}
+    error 33
+      source dotc/typer/Checking.scala
+      template  only classes can be {}
+    error 34
+      source dotc/typer/Checking.scala
+      template  Inline methods cannot be @tailrec
+    error 35
+      source dotc/typer/Checking.scala
+      template  @publicInBinary cannot be used on enum definitions
+    error 36
+      source dotc/typer/Checking.scala
+      template  @publicInBinary cannot be used on {} definitions
+    error 37
+      source dotc/typer/Checking.scala
+      template  @publicInBinary cannot be used on local definitions
+    error 38
+      source dotc/typer/Checking.scala
+      template  @publicInBinary cannot be non `val` constructor parameters
+    error 39
+      source dotc/typer/Checking.scala
+      template  @publicInBinary cannot be used on private definitions\n\nConsider using `private[{}]` or `protected` instead
+    error 40
+      source dotc/typer/Checking.scala
+      template  Traits cannot have secondary constructors{}
+    error 41
+      source dotc/typer/Checking.scala
+      template  Inline traits are experimental and must be enabled
+    error 42
+      source dotc/typer/Checking.scala
+      template  Update method {} must be declared in a class extending the `Stateful` trait or in an update class.
+    error 43
+      source dotc/typer/Checking.scala
+      template  Update {} must be declared in a class extending the `Stateful` trait.
+    error 44
+      source dotc/typer/Checking.scala
+      template  Case classes cannot be update classes.
+    error 45
+      source dotc/typer/Checking.scala
+      template  mutable variables may not be `tracked`
+    error 46
+      source dotc/typer/Checking.scala
+      template  parameter may not be `lazy`
+    error 47
+      source dotc/typer/Checking.scala
+      template  Modifier `update` is not allowed for objects
+    error 48
+      source dotc/typer/Checking.scala
+      template  non-private {} refers to private {}\nin its type signature {}
+    error 49
+      source dotc/typer/Checking.scala
+      template  {} cannot be instantiated since it{}
+    error 50
+      source dotc/typer/Checking.scala
+      template  pattern's type {} {} the right hand side expression's type {}
+    error 51
+      source dotc/typer/Checking.scala
+      template  pattern binding uses refutable extractor
+    error 52
+      source dotc/typer/Checking.scala
+      template  pattern binding uses refutable extractor `{}`
+    error 53
+      source dotc/typer/Checking.scala
+      template  import prefix is not a pure expression
+    error 54
+      source dotc/typer/Checking.scala
+      template  import looks like a language import, but refers to something else: {}
+    error 55
+      source dotc/typer/Checking.scala
+      template  no aliases can be used to refer to a language import
+    error 56
+      source dotc/typer/Checking.scala
+      template  Implementation restriction: {} is not a valid prefix for a wildcard export, as it is a package
+    error 57
+      source dotc/typer/Checking.scala
+      template  Illegal use of root package name.
+    error 58
+      source dotc/typer/Checking.scala
+      template  Alphanumeric {} {} is not declared {}; it should not be used as infix operator. |Instead, use {} or backticked identifier `{}`.{}
+    error 59
+      source dotc/typer/Checking.scala
+      template  no type exists between low bound {} and high bound {}{}
+    error 60
+      source dotc/typer/Checking.scala
+      template  conflicting type arguments{}
+    error 61
+      source dotc/typer/Checking.scala
+      template  two or more overloaded variants of {} have default arguments
+    error 62
+      source dotc/typer/Checking.scala
+      template  {} must appear without any argument to be a valid class parent because it is a Java annotation
+    error 63
+      source dotc/typer/Checking.scala
+      template  {} may not call constructor of {}
+    error 64
+      source dotc/typer/Checking.scala
+      template  {} is already implemented by super{}, |its constructor cannot be called again
+    error 65
+      source dotc/typer/Checking.scala
+      template  too many {}arguments in parent constructor
+    error 66
+      source dotc/typer/Checking.scala
+      template  case {} has case ancestor {}, but case-to-case inheritance is prohibited. |To overcome this limitation, use extractors to pattern match on non-leaf nodes.
+    error 67
+      source dotc/typer/Checking.scala
+      template  illegal forward reference to method parameter
+    error 68
+      source dotc/typer/Checking.scala
+      template  {} is not defined in inferred type {}
+    error 69
+      source dotc/typer/Checking.scala
+      template  illegal reference to {} from {}
+    error 70
+      source dotc/typer/Checking.scala
+      template  {}{} takes type parameters
+    error 71
+      source dotc/typer/Checking.scala
+      template  {} can only be used in an inline method
+    error 72
+      source dotc/typer/Checking.scala
+      template  {} is not a valid Java annotation: it was not declared with `@interface`
+    error 73
+      source dotc/typer/Checking.scala
+      template  {} is not a valid Scala annotation: it does not extend `scala.annotation.Annotation`
+    error 74
+      source dotc/typer/Checking.scala
+      template  @assumeSafe cannot be used in safe mode
+    error 75
+      source dotc/typer/Checking.scala
+      template  target name cannot be empty
+    error 76
+      source dotc/typer/Checking.scala
+      template  @{} needs a string literal as argument
+    error 77
+      source dotc/typer/Checking.scala
+      template  @{} requires constant expressions as a parameter
+    error 78
+      source dotc/typer/Checking.scala
+      template  the ordinal method of enum {} can not be defined by the user
+    error 79
+      source dotc/typer/Checking.scala
+      template  enum {} can not inherit the concrete ordinal method of {}
+    error 80
+      source dotc/typer/Checking.scala
+      template  An enum extending java.lang.Enum cannot have type parameters
+    error 81
+      source dotc/typer/Checking.scala
+      template  enum {} extends java.lang.Enum[{}], but the type argument must be the enum class itself
+    error 82
+      source dotc/typer/Checking.scala
+      template  An enum extending java.lang.Enum must be declared in a static scope
+    error 83
+      source dotc/typer/Checking.scala
+      template  parameterized case is not allowed in an enum that extends java.lang.Enum
+    error 84
+      source dotc/typer/Checking.scala
+      template  enum case does not extend its enum {}
+    error 85
+      source dotc/typer/Checking.scala
+      template  main annotation cannot be applied to {}
+    error 86
+      source dotc/typer/Checking.scala
+      template  {} cannot be a main method since it cannot be accessed statically
+    error 87
+      source dotc/typer/Checking.scala
+      template  `@throws` only allowed for methods and constructors
+    error 88
+      source dotc/typer/Checking.scala
+      template  @targetName annotation {}{}{} clashes with other definition in same scope
+    error 89
+      source dotc/typer/Checking.scala
+      template  Implementation restriction: cannot generate CanThrow capability for this kind of catch. |CanThrow capabilities can only be generated {}.
+    error 90
+      source dotc/typer/Checking.scala
+      template  context function type cannot have opaque aliases
+    error 91
+      source dotc/typer/CrossVersionChecks.scala
+      template  {} overrides concrete, non-deprecated definition(s): | {}
+    error 92
+      source dotc/typer/CrossVersionChecks.scala
+      template  inheritance from {} is deprecated{}{}
+    error 93
+      source dotc/typer/CrossVersionChecks.scala
+      template  using the cast to set the result type of signature polymorphic method {} is deprecated; |use a type ascription instead: `(... : {})`
+    error 94
+      source dotc/typer/CrossVersionChecks.scala
+      template  the cast does not set the result type of signature polymorphic method {}, the call returns Object; |use a type ascription instead: `(... : {})`
+    error 95
+      source dotc/typer/CrossVersionChecks.scala
+      template  {} is deprecated{}{}
+    error 96
+      source dotc/typer/Deriving.scala
+      template  duplicate type class derivation for {}
+    error 97
+      source dotc/typer/Deriving.scala
+      template  {} cannot be unified with the type argument of {}
+    error 98
+      source dotc/typer/Deriving.scala
+      template  type {} in derives clause of {} has no type parameters
+    error 99
+      source dotc/typer/Deriving.scala
+      template  {} cannot be derived since {} has no companion object
+    error 100
+      source dotc/typer/Deriving.scala
+      template  derived instance {} failed to generate: |method `derived` from object {} takes explicit term parameters
+    error 101
+      source dotc/typer/Docstrings.scala
+      template  `@usecase` was not a valid definition
+    error 102
+      source dotc/typer/Dynamic.scala
+      template  applyDynamicNamed does not support passing a vararg parameter
+    error 103
+      source dotc/typer/Dynamic.scala
+      template  Dynamic insertion not applicable
+    error 104
+      source dotc/typer/Dynamic.scala
+      template  Structural access not allowed on method {} because it {}
+    error 105
+      source dotc/typer/ErrorReporting.scala
+      template  {} does not take {}parameters
+    error 106
+      source dotc/typer/ErrorReporting.scala
+      template  undefined: {} # {}: {} at {}
+    error 107
+      source dotc/typer/Implicits.scala
+      template  no implicit values were found that {}
+    error 108
+      source dotc/typer/Implicits.scala
+      template  both {} and {} {}
+    error 109
+      source dotc/typer/Implicits.scala
+      template  {} does not {}
+    error 110
+      source dotc/typer/Implicits.scala
+      template  {} produces a diverging implicit search when trying to {}
+    error 111
+      source dotc/typer/Implicits.scala
+      template  Failed to synthesize an instance of type {}:{}
+    error 112
+      source dotc/typer/Implicits.scala
+      template  The conversion {} will not be applied implicitly here in Scala 3 because only implicit methods and instances of Conversion class will continue to work as implicit views.
+    error 113
+      source dotc/typer/Implicits.scala
+      template  ambiguous implicit: {} is eligible both as an implicit conversion and as an extension method container
+    error 114
+      source dotc/typer/Implicits.scala
+      template  found: {}: {}, expected: {}
+    error 115
+      source dotc/typer/Implicits.scala
+      template  Ambiguous implicits {} and {} |seem to be used to implement a local failure in order to negate an implicit search. |According to the new implicit resolution rules this is no longer possible; |the search will fail with a global ambiguity error instead. | |Consider using the scala.util.NotGiven class to implement similar functionality.
+    error 116
+      source dotc/typer/Implicits.scala
+      template  Result of implicit search for {} will change. |Current result {} will be no longer eligible | because it is not defined before the search position. |Result with new rules: {}. |To opt into the new rules, compile with `-source 3.6` (or higher) or use |the `scala.language.`3.6` language import. | |To fix the problem without the language import, you could try one of the following: | - use a `given ... with` clause as the enclosing given, | - rearrange definitions so that {} comes earlier, | - use an explicit {}.
+    error 117
+      source dotc/typer/Migrations.scala
+      template  `?` is not a valid type name{}
+    error 118
+      source dotc/typer/Migrations.scala
+      template  The trailing ` _` for eta-expansion is unnecessary; |the compiler performs eta-expansion automatically, so you can write the function value directly instead.{}
+    error 119
+      source dotc/typer/Migrations.scala
+      template  Context bounds will map to context parameters. |A `using` clause is needed to pass explicit arguments to them.{}
+    error 120
+      source dotc/typer/Migrations.scala
+      template  Implicit parameters should be provided with a `using` clause.{} |To disable the warning, please use the following option: | "-Wconf:msg=Implicit parameters should be provided with a `using` clause:s" |
+    error 121
+      source dotc/typer/Migrations.scala
+      template  {} inherits from the deprecated `DelayedInit`, for which there is no automatic rewrite. |`DelayedInit` is not an application entry point; refactor the deferred-initialization pattern by hand (for example into an explicit method or the constructor body).
+    error 122
+      source dotc/typer/Migrations.scala
+      template  {} inherits from the deprecated `App` but could not be rewritten to an explicit `main` method: {}. |Migrate it by hand, preferably to a `@main` method: https://docs.scala-lang.org/scala3/book/methods-main-methods.html
+    error 123
+      source dotc/typer/Namer.scala
+      template  modifier(s) `{}` incompatible with {} definition
+    error 124
+      source dotc/typer/Namer.scala
+      template  a class and its companion cannot both have `derives` clauses
+    error 125
+      source dotc/typer/Namer.scala
+      template  {}type of implicit definition needs to be given explicitly
+    error 126
+      source dotc/typer/Namer.scala
+      template  children of {} were already queried before {} was discovered. |As a remedy, you could move {} on the same nesting level as {}.
+    error 127
+      source dotc/typer/Namer.scala
+      template  opaque type alias cannot have multiple type parameter lists
+    error 128
+      source dotc/typer/Namer.scala
+      template  Export selector must have prefix and `.`
+    error 129
+      source dotc/typer/Namer.scala
+      template  no eligible member {} at {}{}
+    error 130
+      source dotc/typer/Namer.scala
+      template  Clashing exports: The exported | {}: {} |and {}: {} |have the same signature after erasure and overloading resolution could not disambiguate.
+    error 131
+      source dotc/typer/Namer.scala
+      template  export qualifier {}
+    error 132
+      source dotc/typer/Namer.scala
+      template  return type {} of lambda cannot be made hygienic |it is not a supertype of the hygienic type {}
+    error 133
+      source dotc/typer/Nullables.scala
+      template  This argument was typed using flow assumptions about mutable variables |but it is passed to a by-name parameter where such flow assumptions are unsound. |Wrapping the argument in `byName(...)` fixes the problem by disabling the flow assumptions. | |`byName` needs to be imported from the `scala.compiletime` package.
+    error 134
+      source dotc/typer/ProtoTypes.scala
+      template  argument for by-name parameter is not a value |and contains wildcard arguments: {} | |Assign it to a val and pass that instead. |
+    error 135
+      source dotc/typer/QuotesAndSplices.scala
+      template  Quotes require stable Quotes, but found non stable {}
+    error 136
+      source dotc/typer/QuotesAndSplices.scala
+      template  Quoted types `'[..]` can only be used in patterns. | |Hint: To get a scala.quoted.Type[T] use scala.quoted.Type.of[T] instead. |
+    error 137
+      source dotc/typer/QuotesAndSplices.scala
+      template  Type must be fully defined.\nConsider annotating the splice using a type ascription:\n ({}: XYZ).
+    error 138
+      source dotc/typer/QuotesAndSplices.scala
+      template  Ignored bound{}\n\nConsider defining bounds explicitly:\n {} {}{}; ... {}
+    error 139
+      source dotc/typer/QuotesAndSplices.scala
+      template  Splice ${...} at level {}. | |Inline method may contain a splice at level 0 but the contents of this splice cannot have a splice. |
+    error 140
+      source dotc/typer/RefChecks.scala
+      template  in {}, multiple overloaded alternatives of {} define default arguments{}
+    error 141
+      source dotc/typer/RefChecks.scala
+      template  overriding {} is deprecated{}; | {}
+    error 142
+      source dotc/typer/RefChecks.scala
+      template  `override` modifier required when a Java 8 default method is re-implemented
+    error 143
+      source dotc/typer/RefChecks.scala
+      template  cannot override val parameter {}
+    error 144
+      source dotc/typer/RefChecks.scala
+      template  {} is not a legal implementation of `{}` in {} | its type {} | does not conform to {}
+    error 145
+      source dotc/typer/RefChecks.scala
+      template  illegal inheritance: {} inherits conflicting instances of {}. | | Direct basetype: {} | Basetype via {}{}: {}
+    error 146
+      source dotc/typer/RefChecks.scala
+      template  private {} cannot override {}
+    error 147
+      source dotc/typer/RefChecks.scala
+      template  {} exposes a flexible type in its inferred result type {}. Consider annotating the type explicitly
+    error 148
+      source dotc/typer/Synthesizer.scala
+      template  {} mismatch, expected: {}, found: {}.
+    error 149
+      source dotc/typer/Synthesizer.scala
+      template  Internal error when synthesizing sum mirror for {}: |{}
+    error 150
+      source dotc/typer/Synthesizer.scala
+      template  Compiler synthesis of Manifest and OptManifest is deprecated, instead |replace with the type `scala.reflect.ClassTag[{}]`. |Alternatively, consider using the new metaprogramming features of Scala 3, |see https://docs.scala-lang.org/scala3/reference/metaprogramming.html
+    error 151
+      source dotc/typer/TypeAssigner.scala
+      template  {} can be used only in a class, object, or template
+    error 152
+      source dotc/typer/TypeAssigner.scala
+      template  {} is not an enclosing class
+    error 153
+      source dotc/typer/TypeAssigner.scala
+      template  {} takes type parameters
+    error 154
+      source dotc/typer/TypeAssigner.scala
+      template  {} is illegal as a selection prefix
+    error 155
+      source dotc/typer/TypeAssigner.scala
+      template  Expected Array but was {}
+    error 156
+      source dotc/typer/TypeAssigner.scala
+      template  {} does not have a constructor
+    error 157
+      source dotc/typer/TypeAssigner.scala
+      template  not a legal qualifying class for this
+    error 158
+      source dotc/typer/TypeAssigner.scala
+      template  ambiguous parent class qualifier
+    error 159
+      source dotc/typer/TypeAssigner.scala
+      template  wrong number of arguments at {} for {}: {}, expected: {}, found: {}
+    error 160
+      source dotc/typer/TypeAssigner.scala
+      template  Malformed annotation {}, will be ignored
+    error 161
+      source dotc/typer/Typer.scala
+      template  reference to `{}` is ambiguous; it is imported twice
+    error 162
+      source dotc/typer/Typer.scala
+      template  Name resolution will change. | currently selected : {} | in the future, without -source 3.0-migration: {}
+    error 163
+      source dotc/typer/Typer.scala
+      template  {} is not accessible from constructor arguments
+    error 164
+      source dotc/typer/Typer.scala
+      template  Previously this selected the extension {}{} |Now it selects {} on the opaque type's underlying type{} | |You can change this back by selecting {} |Or by defining the extension method outside of the opaque type's scope. |
+    error 165
+      source dotc/typer/Typer.scala
+      template  Named tuples that define an `apply` field do not allow field selection. |The `apply` field should be renamed to something else.
+    error 166
+      source dotc/typer/Typer.scala
+      template  Ambiguous witness reference. None of the following alternatives is more specific than the other: |{}
+    error 167
+      source dotc/typer/Typer.scala
+      template  no class or package to resolve `{}`
+    error 168
+      source dotc/typer/Typer.scala
+      template  cannot convert to type selection
+    error 169
+      source dotc/typer/Typer.scala
+      template  Top-level definitions cannot refer to {}
+    error 170
+      source dotc/typer/Typer.scala
+      template  {} cannot be instantiated
+    error 171
+      source dotc/typer/Typer.scala
+      template  Implementation restriction: Expected result type {} |is a curried dependent context function type. Such types are not yet supported.
+    error 172
+      source dotc/typer/Typer.scala
+      template  {} is an illegal function type because it has inter-parameter dependencies
+    error 173
+      source dotc/typer/Typer.scala
+      template  Implementation restriction: cannot convert this expression to `{}` |because its result type `{}` is a contextual function type.
+    error 174
+      source dotc/typer/Typer.scala
+      template  result type of lambda is an underspecified SAM type {}
+    error 175
+      source dotc/typer/Typer.scala
+      template  cannot turn method type {} into closure |because it has capture conversion skolem types
+    error 176
+      source dotc/typer/Typer.scala
+      template  <error: not a type>
+    error 177
+      source dotc/typer/Typer.scala
+      template  cannot infer type; expected type {} is not fully defined
+    error 178
+      source dotc/typer/Typer.scala
+      template  Something's wrong: missing original symbol for type tree
+    error 179
+      source dotc/typer/Typer.scala
+      template  Capture variable `{}` cannot have a context bound.
+    error 180
+      source dotc/typer/Typer.scala
+      template  Illegal context bound: {} does not take type parameters{}.
+    error 181
+      source dotc/typer/Typer.scala
+      template  Malformed PolyFunction refinement, |only an `apply` method with one parameter list is allowed.
+    error 182
+      source dotc/typer/Typer.scala
+      template  throws clause cannot be defined for RuntimeException
+    error 183
+      source dotc/typer/Typer.scala
+      template  Not yet implemented: (...) =>> ...
+    error 184
+      source dotc/typer/Typer.scala
+      template  Match type upper bound inferred as {}, where previously it was defaulted to Any
+    error 185
+      source dotc/typer/Typer.scala
+      template  expected type of {} is not fully defined
+    error 186
+      source dotc/typer/Typer.scala
+      template  parameter name must be distinct from deprecated name
+    error 187
+      source dotc/typer/Typer.scala
+      template  deprecated parameter name must be distinct from other names
+    error 188
+      source dotc/typer/Typer.scala
+      template  the first argument of {} must be a constant
+    error 189
+      source dotc/typer/Typer.scala
+      template  @targetName annotation may not be used on a constructor
+    error 190
+      source dotc/typer/Typer.scala
+      template  Cannot return repeated parameter type {}
+    error 191
+      source dotc/typer/Typer.scala
+      template  Illegal type bounds: >: {} <: {}. Capture-set bounds cannot be mixed with type bounds of other kinds
+    error 192
+      source dotc/typer/Typer.scala
+      template  Illegal type bounds: >: {} <: {}. {}^ can only have capture sets as bounds
+    error 193
+      source dotc/typer/Typer.scala
+      template  `{}` cannot have type parameters, because it ranges over capture sets
+    error 194
+      source dotc/typer/Typer.scala
+      template  {} is extended twice
+    error 195
+      source dotc/typer/Typer.scala
+      template  Cannnot infer the implementation of the deferred {} |since that given is parameterized. An implementing given needs to be written explicitly.
+    error 196
+      source dotc/typer/Typer.scala
+      template  Inferred implementation of the deferred {} is self-recursive. |An implementing given needs to be written explicitly.
+    error 197
+      source dotc/typer/Typer.scala
+      template  Implementation restriction: an inline trait cannot be defined inside of another inline trait
+    error 198
+      source dotc/typer/Typer.scala
+      template  Implementation restriction: inner classes inside inline traits cannot have term parameters
+    error 199
+      source dotc/typer/Typer.scala
+      template  {} cannot be defined in universal {}
+    error 200
+      source dotc/typer/Typer.scala
+      template  Illegal import selector: {} |The selector is not a member of an object or package.
+    error 201
+      source dotc/typer/Typer.scala
+      template  exports are only allowed from objects and classes, they can not belong to local blocks
+    error 202
+      source dotc/typer/Typer.scala
+      template  package {} does not exist
+    error 203
+      source dotc/typer/Typer.scala
+      template  Context function adapts a lambda with the same parameter types, possibly ?=> was intended.
+    error 204
+      source dotc/typer/Typer.scala
+      template  Missing arguments for {}
+    error 205
+      source dotc/typer/Typer.scala
+      template  {} is eta-expanded even though {} does not have the @FunctionalInterface annotation.
+    error 206
+      source dotc/typer/Typer.scala
+      template  Scala 2 macro cannot be used in Scala 3. See https://docs.scala-lang.org/scala3/reference/dropped-features/macros.html |To turn this error into a warning, pass -Xignore-scala2-macros to the compiler
+    error 207
+      source dotc/typer/Typer.scala
+      template  cannot convert from {} to an instance creation expression
+    error 208
+      source dotc/typer/Typer.scala
+      template  Scala 2 macro definition needs to be enabled |by making the implicit value scala.language.experimental.macros visible. |This can be achieved by adding the import clause 'import scala.language.experimental.macros' |or by setting the compiler option -language:experimental.macros.
+    error 209
+      source dotc/typer/Typer.scala
+      template  Invalid Scala 2 macro {}
+    error 210
+      source dotc/typer/VarianceChecker.scala
+      template  {} type parameter {} occurs in {} position in {}
+    error 211
+      source dotc/typer/VarianceChecker.scala
+      template  {} {} occurs in {} position in type {} of {}{}{}
+    error 212
+      source dotc/typer/Checking.scala
+      template  Update method {} must be declared in a class extending the `Stateful` trait.
+    error 213
+      source dotc/typer/Implicits.scala
+      template  Usage of implicit {} defined in {}, which is not accessible here. In Scala 3.10, this implicit will no longer be found.
+    error 214
+      source dotc/typer/Typer.scala
+      template  |Provided polymorphic function value doesn't match the expected type {}. |Expected type should be a polymorphic function with the same number of type and value parameters.
+    error 215
+      source dotc/typer/Typer.scala
+      template  Scala 2 macro cannot be used in Dotty. See https://docs.scala-lang.org/scala3/reference/dropped-features/macros.html |To turn this error into a warning, pass -Xignore-scala2-macros to the compiler
+    error 216
+      source dotc/typer/Applications.scala
+      text  positional after named argument
+    error 217
+      source dotc/typer/Checking.scala
+      text  {} has an operator name; it should come with an @targetName annotation
+    error 218
+      source dotc/typer/Checking.scala
+      text  {} reference in refinement is deprecated
+    error 219
+      source dotc/typer/Checking.scala
+      text  value classes are not allowed for context function types
+    error 220
+      source dotc/typer/Checking.scala
+      text  value class first parameter cannot be `erased`
+    error 221
+      source dotc/typer/Checking.scala
+      text  value class can only have one non `erased` parameter
+    error 222
+      source dotc/typer/Checking.scala
+      text  `PolyFunction` marker trait is reserved for compiler generated refinements
+    error 223
+      source dotc/typer/Namer.scala
+      text  Names of vals or vars may not end in `_=`
+    error 224
+      source dotc/typer/QuotesAndSplices.scala
+      text  Canceled splice directly inside a quote. '{ ${ XYZ } } is equivalent to XYZ.
+    error 225
+      source dotc/typer/QuotesAndSplices.scala
+      text  Canceled quote directly inside a splice. ${ '{ XYZ } } is equivalent to XYZ.
+    error 226
+      source dotc/typer/QuotesAndSplices.scala
+      text  Open pattern expected an identifier
+    error 227
+      source dotc/typer/QuotesAndSplices.scala
+      text  Implementation restriction: Type arguments to Open pattern are expected to have no bounds
+    error 228
+      source dotc/typer/QuotesAndSplices.scala
+      text  References to `var`s cannot be used in higher-order pattern
+    error 229
+      source dotc/typer/QuotesAndSplices.scala
+      text  Missing arguments for open pattern
+    error 230
+      source dotc/typer/QuotesAndSplices.scala
+      text  Missing type arguments for open pattern
+    error 231
+      source dotc/typer/QuotesAndSplices.scala
+      text  Splice ${...} outside quotes '{...} or inline method
+    error 232
+      source dotc/typer/QuotesAndSplices.scala
+      text  Quote pattern can only match scrutinees of type scala.quoted.Expr
+    error 233
+      source dotc/typer/QuotesAndSplices.scala
+      text  Quote pattern can only match scrutinees of type scala.quoted.Type
+    error 234
+      source dotc/typer/QuotesAndSplices.scala
+      text  Quote type variable definition cannot have context bounds
+    error 235
+      source dotc/typer/QuotesAndSplices.scala
+      text  Quote type variable definition cannot be an alias
+    error 236
+      source dotc/typer/RefChecks.scala
+      text  implementation restriction: applyDynamic cannot be overloaded except by methods with different numbers of type parameters, e.g. applyDynamic[T1](method: String)(arg: T1) and applyDynamic[T1, T2](method: String)(arg1: T1, arg2: T2)
+    error 237
+      source dotc/typer/RefChecks.scala
+      text  unary_<op> method cannot take {}
+    error 238
+      source dotc/typer/Typer.scala
+      text  cyclic {}, ignored
+    error 239
+      source dotc/typer/Typer.scala
+      text  Cannot use selectDynamic here since it needs another selectDynamic to be invoked
+    error 240
+      source dotc/typer/Typer.scala
+      text  Use of `scala.reflect.ClassTag` for type testing may be unsound. Consider using `scala.reflect.TypeTest` instead.
+    error 241
+      source dotc/typer/Typer.scala
+      text  filter needs to be a compile-time constant string
+    error 242
+      source dotc/typer/Typer.scala
+      text  inline def cannot be within quotes
+    error 243
+      source dotc/typer/Typer.scala
+      text  constructors cannot be `inline`
+    error 244
+      source dotc/typer/Typer.scala
+      text  case class element cannot be a context function
+    error 245
+      source dotc/typer/Typer.scala
+      text  secondary constructor must call a preceding constructor
+    error 246
+      source dotc/typer/Typer.scala
+      text  The annotation {} is not allowed on parameters of methods defined inside a refinement and it will have no effect
+    error 247
+      source dotc/typer/Typer.scala
+      text  Unexpected macro
+    error 248
+      source dotc/typer/Typer.scala
+      text  The method `apply` is inserted. The auto insertion will be deprecated, please write `{}
+    error 249
+      source dotc/typer/Typer.scala
+      text  Scala 2 macro cannot be used in Scala 3, this call will crash at runtime. See https://docs.scala-lang.org/scala3/reference/dropped-features/macros.html
+    error 250
+      source dotc/typer/TyperPhase.scala
+      text  To support XML literals, your project must depend on scala-xml. See https://github.com/scala/scala-xml for more information.
+    error 251
+      source dotc/typer/Checking.scala
+      text  PolyFunction only supports apply method refinements
+    error 252
+      source dotc/typer/Checking.scala
+      text  Implementation restriction: PolyFunction apply must have exactly one parameter list and optionally type arguments. No by-name nor varags are allowed.
+    error 253
+      source dotc/typer/Checking.scala
+      text  PolyFunction subtypes must refine the apply method
+    error 254
+      source dotc/typer/Typer.scala
+      text  Scala 2 macro cannot be used in Dotty, this call will crash at runtime. See https://docs.scala-lang.org/scala3/reference/dropped-features/macros.html
+
+  subdivision 8 metaprogramming
+    description  inlining, quotes, splices and staging
+    error 1
+      source dotc/inlines/InlineReducer.scala
+      template  {} is unusable in {} because it refers to an erased expression |in the selector of an inline match that reduces to | |{}
+    error 2
+      source dotc/inlines/Inliner.scala
+      template  missing arguments for inline method {}
+    error 3
+      source dotc/inlines/Inliner.scala
+      template  A literal string is expected as an argument to `compiletime.error`. Got {}
+    error 4
+      source dotc/inlines/Inliner.scala
+      template  Cannot reduce `inline if` because its condition is not a constant value: {}
+    error 5
+      source dotc/inlines/Inliner.scala
+      template  Macro expansion has type {}, which does not conform to the expected type {}
+    error 6
+      source dotc/inlines/Inliner.scala
+      template  cannot reduce summonFrom with | patterns : {}
+    error 7
+      source dotc/inlines/Inliner.scala
+      template  cannot reduce inline match with | scrutinee: {} : {} | patterns : {}
+    error 8
+      source dotc/inlines/Inliner.scala
+      template  Deferred inline {} cannot be invoked
+    error 9
+      source dotc/inlines/Inliner.scala
+      template  Cannot call macro {} defined in the same source file
+    error 10
+      source dotc/inlines/Inliner.scala
+      template  Cannot call macro {} defined in the same compilation run{}
+    error 11
+      source dotc/inlines/Inliner.scala
+      template  could not expand macro, suspended units are disabled by -Yno-suspended-units
+    error 12
+      source dotc/inlines/Inlines.scala
+      template  {} does not conform to bound{}
+    error 13
+      source dotc/inlines/Inlines.scala
+      template  |Maximal number of {} ({}) exceeded, |Maybe this is caused by a recursive inline method? |You can use {} to change the limit.
+    error 14
+      source dotc/inlines/Inlines.scala
+      template  argument to compileError must be a statically known String but was: {}
+    error 15
+      source dotc/inlines/Inlines.scala
+      template  expected a constant value but found: {}
+    error 16
+      source dotc/inlines/Inlines.scala
+      template  Tuple element types must be known at compile time
+    error 17
+      source dotc/inlines/PrepareInlineable.scala
+      template  Implementation restriction: nested inline methods are not supported
+    error 18
+      source dotc/quoted/Interpreter.scala
+      template  Interpreted tree returned a result of an unexpected type. Expected {} but was {}
+    error 19
+      source dotc/quoted/Interpreter.scala
+      template  {} could not be inlined
+    error 20
+      source dotc/quoted/Interpreter.scala
+      template  Unexpected tree could not be interpreted: {}
+    error 21
+      source dotc/quoted/Interpreter.scala
+      template  Could not find method {}.{} with parameters ({}%, %)
+    error 22
+      source dotc/quoted/Interpreter.scala
+      template  Macro code depends on {} found on the classpath, but could not be loaded while evaluating the macro. | This is likely because class files could not be found in the classpath entry for the symbol. | | A possible cause is if the origin of this symbol was built with pipelined compilation; | in which case, this problem may go away by disabling pipelining for that origin. | | {} is defined in file {}
+    error 23
+      source dotc/quoted/Interpreter.scala
+      template  suspension triggered by a dependency on missing {} not allowed with -Yno-suspended-units
+    error 24
+      source dotc/quoted/QuotePatterns.scala
+      template  Implementation restriction: cannot match {}
+    error 25
+      source dotc/staging/CrossStageSafety.scala
+      template  access to {} from wrong staging level: | - the definition is at level {}, | - but the access is at level {}.{}
+    error 26
+      source dotc/staging/HealType.scala
+      template  Cannot stage {} because it is an alias to a wildcard type
+    error 27
+      source dotc/staging/HealType.scala
+      template  access to {} from wrong staging level: | - the definition is at level {}, | - but the access is at level {}
+    error 28
+      source dotc/inlines/Inlines.scala
+      text  unknown base type {} for ancestor {} of {}
+    error 29
+      source dotc/inlines/Inlines.scala
+      text  Inline traits may not define inner classes or traits.
+    error 30
+      source dotc/inlines/Inlines.scala
+      text  Inlining of inline traits looped. Tried to inline {} into its own body.
+    error 31
+      source dotc/inlines/Inlines.scala
+      text  Inlining of inline trait created name conflict on {}. Constructor parameters of inline receivers may not collide with members of inline traits.
+    error 32
+      source dotc/inlines/Inlines.scala
+      text  Inline traits may not contain superclass references to classes or non-inline traits.
+    error 33
+      source dotc/inlines/PrepareInlineable.scala
+      text  Private constructors used in inline methods require @publicInBinary
+    error 34
+      source dotc/inlines/PrepareInlineable.scala
+      text  Macro cannot be implemented with an `inline` method
+    error 35
+      source dotc/inlines/PrepareInlineable.scala
+      text  Macros using a return type of the form `foo(): X ?=> Y` are not yet supported. Place the implicit as an argument (`foo()(using X): Y`) to overcome this limitation.
+    error 36
+      source dotc/inlines/PrepareInlineable.scala
+      text  Malformed macro. Expected the splice ${...} to be at the top of the RHS: inline def foo(inline x: X, ..., y: Y): Int = ${ impl('x, ... 'y) } * The contents of the splice must call a static method * All arguments must be quoted
+    error 37
+      source dotc/quoted/QuotePatterns.scala
+      text  Splice pattern must match an Expr[...]
+    error 38
+      source dotc/quoted/QuotePatterns.scala
+      text  Use of `_` for lambda in quoted pattern. Use explicit lambda instead or use `$_` to match any term.
+    error 39
+      source dotc/quoted/QuotePatterns.scala
+      text  Names cannot start with $ quote pattern
+    error 40
+      source dotc/quoted/QuotePatterns.scala
+      text  Implementation restriction: cannot match `match` expressions
+    error 41
+      source dotc/quoted/QuotePatterns.scala
+      text  Implementation restriction: cannot match `try` expressions
+    error 42
+      source dotc/quoted/QuotePatterns.scala
+      text  Implementation restriction: cannot match `return` statements
+    error 43
+      source dotc/quoted/QuotePatterns.scala
+      text  Type arguments of a hoas pattern needs to be defined inside the quoted pattern
+    error 44
+      source dotc/quoted/QuotePatterns.scala
+      text  Type variables that this argument depends on are not captured in this hoas pattern
+    error 45
+      source dotc/staging/CrossStageSafety.scala
+      text  Cannot have a quote in an annotation
+
+  subdivision 9 captures
+    description  capture checking
+    error 1
+      source dotc/cc/CaptureOps.scala
+      template  Illegal capture reference: {}
+    error 2
+      source dotc/cc/CaptureSet.scala
+      template  Capture set variable {} gets upper-approximated |to existential variable from {}, using {any} instead.
+    error 3
+      source dotc/cc/CheckCaptures.scala
+      template  Postfix `^` is not allowed on the capture-set variable {}; |it adds the root capability `caps.any`. Write `{}` or `{{}}` to refer to its capture set.
+    error 4
+      source dotc/cc/CheckCaptures.scala
+      template  {} is not a legal element of a capture set
+    error 5
+      source dotc/cc/CheckCaptures.scala
+      template  {} cannot be tracked since it is not a parameter or local value
+    error 6
+      source dotc/cc/CheckCaptures.scala
+      template  {}.only[{}] is not well-formed since {} is not a classifier class. |A classifier class is a class extending `caps.Capability` and directly extending `caps.Classifier`.
+    error 7
+      source dotc/cc/CheckCaptures.scala
+      template  {}.except[{}] is not well-formed since {} is not a classifier class. |A classifier class is a class extending `caps.Capability` and directly extending `caps.Classifier`.
+    error 8
+      source dotc/cc/CheckCaptures.scala
+      template  {} cannot {} {} since |{}that type captures the root capability `any`.{}
+    error 9
+      source dotc/cc/CheckCaptures.scala
+      template  Read-only {} accesses exclusive capability `{}`; |{} should be declared an update method to allow this.
+    error 10
+      source dotc/cc/CheckCaptures.scala
+      template  {} is not a tracked capability
+    error 11
+      source dotc/cc/CheckCaptures.scala
+      template  Mutable {} is defined in a class that does not extend `Stateful` or `Mutable`. |The variable needs to be annotated with `untrackedCaptures` to allow this.
+    error 12
+      source dotc/cc/CheckCaptures.scala
+      template  {} needs an explicit{} type because the inferred type does not conform to |the type that is externally visible in other compilation units. | | Inferred type : {} | Externally visible type: {}
+    error 13
+      source dotc/cc/CheckCaptures.scala
+      template  {} needs an explicit type because it captures a root capability in its type {}. |Fields capturing a root capability need to be given an explicit type unless the capability is already |subsumed by the computed capability of the enclosing class.
+    error 14
+      source dotc/cc/CheckCaptures.scala
+      template  {}'s type {}{} is {}, |but it is a field of {} which is classied as {}. |Field classifiers have to conform to the classifier of the containing class.
+    error 15
+      source dotc/cc/CheckCaptures.scala
+      template  {} need to be put in an object that extends Capability
+    error 16
+      source dotc/cc/CheckCaptures.scala
+      template  {} needs to extend Capability since it has {}.
+    error 17
+      source dotc/cc/CheckCaptures.scala
+      template  {} cannot be box-converted to {} |since the additional capture set {} resulting from box conversion is not allowed in {}
+    error 18
+      source dotc/cc/CheckCaptures.scala
+      template  {} needs an explicitly declared self type since its |inferred self type {} |is not visible in other compilation units that define subclasses.
+    error 19
+      source dotc/cc/CheckCaptures.scala
+      template  {} leaks into capture scope{}.{}
+    error 20
+      source dotc/cc/CheckCaptures.scala
+      template  illegal inheritance: {} which extends `Stateful` is not allowed to also extend {} |since {} {} but does not extend `Stateful`.
+    error 21
+      source dotc/cc/Mutability.scala
+      template  {}\nsince {}.
+    error 22
+      source dotc/cc/Mutability.scala
+      template  freeze is safe only if separation checking is enabled. |You can enable separation checking with the language import | | import language.experimental.separationChecking
+    error 23
+      source dotc/cc/SafeRefs.scala
+      template  Cannot refer to {}{} from safe code since {}
+    error 24
+      source dotc/cc/SafeRefs.scala
+      template  Cannot use asInstanceOf in safe mode
+    error 25
+      source dotc/cc/SepCheck.scala
+      template  Separation failure: argument of type {} |to {} |corresponds to capture-polymorphic formal parameter {}of type {} |and hides capabilities {}. |Some of these overlap with the captures of the {}{}. | | Hidden set of current argument : {} | Hidden footprint of current argument : {} | Capture set of {} : {} | Footprint set of {} : {} | The two sets overlap at : {}
+    error 26
+      source dotc/cc/SepCheck.scala
+      template  Separation failure: Illegal access to {} which is hidden by the previous definition |of {} with{} type {}. |This type hides capabilities {}{}
+    error 27
+      source dotc/cc/SepCheck.scala
+      template  Separation failure: illegal access to {} which is hidden by some previous definitions |No clashing definitions were found. This might point to an internal error.
+    error 28
+      source dotc/cc/SepCheck.scala
+      template  Separation failure: Illegal access to {}, which was {} |on line {} and therefore is no longer available.
+    error 29
+      source dotc/cc/SepCheck.scala
+      template  Separation failure: {} appears in a loop, therefore it cannot |be {}.
+    error 30
+      source dotc/cc/SepCheck.scala
+      template  Separation failure: {} non-local {}
+    error 31
+      source dotc/cc/SepCheck.scala
+      template  Separation failure: {} enclosing instance of class {}. |The access must be in a consume method to allow this.
+    error 32
+      source dotc/cc/SepCheck.scala
+      template  Separation failure: {} parameter{} {}. |The parameter{} need{} to be annotated with consume to allow this.
+    error 33
+      source dotc/cc/SepCheck.scala
+      template  Separation failure in {} {}. |One part, {}, hides capabilities {}. |Another part, {}, captures capabilities {}. |The two sets overlap at {}.
+    error 34
+      source dotc/cc/SepCheck.scala
+      template  Separation failure: {} {}, which appears in the bound of {}. |This is not allowed. The {} has to be returned explicitly in the result type.
+    error 35
+      source dotc/cc/Setup.scala
+      template  {} is a pure type, it makes no sense to add a capture set to it
+    error 36
+      source dotc/cc/Setup.scala
+      template  `fresh` occurs outside function result in {}. | |The `fresh` capability may only be used in the result of a function type, |following a function arrow such as `=>` or `->`.
+    error 37
+      source dotc/cc/Setup.scala
+      template  consume cannot be used here. Only member methods and their term parameters |can have a consume modifier.
+    error 38
+      source dotc/cc/Setup.scala
+      template  {} inherits two unrelated classifier traits: {} and {}
+    error 39
+      source dotc/cc/Setup.scala
+      template  redundant capture: {} already accounts for {}
+    error 40
+      source dotc/cc/Setup.scala
+      template  {} cannot be tracked since its capture set is empty
+    error 41
+      source dotc/cc/CheckCaptures.scala
+      template  Cannot form a reach capability from `{}`
+    error 42
+      source dotc/cc/CheckCaptures.scala
+      template  Local capability `{}`{} cannot have `any` as underlying capture set
+    error 43
+      source dotc/cc/CheckCaptures.scala
+      template  {} {} leaks into capture scope{}.{}
+    error 44
+      source dotc/cc/CheckCaptures.scala
+      template  Reach capability `{}` in function result refers to {}. |To avoid errors of the form "Local reach capability {} leaks into capture scope ..." |you should replace the reach capability with a new capset variable in {}.
+    error 45
+      source dotc/cc/CheckCaptures.scala
+      template  Local {} created in type of {} leaks into capture scope{}
+    error 46
+      source dotc/cc/SepCheck.scala
+      template  Separation failure: Illegal access to {} which is hidden by the previous definition |of {} with{} type {}. |This type hides capabilities {}
+    error 47
+      source dotc/cc/SepCheck.scala
+      template  Separation failure: {} non-local this of class {}. |The access must be in a consume method to allow this.
+    error 48
+      source dotc/cc/Setup.scala
+      template  @use is redundant here and should no longer be written explicitly. |Capset variables are always implicitly used, unless they are annotated with @caps.preserve.
+    error 49
+      source dotc/cc/Setup.scala
+      template  @use is no longer supported. Instead of @use you can introduce capset |variables for the polymorphic parts of parameter types.
+    error 50
+      source dotc/cc/Setup.scala
+      template  @use cannot be used here. Only method parameters can have @use annotations.
+    error 51
+      source dotc/cc/Setup.scala
+      template  {} cannot be tracked since its{} capture set is empty
+
+  subdivision 10 transform
+    description  the transformation phases
+    error 1
+      source dotc/transform/Bridges.scala
+      template  bridge generated for member {} |which overrides {} |clashes with definition of the member itself; both have erased type {}."
+    error 2
+      source dotc/transform/CheckLoopingImplicits.scala
+      template  Infinite loop in function body |{}
+    error 3
+      source dotc/transform/CheckNoSuperThis.scala
+      template  super constructor cannot be passed a self reference {} unless parameter is declared by-name
+    error 4
+      source dotc/transform/CheckReentrant.scala
+      template  possible data race involving globally reachable {}: {} | use -Ylog:checkReentrant+ to find out more about why the variable is reachable.
+    error 5
+      source dotc/transform/CompleteJavaEnums.scala
+      template  the constructor of java.lang.Enum cannot be called explicitly
+    error 6
+      source dotc/transform/Constructors.scala
+      template  {} is marked `@constructorOnly` but it is retained as a field in {}
+    error 7
+      source dotc/transform/DesugarSpecializedTraits.scala
+      template  Missing specialization type for {}
+    error 8
+      source dotc/transform/ElimByName.scala
+      template  By-name parameter cannot be erased: {}
+    error 9
+      source dotc/transform/ElimRepeated.scala
+      template  To generate java-compatible varargs: | - there must be a single repeated parameter | - it must be the last argument in the last parameter list |
+    error 10
+      source dotc/transform/Erasure.scala
+      template  {} is declared as `inline`, but was not inlined | |Try increasing `-Xmax-inlines` above {}
+    error 11
+      source dotc/transform/Erasure.scala
+      template  {} is declared as `erased`, but is in fact used
+    error 12
+      source dotc/transform/Erasure.scala
+      template  Reference to {} should not have survived, |it should have been processed and eliminated during expansion of an enclosing macro or term erasure.
+    error 13
+      source dotc/transform/Erasure.scala
+      template  Unable to emit reference to {}, {} is not accessible in {}
+    error 14
+      source dotc/transform/ExplicitSelf.scala
+      template  self type {} of {} may not be a value class
+    error 15
+      source dotc/transform/InlineVals.scala
+      template  inline value must be pure{}
+    error 16
+      source dotc/transform/InlineVals.scala
+      template  The type of an `inline val` cannot be an opaque type.\n\nTo inline, consider using `inline def` instead
+    error 17
+      source dotc/transform/InlineVals.scala
+      template  `inline val` of type `Unit` is not supported.\n\nTo inline a `Unit` consider using `inline def`
+    error 18
+      source dotc/transform/InlineVals.scala
+      template  inline value must have a literal constant type
+    error 19
+      source dotc/transform/InlineVals.scala
+      template  `inline val` with `null` is not supported.\n\nTo inline a `null` consider using `inline def`
+    error 20
+      source dotc/transform/InlineVals.scala
+      template  inline value must contain a literal constant value.\n\nTo inline more complex types consider using `inline def`
+    error 21
+      source dotc/transform/LazyVals.scala
+      template  @threadUnsafe is only supported on lazy vals
+    error 22
+      source dotc/transform/MacroAnnotations.scala
+      template  Failed to evaluate macro annotation '{}'. | Caused by {}: {} | {} |
+    error 23
+      source dotc/transform/MacroAnnotations.scala
+      template  Macro added a definition with the wrong owner - {} - {} in {}
+    error 24
+      source dotc/transform/Mixin.scala
+      template  parameterized {} is indirectly implemented, |needs to be implemented directly so that arguments can be passed
+    error 25
+      source dotc/transform/Mixin.scala
+      template  Implementation restriction: cannot extend the Scala 2 trait {} |containing the object {} that extends js.Any
+    error 26
+      source dotc/transform/NonLocalReturns.scala
+      template  Non local returns are no longer supported; use `boundary` and `boundary.break` in `scala.util` instead
+    error 27
+      source dotc/transform/Pickler.scala
+      template  Error closing early output: {}
+    error 28
+      source dotc/transform/Pickler.scala
+      template  writing TASTy to early output
+    error 29
+      source dotc/transform/Pickler.scala
+      template  closing early output writer
+    error 30
+      source dotc/transform/Pickler.scala
+      template  An unhandled exception was thrown in the compiler while\n {}.\n{}\n {}
+    error 31
+      source dotc/transform/Pickler.scala
+      template  Pickled reference to FromJavaObject in Java defined {} in {}
+    error 32
+      source dotc/transform/Pickler.scala
+      template  pickling difference for {} in {}, for details: | | diff before-pickling.txt after-pickling.txt
+    error 33
+      source dotc/transform/Pickler.scala
+      template  TASTy printer difference for {} in {}, did not match {}, | output dumped in after-printing.txt, check diff with `git diff --no-index -- {} after-printing.txt` | actual output: |{}%\n%
+    error 34
+      source dotc/transform/PostTyper.scala
+      template  Parameter untupling cannot be used for call-by-name parameters
+    error 35
+      source dotc/transform/PostTyper.scala
+      template  {} cannot be used as a type
+    error 36
+      source dotc/transform/PostTyper.scala
+      template  The type of a class parent cannot refer to constructor parameters, but {} refers to {}
+    error 37
+      source dotc/transform/PostTyper.scala
+      template  type {} outside bounds {}
+    error 38
+      source dotc/transform/ProtectedAccessors.scala
+      template  illegal access to protected {} from {}
+    error 39
+      source dotc/transform/ResolveSuper.scala
+      template  parent {} has a super call which binds to the value {}. Super calls can only target methods.
+    error 40
+      source dotc/transform/ResolveSuper.scala
+      template  Member method {} of mixin {} is missing a concrete super implementation in {}.
+    error 41
+      source dotc/transform/Splicer.scala
+      template  macro expansion was stopped
+    error 42
+      source dotc/transform/Splicer.scala
+      template  Failed to evaluate macro. | Caused by {}: {} | {}
+    error 43
+      source dotc/transform/Splicer.scala
+      template  While expanding a macro, a reference to {} was used outside the scope where it was defined
+    error 44
+      source dotc/transform/Splicer.scala
+      template  While expanding a macro, a reference to primary constructor {} of {} was used outside of the primary constructor. | |Hint: Instead of using `Symbol.primaryConstructor.paramSymss` directly, get the analogous field members with `Symbol.fieldMembers`. |
+    error 45
+      source dotc/transform/Splicing.scala
+      template  Can not use reference to staged local {} defined in an outer quote.\n\nThis can work if {} would extend a top level interface that defines {}.
+    error 46
+      source dotc/transform/SuperAccessors.scala
+      template  Internal error: unable to store accessor definition in {}. clazz.hasPackageFlag={}. Accessor required for {} ({})
+    error 47
+      source dotc/transform/SuperAccessors.scala
+      template  super may be not be used on {}
+    error 48
+      source dotc/transform/SuperAccessors.scala
+      template  super not allowed here: use this.{} instead
+    error 49
+      source dotc/transform/SuperAccessors.scala
+      template  {} is accessed from super. It may not be abstract unless it is overridden by a member declared `abstract' and `override'
+    error 50
+      source dotc/transform/SuperAccessors.scala
+      template  {} cannot be directly accessed from {} because {} redeclares it as abstract
+    error 51
+      source dotc/transform/SuperAccessors.scala
+      template  Super call cannot be emitted: the selected {} is declared in {}, which is not the direct superclass of {}. |An unqualified super call (super.{}) would be allowed.
+    error 52
+      source dotc/transform/SuperAccessors.scala
+      template  {} accesses protected {} inside a concrete trait method: use super.{} instead
+    error 53
+      source dotc/transform/TailRec.scala
+      template  Cannot rewrite recursive call: {}
+    error 54
+      source dotc/transform/TreeChecker.scala
+      template  Malformed tree was found while expanding macro with -Xcheck-macros. |The tree does not conform to the compiler's tree invariants. | |Macro was: |{} | |The macro returned: |{} | |Error: |{} |{} |
+    error 55
+      source dotc/transform/TupleOptimizations.scala
+      template  index out of bounds: {}
+    error 56
+      source dotc/transform/TypeTestsCasts.scala
+      template  this will always yield false since {}
+    error 57
+      source dotc/transform/TypeTestsCasts.scala
+      template  {} cannot be used in runtime type tests
+    error 58
+      source dotc/transform/localopt/DropForMap.scala
+      template  For comprehension with multiple val assignments may change result type in 3.8
+    error 59
+      source dotc/transform/AccessProxies.scala
+      text  Cannot use private constructors in inline methods. You can use @publicInBinary to make constructor accessible in inline methods.
+    error 60
+      source dotc/transform/CheckInlineTraits.scala
+      text  implementation restriction: inline traits cannot have non-local private members. This also means no retained inline methods.
+    error 61
+      source dotc/transform/CheckInlineTraits.scala
+      text  Only inline traits and inline functions may take Specialized type parameters
+    error 62
+      source dotc/transform/CheckInlineTraits.scala
+      text  Anonymous classes acting as instances of Specialized traits may not mix in other traits; You can make a named object instead if you like.
+    error 63
+      source dotc/transform/CheckInlineTraits.scala
+      text  Anonymous classes acting as instances of Specialized traits may not have additional members; you can make a named object instead if you like.
+    error 64
+      source dotc/transform/CheckInlineTraits.scala
+      text  Anonymous classes acting as instances of Specialized traits may not mix in other traits; you can make a named object instead if you like.
+    error 65
+      source dotc/transform/DesugarSpecializedTraits.scala
+      text  Specialized traits may not be defined inside classes or traits this would make them path-dependent which is not currently supported); They may be defined inside objects.
+    error 66
+      source dotc/transform/DesugarSpecializedTraits.scala
+      text  Wildcard types may not be substituted for Specialized type parameters.
+    error 67
+      source dotc/transform/DesugarSpecializedTraits.scala
+      text  {} used in a Specialized position, so it must be marked as Specialized at its definition.
+    error 68
+      source dotc/transform/ElimRepeated.scala
+      text  A method without repeated parameters cannot be annotated with @varargs
+    error 69
+      source dotc/transform/ElimRepeated.scala
+      text  inner methods cannot be annotated with @varargs
+    error 70
+      source dotc/transform/ElimRepeated.scala
+      text  {} produces a forwarder method that conflicts with {}
+    error 71
+      source dotc/transform/ExplicitOuter.scala
+      text  Not a single abstract method type, requires an outer pointer
+    error 72
+      source dotc/transform/ForwardDepChecks.scala
+      text  forward reference not allowed from self constructor invocation
+    error 73
+      source dotc/transform/MacroAnnotations.scala
+      text  macro annotations are not supported on type
+    error 74
+      source dotc/transform/MacroAnnotations.scala
+      text  Transformed tree for {} was not return by `({}).transform(..)` during macro expansion
+    error 75
+      source dotc/transform/MacroAnnotations.scala
+      text  Transformed companion for {} was returned more than once by `({}).transform(..)` during macro expansion
+    error 76
+      source dotc/transform/MacroAnnotations.scala
+      text  Macro expansion was aborted by the macro without any errors reported. Macros should issue errors to end-users when aborting a macro expansion with StopMacroExpansion.
+    error 77
+      source dotc/transform/MacroAnnotations.scala
+      text  macro annotation cannot return a `type`. {} tried to add {}
+    error 78
+      source dotc/transform/MacroAnnotations.scala
+      text  macro annotation {} added {} with an inconsistent owner. Expected it to be owned by {} but was owned by {}.
+    error 79
+      source dotc/transform/MacroAnnotations.scala
+      text  macro annotation can not add top-level {}. {} tried to add {}.
+    error 80
+      source dotc/transform/PostTyper.scala
+      text  No Scala 3 implementation found for this Scala 2 macro.
+    error 81
+      source dotc/transform/PostTyper.scala
+      text  classes that extend MacroAnnotation must not be inner/local classes
+    error 82
+      source dotc/transform/RepeatableAnnotations.scala
+      text  Container must not be present at the same time as the element it contains
+    error 83
+      source dotc/transform/RepeatableAnnotations.scala
+      text  Not repeatable annotation repeated
+    error 84
+      source dotc/transform/Splicer.scala
+      text  Macro should not have statements
+    error 85
+      source dotc/transform/Splicer.scala
+      text  Quoted argument of macros may not have splices
+    error 86
+      source dotc/transform/Splicer.scala
+      text  Malformed macro parameter{} Parameters may only be: * Quoted parameters or fields * Literal values of primitive types * References to `inline val`s
+    error 87
+      source dotc/transform/Splicer.scala
+      text  Macro implementation is not statically accessible. Non-static inline accessor was generated in {}
+    error 88
+      source dotc/transform/Splicer.scala
+      text  Malformed macro. Expected the splice ${...} to contain a single call to a static method.
+    error 89
+      source dotc/transform/TailRec.scala
+      text  Infinite recursive call
+    error 90
+      source dotc/transform/TreeChecker.scala
+      text  symbol {} is defined at least twice in different parts of AST
+    error 91
+      source dotc/transform/TreeChecker.scala
+      text  symbol {} name doesn't correspond to AST: {}
+    error 92
+      source dotc/transform/UnrollDefinitions.scala
+      text  Cannot have multiple parameter lists containing `@unroll` annotation
+    error 93
+      source dotc/transform/UnrollDefinitions.scala
+      text  Unrolled {} clashes with existing declaration. Please remove the clashing definition, or the @unroll annotation. Unrolled from {} {}
+    error 94
+      source dotc/transform/init/Objects.scala
+      text  Giving up checking initialization of {}
+    error 95
+      source dotc/transform/init/Objects.scala
+      text  Cyclic initialization: {}
+    error 96
+      source dotc/transform/init/Objects.scala
+      text  [Internal error] Value not found {}
+    error 97
+      source dotc/transform/init/Objects.scala
+      text  [Internal error] Unhandled return for method {}
+    error 98
+      source dotc/transform/init/Objects.scala
+      text  [Internal error] Unexpected call on package = {}
+    error 99
+      source dotc/transform/init/Objects.scala
+      text  [Internal error] Unexpected resolution failure: ref.klass = {}
+    error 100
+      source dotc/transform/init/Objects.scala
+      text  [Internal error] Only DefDef should be possible here, but found {}
+    error 101
+      source dotc/transform/init/Objects.scala
+      text  [Internal error] unexpected constructor call, meth = {}
+    error 102
+      source dotc/transform/init/Objects.scala
+      text  [Internal error] unexpected tree in selecting an array, array = {}
+    error 103
+      source dotc/transform/init/Objects.scala
+      text  [Internal error] Unexpected selection on safe value {}
+    error 104
+      source dotc/transform/init/Objects.scala
+      text  [Internal error] Unexpected selection on package {}
+    error 105
+      source dotc/transform/init/Objects.scala
+      text  [Internal error] unexpected tree in selecting a function, fun = {}
+    error 106
+      source dotc/transform/init/Objects.scala
+      text  [Internal error] unexpected tree in assignment, package = {}
+    error 107
+      source dotc/transform/init/Objects.scala
+      text  [Internal error] unexpected tree in assignment, fun = {}
+    error 108
+      source dotc/transform/init/Objects.scala
+      text  [Internal error] unexpected tree in assignment, array = {}
+    error 109
+      source dotc/transform/init/Objects.scala
+      text  Assigning to base value is forbidden. {}
+    error 110
+      source dotc/transform/init/Objects.scala
+      text  Mutating a field before its initialization: {}
+    error 111
+      source dotc/transform/init/Objects.scala
+      text  [Internal error] unexpected outer in instantiating a class, outer = {}
+    error 112
+      source dotc/transform/init/Objects.scala
+      text  [Internal error] top-level class should have `Package` as outer, class = {}
+    error 113
+      source dotc/transform/init/Objects.scala
+      text  [Internal error] Unexpected by-name value {}
+    error 114
+      source dotc/transform/init/Objects.scala
+      text  Calling cold by-name alias. {}
+    error 115
+      source dotc/transform/init/Objects.scala
+      text  Assigning to variables in outer scope. {}
+    error 116
+      source dotc/transform/init/Objects.scala
+      text  Accessing {}
+    error 117
+      source dotc/transform/init/Objects.scala
+      text  Cyclic region detected. Trace: {}
+    error 118
+      source dotc/transform/init/Objects.scala
+      text  [Internal error] Unexpected type {}
+    error 119
+      source dotc/transform/init/Objects.scala
+      text  [Internal error] unexpected tree: {}
+    error 120
+      source dotc/transform/init/Objects.scala
+      text  Access uninitialized field of quota exhausted object {}
+    error 121
+      source dotc/transform/init/Objects.scala
+      text  Access uninitialized field {}
+    error 122
+      source dotc/transform/init/Semantic.scala
+      text  Ignoring analyses of {}
+    error 123
+      source dotc/transform/init/Semantic.scala
+      text  [Internal error] Number of parameters do not match number of arguments in {}
+    error 124
+      source dotc/transform/init/Semantic.scala
+      text  [Internal error] unexpected tree in instantiating a function, fun = {}
+    error 125
+      source dotc/transform/init/Semantic.scala
+      text  [Internal error] unexpected this value accessing local variable, sym = {}
+    error 126
+      source dotc/transform/init/Semantic.scala
+      text  [Internal error] unexpected this value when accessing local variable, sym = {}
+    error 127
+      source dotc/transform/init/Semantic.scala
+      text  [Internal error] Expect current segment to be transitively initialized (Hot) in promotion, current klass = {}
+    error 128
+      source dotc/transform/init/Semantic.scala
+      text  Skipping the analysis of {}
+    error 129
+      source dotc/transform/init/Semantic.scala
+      text  [Internal error] unexpected type {}
+    error 130
+      source dotc/transform/init/Semantic.scala
+      text  [Internal error] unexpected thisV = {}
+    error 131
+      source dotc/transform/init/Util.scala
+      text  [Internal error] Number of arguments do not match number of argument types in {}
+    error 132
+      source dotc/transform/localopt/StringInterpolatorOpt.scala
+      text  Expected statically known StringContext
+    error 133
+      source dotc/transform/localopt/StringInterpolatorOpt.scala
+      text  Expected statically known argument list
+    error 134
+      source dotc/transform/InstrumentCoverage.scala
+      text  Skipping coverage instrumentation for large {} ({} tree nodes exceeds threshold {}); compilation will continue but no coverage data will be recorded for it.
+
+  subdivision 11 backend
+    description  the JVM backend
+    error 1
+      source backend/jvm/BCodeBodyBuilder.scala
+      template  too many arguments for array constructor: found {} but array has only {} dimension(s)
+    error 2
+      source backend/jvm/BCodeBodyBuilder.scala
+      template  JavaSeqArray with type {} reached backend: {}
+    error 3
+      source backend/jvm/BCodeHelpers.scala
+      template  Annotation argument is not a constant
+    error 4
+      source backend/jvm/BCodeHelpers.scala
+      template  |compiler bug: created invalid generic signature for {} in {} |signature: {} |if this is reproducible, please report bug at https://github.com/scala/scala3/issues
+    error 5
+      source backend/jvm/BCodeSkelBuilder.scala
+      template  Platform restriction: a parameter list's length cannot exceed {}{}.
+    error 6
+      source backend/jvm/BCodeSkelBuilder.scala
+      template  Concrete method has no definition: {}{}
+    error 7
+      source backend/jvm/CodeGen.scala
+      template  {} and {} produce classes that overwrite one another
+    error 8
+      source backend/jvm/CodeGen.scala
+      template  Generated class {} differs only in case from {}{}. | Such classes will overwrite one another on case-insensitive filesystems.
+    error 9
+      source backend/jvm/GenBCode.scala
+      template  unable to write {} {}
+    error 10
+      source backend/jvm/PostProcessor.scala
+      template  Output dir does not exist: {}
+    error 11
+      source backend/jvm/PostProcessor.scala
+      template  Could not write class {} because it exceeds JVM code size limits. {}
+    error 12
+      source backend/jvm/PostProcessor.scala
+      template  Error while emitting {}\n{}
+    error 13
+      source backend/jvm/opt/InlinerHeuristics.scala
+      template  there was a problem determining if method {} can be inlined: \n{}
+    error 14
+      source backend/jvm/opt/InlinerHeuristics.scala
+      template  failed to determine if {} should be inlined:\n{}
+    error 15
+      source backend/jvm/BCodeBodyBuilder.scala
+      text  String constant is too long for the JVM
+    error 16
+      source backend/jvm/BCodeBodyBuilder.scala
+      text  Type name is too long for the JVM
+    error 17
+      source backend/jvm/BCodeBodyBuilder.scala
+      text  Cannot use a Java annotation as a value.
+    error 18
+      source backend/jvm/BCodeHelpers.scala
+      text  The value of {} was overridden by {}
+    error 19
+      source backend/jvm/BCodeHelpers.scala
+      text  Mirror method signature is too long for the JVM
+    error 20
+      source backend/jvm/BCodeHelpers.scala
+      text  Mirror class name is too long for the JVM
+    error 21
+      source backend/jvm/BCodeSkelBuilder.scala
+      text  @SerialVersionUID does nothing on a trait
+    error 22
+      source backend/jvm/BCodeSkelBuilder.scala
+      text  The argument passed to @SerialVersionUID must be a constant
+    error 23
+      source backend/jvm/BCodeSkelBuilder.scala
+      text  Class name is too long for the JVM
+    error 24
+      source backend/jvm/BCodeSkelBuilder.scala
+      text  attempt to create duplicate local var.
+    error 25
+      source backend/jvm/BCodeSkelBuilder.scala
+      text  Method signature is too long for the JVM
+    error 26
+      source backend/jvm/CodeGen.scala
+      text  Error while emitting {} {}
+    error 27
+      source backend/jvm/GenBCode.scala
+      text  Cannot suspend and output to a jar at the same time. See suspension with -Xprint-suspension.
+
+  subdivision 12 scalajs
+    description  the Scala.js and WebAssembly phases and backends
+    error 1
+      source backend/sjs/JSCodeGen.scala
+      template  found {} which is both a top-level export and a Java static
+    error 2
+      source backend/sjs/JSCodeGen.scala
+      template  expected Array {}
+    error 3
+      source backend/sjs/JSCodeGen.scala
+      template  isInstanceOf[{}] not supported because it is a JS trait
+    error 4
+      source backend/sjs/JSExportsGen.scala
+      template  export overload conflicts with export of {}: they are of different types ({} / {})
+    error 5
+      source backend/sjs/JSExportsGen.scala
+      template  export overload conflicts with export of {}: a field may not share its exported name with another export
+    error 6
+      source backend/sjs/JSExportsGen.scala
+      template  Ended up with no alternatives for {}::{}. |Original set was {} with types {}
+    error 7
+      source backend/sjs/JSExportsGen.scala
+      template  Exported {} {} conflicts with {}
+    error 8
+      source backend/sjs/JSExportsGen.scala
+      template  Conflicting properties and methods for {}::{}.
+    error 9
+      source backend/sjs/JSExportsGen.scala
+      template  Cannot disambiguate overloads for {} {} with types\n {}
+    error 10
+      source backend/sjs/JSPositions.scala
+      template  {} is not a valid URI
+    error 11
+      source backend/sjs/JSPrimitives.scala
+      template  Unknown primitive method {}.{}
+    error 12
+      source dotc/transform/sjs/AddLocalJSFakeNews.scala
+      template  unexpected {} for the first argument to `createLocalJSClass`
+    error 13
+      source dotc/transform/sjs/ExplicitJSClasses.scala
+      template  class type required but found {}
+    error 14
+      source dotc/transform/sjs/ExplicitJSClasses.scala
+      template  stable reference to a JS class required but {} found
+    error 15
+      source dotc/transform/sjs/JUnitBootstrappers.scala
+      template  {} is an unsupported argument for the JUnit @Test annotation in this position
+    error 16
+      source dotc/transform/sjs/PrepJSExports.scala
+      template  Found a top-level export without an explicit name at {}
+    error 17
+      source dotc/transform/sjs/PrepJSExports.scala
+      template  The argument to {} must be a literal string
+    error 18
+      source dotc/transform/sjs/PrepJSExports.scala
+      template  Cannot find default getter for param {} of {}
+    error 19
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  Using an anonymous function as a SAM for the JavaScript type {} is not allowed because {}
+    error 20
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  js.Dynamic.literal does not have a method named {}
+    error 21
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  js.Dynamic.literal.{} may not be called directly
+    error 22
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  non-trait class type required but {} found
+    error 23
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  {} extends {} which does not extend js.Any.
+    error 24
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  error overriding {}; | {} {}
+    error 25
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  Traits may not have an @{} annotation.
+    error 26
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  The name of a JS global variable must be a valid JS identifier (got '{}')
+    error 27
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  Nested JS classes and objects cannot have an @{} annotation.
+    error 28
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  An @js.native member cannot {} the inherited member {}
+    error 29
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  The type of {} must be explicitly specified because it is JS native.
+    error 30
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  Field '{}' has type '{}' which is not compatible with the Component Model.
+    error 31
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  @WitVariant '{}' must have at least one case.
+    error 32
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  @WitVariant case '{}' has no primary constructor.
+    error 33
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  @WitVariant case '{}' must have at most one field, found {}.
+    error 34
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  @WitVariant case '{}' field must be named 'value', found '{}'.
+    error 35
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  @WitVariant case '{}' must be a final class or object.
+    error 36
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  @WitFlags class must have exactly one parameter, found {}.
+    error 37
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  @WitFlags class parameter must be of type Int, found '{}'.
+    error 38
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  @WitFlags class parameter must be named 'value', found '{}'.
+    error 39
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  @WitFlags numFlags parameter must be positive, found {}.
+    error 40
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  Method '{}' in @WitResourceImport trait must be annotated with @WitResourceMethod or @WitResourceDrop.
+    error 41
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  Parameter type '{}' in method '{}' is not compatible with the Component Model.
+    error 42
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  Return type '{}' in method '{}' is not compatible with the Component Model.
+    error 43
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  A @WitResourceMethod or @WitResourceDrop member cannot {} the inherited member {}.
+    error 44
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  @WitResourceImport trait can have at most one @WitResourceDrop method, found {}.
+    error 45
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  Public method '{}' in companion object of @WitResourceImport trait must be annotated with @WitResourceConstructor or @WitResourceStaticMethod.
+    error 46
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  {} can only be used in a trait annotated with @WitResourceImport.
+    error 47
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  {} can only be used in a companion object of a trait annotated with @WitResourceImport.
+    error 48
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  @{} is not allowed on local definitions.
+    error 49
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  @{} can only be used on methods.
+    error 50
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  @{} is not allowed on constructors.
+    error 51
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  @{} methods must be defined in an object.
+    error 52
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  @{} methods must be public.
+    error 53
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  @{} methods cannot have type parameters.
+    error 54
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  An @{} member cannot {} the inherited member {}.
+    error 55
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  @{} methods may not have repeated parameters.
+    error 56
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  @{} methods may not have default parameters.
+    error 57
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  Parameter type '{}' is not compatible with the Component Model.
+    error 58
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  Return type '{}' is not compatible with the Component Model.
+    error 59
+      source dotc/transform/sjs/PrepJSInterop.scala
+      template  @{} is for compiler internal use only. Do not use it yourself.
+    error 60
+      source backend/sjs/JSCodeGen.scala
+      text  Not generating the static forwarders of {} {}
+    error 61
+      source backend/sjs/JSCodeGen.scala
+      text  Implementation restriction: {}
+    error 62
+      source backend/sjs/JSCodeGen.scala
+      text  Unexpected situation: found existing public static method {}
+    error 63
+      source backend/sjs/JSCodeGen.scala
+      text  Illegal super call in Scala.js-defined JS class
+    error 64
+      source backend/sjs/JSCodeGen.scala
+      text  The SAM or apply method for a js.ThisFunction must have a leading non-varargs parameter
+    error 65
+      source backend/sjs/JSCodeGen.scala
+      text  Illegal use of js.`new`.target. {}
+    error 66
+      source backend/sjs/JSCodeGen.scala
+      text  Illegal use of js.await(). {}
+    error 67
+      source backend/sjs/JSCodeGen.scala
+      text  js.native may only be used as stub implementation in facade types
+    error 68
+      source backend/sjs/JSCodeGen.scala
+      text  Illegal expression in the condition of a linkTimeIf. {}
+    error 69
+      source backend/sjs/JSCodeGen.scala
+      text  The method name given to Selectable.selectDynamic or Selectable.applyDynamic {}
+    error 70
+      source backend/sjs/JSCodeGen.scala
+      text  The java.lang.Class[_] arguments passed to Selectable.applyDynamic must be {}
+    error 71
+      source backend/sjs/JSCodeGen.scala
+      text  Passing the varargs of Selectable.applyDynamic with `: _*` {}
+    error 72
+      source backend/sjs/JSCodeGen.scala
+      text  The {} passed to witImportCall must be a String literal.
+    error 73
+      source backend/sjs/JSCodeGen.scala
+      text  The {} passed to witImportCall must be a literal classOf[T].
+    error 74
+      source backend/sjs/JSCodeGen.scala
+      text  The variadic arguments of witImportCall must be passed inline (not as `xs: _*`).
+    error 75
+      source backend/sjs/JSCodeGen.scala
+      text  witImportCall requires a result type (classOf) and its structured WIT descriptor.
+    error 76
+      source backend/sjs/JSCodeGen.scala
+      text  witPrim: unknown WIT primitive `{}`.
+    error 77
+      source backend/sjs/JSCodeGen.scala
+      text  witTuple's components must be passed inline.
+    error 78
+      source backend/sjs/JSCodeGen.scala
+      text  The WIT result descriptor passed to witImportCall must be a tree of wit* marker {}
+    error 79
+      source backend/sjs/JSCodeGen.scala
+      text  witImportCall parameter types and arguments must be given as (classOf[P], arg) pairs.
+    error 80
+      source backend/sjs/JSCodeGen.scala
+      text  Loading the global scope as a value (anywhere but as the {}
+    error 81
+      source backend/sjs/JSCodeGen.scala
+      text  Invalid selection in the global scope of the reserved {}
+    error 82
+      source backend/sjs/JSCodeGen.scala
+      text  Selecting a field of the global scope whose name is {}
+    error 83
+      source backend/sjs/JSCodeGen.scala
+      text  Selecting a field of the global scope with a dynamic {}
+    error 84
+      source backend/sjs/JSCodeGen.scala
+      text  Invalid call in the global scope of the reserved {}
+    error 85
+      source backend/sjs/JSCodeGen.scala
+      text  Calling a method of the global scope whose name is not {}
+    error 86
+      source backend/sjs/JSCodeGen.scala
+      text  Calling a method of the global scope with a dynamic {}
+    error 87
+      source backend/sjs/JSExportsGen.scala
+      text  When overriding a native method with default arguments, {}
+    error 88
+      source backend/sjs/JSPositions.scala
+      text  -scalajs-mapSourceURI needs one or two URIs as argument (separated by '->').
+    error 89
+      source dotc/transform/sjs/JUnitBootstrappers.scala
+      text  JUnit test must have Unit return type
+    error 90
+      source dotc/transform/sjs/PrepJSExports.scala
+      text  You must set an explicit name when exporting a non-setter with a name ending in _=
+    error 91
+      source dotc/transform/sjs/PrepJSExports.scala
+      text  moduleID must be a literal string
+    error 92
+      source dotc/transform/sjs/PrepJSExports.scala
+      text  An exported name may not contain a double underscore (`__`)
+    error 93
+      source dotc/transform/sjs/PrepJSExports.scala
+      text  @JSExport is forbidden on top-level definitions. Use @JSExportTopLevel instead.
+    error 94
+      source dotc/transform/sjs/PrepJSExports.scala
+      text  You may not export a zero-argument method named other than 'toString' under the name 'toString'
+    error 95
+      source dotc/transform/sjs/PrepJSExports.scala
+      text  A member cannot be exported to function application. {}
+    error 96
+      source dotc/transform/sjs/PrepJSExports.scala
+      text  You may not export a lazy val to the top level
+    error 97
+      source dotc/transform/sjs/PrepJSExports.scala
+      text  You may not export a getter or a setter to the top level
+    error 98
+      source dotc/transform/sjs/PrepJSExports.scala
+      text  Only static objects may export their members to the top level
+    error 99
+      source dotc/transform/sjs/PrepJSExports.scala
+      text  The top-level export name must be a valid JavaScript identifier name
+    error 100
+      source dotc/transform/sjs/PrepJSExports.scala
+      text  Only a static object whose companion class is a non-native JS class may export its members as static.
+    error 101
+      source dotc/transform/sjs/PrepJSExports.scala
+      text  You may not export a lazy val as static
+    error 102
+      source dotc/transform/sjs/PrepJSExports.scala
+      text  A member cannot be exported to function application as {}
+    error 103
+      source dotc/transform/sjs/PrepJSExports.scala
+      text  Implementation restriction: cannot export a class or object as static
+    error 104
+      source dotc/transform/sjs/PrepJSExports.scala
+      text  Found duplicate @JSExport
+    error 105
+      source dotc/transform/sjs/PrepJSExports.scala
+      text  Fields (val or var) cannot be exported as static more than once
+    error 106
+      source dotc/transform/sjs/PrepJSExports.scala
+      text  Fields (val or var) cannot be exported both as static and at the top-level
+    error 107
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Native JS traits, classes and objects cannot contain inner Scala traits, classes or objects (i.e., not extending js.Any)
+    error 108
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @JSExportStatic vals and vars must be defined before any other val/var, and before any constructor statement.
+    error 109
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Could not transform call to scala.Enumeration.Value. {}
+    error 110
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Passing null as name to scala.Enumeration.Value requires reflection at run-time. {}
+    error 111
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Calls to the non-string constructors of scala.Enumeration.Val require reflection at run-time. {}
+    error 112
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Passing null as name to a constructor of scala.Enumeration.Val requires reflection at run-time. {}
+    error 113
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Native JS traits, classes and objects cannot contain exported definitions.
+    error 114
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Non-native JS traits cannot contain exported definitions.
+    error 115
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @EnableReflectiveInstantiation cannot be used on types extending js.Any.
+    error 116
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Package objects may not extend js.Any.
+    error 117
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Classes and objects extending js.Any may not have a case modifier
+    error 118
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Non-native JS classes and objects cannot directly extend AnyRef. They must extend a JS class (native or not).
+    error 119
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Non-native JS types cannot directly extend native JS traits.
+    error 120
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Native JS classes and traits cannot contain non-native JS classes, traits or objects
+    error 121
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Native JS objects cannot contain inner non-native JS classes or objects
+    error 122
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Implementation restriction: local JS classes cannot be abstract
+    error 123
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @js.native is not allowed on local definitions
+    error 124
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @js.native vals and defs can only appear in static Scala objects
+    error 125
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Classes, traits and objects not extending js.Any may not have an @js.native annotation
+    error 126
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Scala traits and classes may not have native JS members
+    error 127
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  non-native JS classes, traits and objects may not have native JS members
+    error 128
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @JSGlobalScope can only be used on native JS objects (with @js.native).
+    error 129
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Native JS definitions named 'apply' must have an explicit name in @JSGlobal
+    error 130
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Native JS definitions with a name ending in '_=' must have an explicit name in @JSGlobal
+    error 131
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Native JS definitions named 'apply' must have an explicit name in @JSImport
+    error 132
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Native JS definitions with a name ending in '_=' must have an explicit name in @JSImport
+    error 133
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @js.native is not allowed on vars, lazy vals and setter defs
+    error 134
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @JSBracketAccess is not allowed on @js.native vals and defs
+    error 135
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @JSBracketCall is not allowed on @js.native vals and defs
+    error 136
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  A member named apply represents function application in JavaScript. {}
+    error 137
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  error overriding method equals(that: Any): Boolean in a JS class; {}
+    error 138
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  error overriding method hashCode(): Int in a JS class; {}
+    error 139
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  A non-native JS class cannot declare a concrete method named `apply` without `@JSName`
+    error 140
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  A non-native JS type can only declare an abstract method named `apply` without `@JSName` {}
+    error 141
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @JSBracketAccess is not allowed in non-native JS classes
+    error 142
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @JSBracketCall is not allowed in non-native JS classes
+    error 143
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  A non-native JS class cannot declare a method named like a unary operation without `@JSName`
+    error 144
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  A non-native JS class cannot declare a method named like a binary operation without `@JSName`
+    error 145
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  {} may not have repeated parameters
+    error 146
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  {} may not have default parameters
+    error 147
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @JSBracketAccess methods must have one or two parameters
+    error 148
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @JSBracketAccess methods with two parameters must return Unit
+    error 149
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @JSBracketCall methods must have at least one non-repeated parameter
+    error 150
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Methods in a js.Any may not be @native
+    error 151
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Native JS classes may not have private constructors. {}
+    error 152
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Native JS classes may not have private members. {}
+    error 153
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Private methods in non-native JS classes cannot be overloaded. Use different names instead.
+    error 154
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Qualified private members in non-native JS classes must be final
+    error 155
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  A non-native JS trait cannot contain private members
+    error 156
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  A non-native JS trait cannot contain lazy vals
+    error 157
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  A non-native JS trait cannot have constructor parameters
+    error 158
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  In non-native JS traits, defs with parentheses must be abstract.
+    error 159
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Members of non-native JS traits must either be abstract, or their right-hand-side must be `js.undefined`.
+    error 160
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  A secondary constructor of a native JS class may only call the primary constructor
+    error 161
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  {} may only call js.native.
+    error 162
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @JSGlobal can only be used on native JS definitions (with @js.native).
+    error 163
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @JSImport can only be used on native JS definitions (with @js.native).
+    error 164
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @JSName can only be used on members of JS types.
+    error 165
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @JSName cannot be used on traits.
+    error 166
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @JSName cannot be used on private members.
+    error 167
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  Duplicate @JSName annotation.
+    error 168
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  A String argument to JSName must be a literal string
+    error 169
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  A js.Symbol argument to JSName must be a static, stable identifier
+    error 170
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  This symbol is defined in the same object as the annotation's target. {}
+    error 171
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @WitRecord can only be used on classes.
+    error 172
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @WitRecord class must be final.
+    error 173
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @WitVariant can only be used on sealed traits or sealed abstract classes.
+    error 174
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @WitFlags can only be used on classes.
+    error 175
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @WitFlags class must be final.
+    error 176
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @WitFlags class must not extend AnyVal. Use a regular class instead.
+    error 177
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @WitFlags annotation must specify the number of flags as a parameter.
+    error 178
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @WitResourceImport can only be used on traits.
+    error 179
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @WitResourceImport traits cannot be sealed.
+    error 180
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @WitResourceConstructor can only be used on apply method in companion object.
+    error 181
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @WitResourceStaticMethod can only be used in companion object.
+    error 182
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @WitResourceDrop method must take no parameters.
+    error 183
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @WitResourceDrop method must return Unit.
+    error 184
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  @WitResourceConstructor can only be used on apply method.
+    error 185
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  {} setters must return Unit
+    error 186
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  {} setters may not have repeated params
+    error 187
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  {} setters may not have default params
+    error 188
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  {} setters must have exactly one argument
+    error 189
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  The argument to @JSGlobal must be a literal string.
+    error 190
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  The first argument to @JSImport must be a literal string.
+    error 191
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  The second argument to @JSImport must be literal string or the JSImport.Namespace object.
+    error 192
+      source dotc/transform/sjs/PrepJSInterop.scala
+      text  The third argument to @JSImport, when present, must be a literal string.
