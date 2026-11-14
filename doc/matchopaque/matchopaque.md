@@ -101,12 +101,15 @@ index.getAndIncrement`).
 ## Solution
 
 `mapOpaquesInValueArg` (`inlines/Inliner.scala`) now follows the aliases in the
-argument's type, at any depth, before looking through it:
+argument's type, at any depth, where the type as it stands shows nothing to
+expose:
 
 ```scala
 private def followAliases(tp: Type)(using Context): Type =
   val follow = new TypeMap:
     def apply(t: Type) = t match
+      case t: TypeRef if t.symbol.isOpaqueAlias => t
+      case AppliedType(tycon: TypeRef, _) if tycon.symbol.isOpaqueAlias => mapOver(t)
       case t: AppliedType if t.isMatchAlias =>
         val reduced = t.tryNormalize
         if reduced.exists then apply(reduced) else mapOver(t)
@@ -117,16 +120,39 @@ private def followAliases(tp: Type)(using Context): Type =
   follow(tp)
 
 private def mapOpaquesInValueArg(arg: Tree)(using Context): Tree =
-  val argType = followAliases(arg.tpe.widenDealias)
+  val argType = arg.tpe.widenDealias
+  val cast = castToOpaqueProxies(arg, argType)   // upstream's body, as it was
+  if cast ne arg then cast
+  else
+    val followed = followAliases(argType)
+    if followed ne argType then castToOpaqueProxies(arg, followed) else arg
 ```
 
 A match alias is reduced where it can be, and left as it is where its scrutinee
 is still abstract; any other alias is replaced by what it stands for, keeping
-its annotations (capture sets among them). An opaque type is not an alias from
-outside the object that declares it, so it is where the following stops. The
-result is used exactly as before: only to find the proxies and to form the
-cast, which is added only if the proxies change the type. An argument with no
-alias below the top of its type is untouched.
+its annotations (capture sets among them). The result is used exactly as
+before: only to find the proxies and to form the cast, which is added only if
+the proxies change the type.
+
+Two limits keep the following to what upstream missed. Both were added after
+the first release of the patch (1.1.1) rejected code that upstream accepts:
+
+- **An argument upstream already casts is cast as upstream casts it.** The
+  aliases are followed only if the type as written mentions no object with
+  opaque members. With `type Bytes = Frozen[Byte]^{}`, a `Frozen[Bytes]` is seen
+  as `$proxy1.Frozen[Bytes]`, and an element read from it is still a `Bytes`;
+  following the alias too made it a `$proxy1.Frozen[Byte]`, which is
+  `Array[Byte]`, and separation checking does not accept that where the caller
+  expects a `Frozen[Byte]` back. (It does not accept it in upstream either, if
+  the caller writes `Frozen[Frozen[Byte]^{}]` out: that is a separate upstream
+  problem, which the patch must not spread to the aliased form.)
+- **An opaque type is never followed**, even where it is an alias. Outside the
+  object that declares it, it is not one; but the proxy of an enclosing inline
+  call makes it one. An inline method that passes its lambda on to a second
+  inline method passes it with the type `$proxy1.Scribe[Char] => …`, which
+  followed to `Scribe.Core => …`: the lambda was cast to a function of the
+  representation, and could not be applied to the opaque `Scribe[Char]` made in
+  the second method's body.
 
 `Typer`'s own `simplified` would reduce the match aliases too, but it also
 instantiates type variables, which an inliner running during typing (for a
@@ -157,4 +183,6 @@ not attempted here.
 `tests/pos/opaque-inline-match-alias` covers the separately compiled case, for
 both arms of the match and for a nested alias;
 `tests/pos/opaque-inline-export-alias.scala` and its counterpart under
-`tests/pos-custom-args/captures` cover the ordinary alias.
+`tests/pos-custom-args/captures` cover the ordinary alias;
+`tests/pos/opaque-inline-nested-lambda` and
+`tests/pos-custom-args/captures/opaque-inline-alias-element` the two limits.
