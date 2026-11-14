@@ -1,0 +1,144 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 14 Nov 2026 18:16:01 +0900
+Subject: Give the inline calls expanded in an inline trait's child their call
+ traces
+
+A class which extends an inline trait is given copies of the trait's
+definitions, with the inline calls in them expanded, after PostTyper and
+before pickling. PostTyper is where an `Inlined` node made during typing has
+its call replaced by a call trace, a reference to the top-level class of the
+method; the nodes made for the child class kept the calls they were expanded
+from.
+
+Such a call holds its arguments as they were. An argument which is itself the
+expansion of an inline call holds the definitions of that expansion, and so
+does the binding the outer node makes for the argument. The pickler therefore
+wrote the same definitions twice, under two owners, sharing the trees beneath
+them, and the unpickler stopped with "owner discrepancy" when it met a
+definition it had already read under another owner: a class extending an
+inline trait could not be read back from its own TASTy whenever a method of
+the trait made an inline call on the result of another.
+
+The definitions inlined from the trait now have the calls of their `Inlined`
+nodes replaced by call traces, as PostTyper would have left them.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: inlinetraittrace
+---
+ .../dotty/tools/dotc/inlines/Inlines.scala    | 23 +++++++++-
+ .../inline-trait-nested-inline/Lib_1.scala    | 43 +++++++++++++++++++
+ .../inline-trait-nested-inline/Test_2.scala   | 11 +++++
+ 3 files changed, 76 insertions(+), 1 deletion(-)
+ create mode 100644 tests/pos/inline-trait-nested-inline/Lib_1.scala
+ create mode 100644 tests/pos/inline-trait-nested-inline/Test_2.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/inlines/Inlines.scala b/compiler/src/dotty/tools/dotc/inlines/Inlines.scala
+index 8d98cc01f25f08cbc3448beb6b67141841498c44..e1b847b5675a33e6747e310eae2556f16b4df8b7 100644
+--- a/compiler/src/dotty/tools/dotc/inlines/Inlines.scala
++++ b/compiler/src/dotty/tools/dotc/inlines/Inlines.scala
+@@ -410,7 +410,7 @@ object Inlines:
+           }
+         }
+ 
+-        val newbody = newDefs._1 ::: newDefs._2
++        val newbody = newDefs._1.map(withCallTraces) ::: newDefs._2
+         val paramAccessors = newbody.filter(_.symbol.is(ParamAccessor))
+             
+         for pacc <- paramAccessors
+@@ -424,6 +424,27 @@ object Inlines:
+         cls
+     }
+ 
++  /** `tree`, with the call of every `Inlined` node in it replaced by its call trace, as
++   *  PostTyper replaces the call of a node inlined during typing. The definitions an
++   *  inline trait gives a class are inlined after PostTyper and before pickling, so the
++   *  inline calls expanded in them would otherwise be pickled with the calls they were
++   *  expanded from. Such a call holds its arguments as they were, and an argument which
++   *  is itself an expansion holds definitions, which the bindings of the node hold too:
++   *  the pickler would write the same definitions under two owners, and the class could
++   *  not be read back.
++   */
++  private def withCallTraces(tree: Tree)(using Context): Tree =
++    val traces = new TreeMap:
++      override def transform(tree: Tree)(using Context): Tree = tree match
++        case tree @ Inlined(call, bindings, expansion)
++        if !tree.inlinedFromOuterScope && call.symbol.exists && !call.symbol.isClass =>
++          val pos = call.sourcePos
++          val trace = inlineCallTrace(call.symbol, pos)(using ctx.withSource(pos.source))
++          super.transform(cpy.Inlined(tree)(trace, bindings, expansion))
++        case _ =>
++          super.transform(tree)
++    traces.transform(tree)
++
+   /** Try to inline a pattern with an inline unapply method. Fail with error if the maximal
+    *  inline depth is exceeded.
+    *
+diff --git a/tests/pos/inline-trait-nested-inline/Lib_1.scala b/tests/pos/inline-trait-nested-inline/Lib_1.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..77d80e93a34444e906f62ecba6ffe220088b70c1
+--- /dev/null
++++ b/tests/pos/inline-trait-nested-inline/Lib_1.scala
+@@ -0,0 +1,43 @@
++//> using options -experimental -language:experimental.inlineTraits
++
++// `reconcile` holds an inline call whose receiver is the result of other inline calls.
++// A class extending the trait is given a copy of the method with all of them expanded,
++// before it is pickled. Each expansion was pickled with the call it came from, whose
++// arguments held the definitions of the expansions within it a second time, so the
++// class could not be read back from its TASTy: "owner discrepancy".
++
++package lib
++
++object Ordinals:
++  opaque type Ordinal = Int
++
++  extension (index: Int) inline def z: Ordinal = index
++
++  extension (ordinal: Ordinal)
++    inline def n0: Int = ordinal
++    inline infix def till(end: Ordinal): Interval = Interval(ordinal, end)
++
++final class Interval(val start: Int, val end: Int)
++
++extension (interval: Interval)
++  inline def each(inline lambda: Ordinals.Ordinal => Unit): Unit =
++    import Ordinals.*
++    var index = interval.start
++
++    while index < interval.end do
++      lambda(index.z)
++      index += 1
++
++inline trait Snapshot[operand]:
++  import Ordinals.*
++
++  var pos: Int = 0
++  var mark: Int = 0
++  var count: Int = 0
++
++  private def reconcile(): Unit =
++    val end = pos
++    (mark.z till end.z).each: index =>
++      count += index.n0
++
++  def run(): Unit = reconcile()
+diff --git a/tests/pos/inline-trait-nested-inline/Test_2.scala b/tests/pos/inline-trait-nested-inline/Test_2.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..b026378c15725d4b0834e60a9fa331d7cea11e00
+--- /dev/null
++++ b/tests/pos/inline-trait-nested-inline/Test_2.scala
+@@ -0,0 +1,11 @@
++//> using options -experimental -language:experimental.inlineTraits
++
++package app
++
++class Parser extends lib.Snapshot[Byte]
++
++object Reader:
++  // reads `Parser` back from its TASTy when the two files are compiled together
++  def count(parser: Parser): Int =
++    parser.run()
++    parser.count

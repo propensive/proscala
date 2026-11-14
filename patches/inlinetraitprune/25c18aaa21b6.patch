@@ -1,0 +1,91 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 14 Nov 2026 18:18:57 +0900
+Subject: Make an inline trait's members deferred whichever unit asks first
+
+After pickling, `PruneInlineTraits` empties the definitions of an inline
+trait, whose code its children hold, and its symbol transformer makes the
+members deferred and the trait one without an initializer. The transformer did
+so only if the unit being compiled had specializations; `transformTemplate`
+goes by the unit of the trait.
+
+A denotation is transformed once, when it is first asked for at the phase. If
+that happened while a unit which only uses the trait was current, one which
+neither declares nor extends an inline trait, the members stayed concrete for
+the rest of the run, and the backend then met them with their definitions
+emptied: "Concrete method has no definition". Whether two files compiled
+together depended on their order.
+
+The transformer now goes by the symbol alone. No symbol is an inline trait, or
+a member of one, unless inline traits are in use.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: inlinetraitprune
+---
+ .../tools/dotc/transform/PruneInlineTraits.scala    | 12 ++++++++----
+ tests/pos/inline-trait-used-first/A_1.scala         | 13 +++++++++++++
+ tests/pos/inline-trait-used-first/B_1.scala         |  8 ++++++++
+ 3 files changed, 29 insertions(+), 4 deletions(-)
+ create mode 100644 tests/pos/inline-trait-used-first/A_1.scala
+ create mode 100644 tests/pos/inline-trait-used-first/B_1.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/transform/PruneInlineTraits.scala b/compiler/src/dotty/tools/dotc/transform/PruneInlineTraits.scala
+index 781b60e1b977c71faf264e3a641d0c1cec986124..2a89a75081a97325cdfccfe9c66095b8f0f10205 100644
+--- a/compiler/src/dotty/tools/dotc/transform/PruneInlineTraits.scala
++++ b/compiler/src/dotty/tools/dotc/transform/PruneInlineTraits.scala
+@@ -21,12 +21,16 @@ class PruneInlineTraits extends MiniPhase with SymTransformer { thisTransform =>
+   
+   override def runsAfter: Set[String] = Set(PruneInlinedMethods.name)
+   
++  /** The members of an inline trait become deferred, and the trait loses its initializer,
++   *  whichever unit is being compiled when the symbol is first asked for: a denotation is
++   *  transformed once, so going by the current unit's `hasSpecializations` left the
++   *  members concrete for good if a unit which merely uses the trait came first, while
++   *  `transformTemplate` still emptied their definitions.
++   */
+   override def transformSym(sym: SymDenotation)(using Context): SymDenotation = {
+-    val hasSpecializations = ctx.compilationUnit.hasSpecializations
+-
+-    if hasSpecializations && isEraseable(sym) then 
++    if isEraseable(sym) then 
+       sym.copySymDenotation(initFlags = sym.flags | Deferred)
+-    else if hasSpecializations && sym.isInlineTrait then
++    else if sym.isClass && sym.isInlineTrait then
+       val clsInfo = sym.asClass.classInfo
+       val clsInfo2 = clsInfo.derivedClassInfo(decls = 
+           clsInfo.decls.filteredScope(!isDeletable(_))
+diff --git a/tests/pos/inline-trait-used-first/A_1.scala b/tests/pos/inline-trait-used-first/A_1.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..3a727b72bce3e29c9370efa1f2eb9ed7b7022711
+--- /dev/null
++++ b/tests/pos/inline-trait-used-first/A_1.scala
+@@ -0,0 +1,13 @@
++//> using options -experimental -language:experimental.inlineTraits
++
++// The two files are compiled together, this one first. It only uses the inline trait,
++// so its unit has no specializations, and the trait's members were first transformed
++// while it was the current unit: they stayed concrete, though the definitions were
++// emptied in the trait's own unit. "Concrete method has no definition: def run(): Unit".
++
++package app
++
++object Reader:
++  def count(counter: lib.Counter[Byte]): Int =
++    counter.advance()
++    counter.count
+diff --git a/tests/pos/inline-trait-used-first/B_1.scala b/tests/pos/inline-trait-used-first/B_1.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..4ebe264292ab2ea81c54e44d299b2654bae7035b
+--- /dev/null
++++ b/tests/pos/inline-trait-used-first/B_1.scala
+@@ -0,0 +1,8 @@
++//> using options -experimental -language:experimental.inlineTraits
++
++package lib
++
++inline trait Counter[operand]:
++  var count: Int = 1
++
++  def advance(): Unit = count = count + count

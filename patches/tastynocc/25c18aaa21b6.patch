@@ -1,0 +1,117 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 14 Nov 2026 18:27:07 +0900
+Subject: Do not check captures in a run which reads its units from TASTy
+
+A unit compiled with separation checking did not recompile from its TASTy
+with the same options. The checker gives an inferred type the capture sets it
+finds for it, and takes a type that was written to say all there is to say.
+TASTy does not record which types were inferred, so in an unpickled tree
+every type reads as written: `val boxed = new Array[AnyRef](n)` declares a
+read-only array, which cannot be updated, and the synthesized members of an
+enum are held to types they were never meant to be checked against. The
+checker rejected what it had accepted as source.
+
+Leaving the options out is no remedy, since other phases go by them, and
+`-Yskip:cc` crashed: the setup phase stayed, as a phase and as a symbol
+transformer, and asked the missing checker for its state.
+
+The setup phase, its symbol transformer and the checker are now inactive in a
+run which reads its units from TASTy, where the units were checked when they
+were compiled, and in a run without the checker's phase. The options are
+otherwise as they were, so the phases which go by them emit the same code.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: tastynocc
+---
+ .../dotty/tools/dotc/cc/CheckCaptures.scala   |  2 +-
+ compiler/src/dotty/tools/dotc/cc/Setup.scala  | 17 ++++++++++++--
+ .../captures/from-tasty-separation.scala      | 22 +++++++++++++++++++
+ 3 files changed, 38 insertions(+), 3 deletions(-)
+ create mode 100644 tests/pos-custom-args/captures/from-tasty-separation.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala b/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
+index a9acf6715bb08b4512fdf5df1732aed86240fce8..ee569b6936dff650af2b7689b0eddfbf73aabb01 100644
+--- a/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
++++ b/compiler/src/dotty/tools/dotc/cc/CheckCaptures.scala
+@@ -260,7 +260,7 @@ class CheckCaptures extends Recheck, SymTransformer:
+ 
+   override def description: String = CheckCaptures.description
+ 
+-  override def isRunnable(using Context) = super.isRunnable && Feature.ccEnabledSomewhere
++  override def isRunnable(using Context) = super.isRunnable && Setup.isActive
+ 
+   /** We normally need a recompute if the prefix is a SingletonType and the
+    *  last denotation is not a SymDenotation. The SingletonType requirement is
+diff --git a/compiler/src/dotty/tools/dotc/cc/Setup.scala b/compiler/src/dotty/tools/dotc/cc/Setup.scala
+index b990c4d3c71a2c027d3ff88a39ef2b16d0fa4823..d801f4bc6dd0a34eab106cf0dfde125c479f7ce0 100644
+--- a/compiler/src/dotty/tools/dotc/cc/Setup.scala
++++ b/compiler/src/dotty/tools/dotc/cc/Setup.scala
+@@ -59,6 +59,19 @@ end SetupAPI
+ 
+ object Setup:
+ 
++  /** Are capture sets set up and checked in this run? Not in one which reads its units
++   *  from TASTy. They were checked when they were compiled, and cannot be checked again
++   *  from what TASTy holds: it does not record which types were inferred, and the checker
++   *  gives an inferred type the capture sets it finds for it, but takes one that was
++   *  written to say all there is to say, so it rejects unpickled trees it accepted as
++   *  source. Nor in a run without the checker's phase (`-Yskip:cc`), whose state the
++   *  symbol transformer here needs.
++   */
++  def isActive(using Context): Boolean =
++    Feature.ccEnabledSomewhere
++    && !ctx.settings.fromTasty.value
++    && Phases.checkCapturesPhase.exists
++
+   val name: String = "setupCC"
+   val description: String = "prepare compilation unit for capture checking"
+ 
+@@ -135,7 +148,7 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
+   override def description: String = Setup.description
+ 
+   override def isRunnable(using Context) =
+-    super.isRunnable && Feature.ccEnabledSomewhere
++    super.isRunnable && Setup.isActive
+ 
+   /** A set containing symbols whose denotation is in train of being updated
+    *  Used to suppress transforming the denotations of these symbols.
+@@ -188,7 +201,7 @@ class Setup extends PreRecheck, SymTransformer, SetupAPI:
+    *  is CC-enabled.
+    */
+   def transformSym(symd: SymDenotation)(using Context): SymDenotation =
+-    if !pastRecheck && Feature.ccEnabledSomewhere then
++    if !pastRecheck && Setup.isActive then
+       val sym = symd.symbol
+       def mappedInfo =
+         if toBeUpdated.contains(sym) then
+diff --git a/tests/pos-custom-args/captures/from-tasty-separation.scala b/tests/pos-custom-args/captures/from-tasty-separation.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..3fc2bc56f46461677f8f334ad054278900e705b6
+--- /dev/null
++++ b/tests/pos-custom-args/captures/from-tasty-separation.scala
+@@ -0,0 +1,22 @@
++import language.experimental.captureChecking
++import language.experimental.separationChecking
++
++// Compiles, but did not recompile from its TASTy with the same options: TASTy does not
++// record that the type of `boxed` was inferred, so the checker read `Array[AnyRef]` as
++// written, a read-only array ("Cannot call update method"), and it took the enum's
++// synthesized members the same way. A run which reads its units from TASTy no longer
++// checks captures.
++
++enum State:
++  case Active, Stopped
++
++object Sorting:
++  def boxed(raw: Array[Int]): Int =
++    val boxed = new Array[AnyRef](raw.length)
++    var index = 0
++
++    while index < raw.length do
++      boxed(index) = raw(index).asInstanceOf[AnyRef]
++      index += 1
++
++    boxed.length
