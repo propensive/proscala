@@ -70,3 +70,12 @@ parenarrow
 blocktypeapply
 fuelslots
 boltcodes
+tastybackquote
+inlinetraittrace
+tastyspecialize
+inlinetraitprune
+tastymacro
+tastythisprefix
+tastysource
+tastynocc
+refinedsingleton
