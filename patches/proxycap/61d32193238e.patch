@@ -38,11 +38,19 @@ Proscala-Patch: proxycap
 ---
  .../dotty/tools/dotc/ast/TreeTypeMap.scala    |   7 +
  compiler/src/dotty/tools/dotc/cc/Setup.scala  |  26 ++-
- .../dotty/tools/dotc/inlines/Inliner.scala    | 184 ++++++++++++++++--
+ .../dotty/tools/dotc/inlines/Inliner.scala    | 189 +++++++++++++++++-
+ .../captures/proxycap-lend/Lib_1.scala        |  18 ++
+ .../captures/proxycap-lend/Test_2.scala       |   1 +
  tests/neg-custom-args/captures/proxycap.scala |  19 ++
+ .../captures/proxycap-lend/Lib_1.scala        |  18 ++
+ .../captures/proxycap-lend/Test_2.scala       |   1 +
  tests/pos-custom-args/captures/proxycap.scala |  54 +++++
- 5 files changed, 277 insertions(+), 13 deletions(-)
+ 9 files changed, 320 insertions(+), 13 deletions(-)
+ create mode 100644 tests/neg-custom-args/captures/proxycap-lend/Lib_1.scala
+ create mode 100644 tests/neg-custom-args/captures/proxycap-lend/Test_2.scala
  create mode 100644 tests/neg-custom-args/captures/proxycap.scala
+ create mode 100644 tests/pos-custom-args/captures/proxycap-lend/Lib_1.scala
+ create mode 100644 tests/pos-custom-args/captures/proxycap-lend/Test_2.scala
  create mode 100644 tests/pos-custom-args/captures/proxycap.scala
 
 diff --git a/compiler/src/dotty/tools/dotc/ast/TreeTypeMap.scala b/compiler/src/dotty/tools/dotc/ast/TreeTypeMap.scala
@@ -115,7 +123,7 @@ index f52738f2a29c93cd6be20caccac0908a4224e6a1..5223ff7c942ba51b50efa4c9fbc5877b
                then
                  val prevInfo = sym.info
 diff --git a/compiler/src/dotty/tools/dotc/inlines/Inliner.scala b/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
-index 4e6ab3029feebb2e6eee831c6b5a1fabd5989e94..02fd63ccdd183eb93cb548bb9284ff6a0e47ef49 100644
+index 4e6ab3029feebb2e6eee831c6b5a1fabd5989e94..307de5a767695fc7708e096202aa1d550d797416 100644
 --- a/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
 +++ b/compiler/src/dotty/tools/dotc/inlines/Inliner.scala
 @@ -28,6 +28,11 @@ import scala.annotation.constructorOnly
@@ -140,7 +148,7 @@ index 4e6ab3029feebb2e6eee831c6b5a1fabd5989e94..02fd63ccdd183eb93cb548bb9284ff6a
      val isByName = formal.dealias.isInstanceOf[ExprType]
      val arg =
        def dropNameArg(arg: Tree): Tree = arg match
-@@ -336,11 +342,131 @@ class Inliner(val call: tpd.Tree)(using Context):
+@@ -336,11 +342,136 @@ class Inliner(val call: tpd.Tree)(using Context):
            dropNameArg(arg0)
      val argtpe = arg.tpe.dealiasKeepAnnots.translateFromRepeated(toArray = false)
      val argIsBottom = argtpe.isBottomTypeAfterErasure
@@ -177,7 +185,12 @@ index 4e6ab3029feebb2e6eee831c6b5a1fabd5989e94..02fd63ccdd183eb93cb548bb9284ff6a
 +            case AnnotatedType(_, ann) if ann.symbol.isRetainsLike => true
 +            case AnnotatedType(_, ann) if ann.symbol == defn.InferredAnnot => false
 +            case t: TypeRef if t.symbol.isClass => t.derivesFromCapability
-+            case t: TypeRef => apply(false, t.prefix)
++            // An alias says what its expansion says: a parameter of type `lender.Result`
++            // where `type Result = Handle^` declares a capability, which must stay declared
++            // so that a closure over the parameter is tracked
++            case t: TypeRef => t.info match
++              case TypeAlias(alias) => apply(apply(false, t.prefix), alias)
++              case _ => apply(false, t.prefix)
 +            case t: AppliedType if t.tycon.typeSymbol.isClass && t.derivesFromCapability => true
 +            case _ => foldOver(false, t))
 +        .apply(false, t)
@@ -272,7 +285,7 @@ index 4e6ab3029feebb2e6eee831c6b5a1fabd5989e94..02fd63ccdd183eb93cb548bb9284ff6a
      var bindingFlags: FlagSet = InlineProxy
      if formal.widenExpr.hasAnnotation(defn.InlineParamAnnot) then
        bindingFlags |= Inline
-@@ -356,6 +482,10 @@ class Inliner(val call: tpd.Tree)(using Context):
+@@ -356,6 +487,10 @@ class Inliner(val call: tpd.Tree)(using Context):
        if isByName then DefDef(boundSym, newArg)
        else ValDef(boundSym, newArg)
      }.withSpan(boundSym.span)
@@ -283,7 +296,7 @@ index 4e6ab3029feebb2e6eee831c6b5a1fabd5989e94..02fd63ccdd183eb93cb548bb9284ff6a
      // Under capture checking, do not record the skolem: avoid-time recovery substitutes it
      // into the expansion's type, where cc's Fresh roots cannot absorb it — a summoned
      // capability-typed instance can then never flow back into a pure declared result
-@@ -389,7 +519,7 @@ class Inliner(val call: tpd.Tree)(using Context):
+@@ -389,7 +524,7 @@ class Inliner(val call: tpd.Tree)(using Context):
     */
    private def computeParamBindings(
        tp: Type, targs: List[Tree],
@@ -292,7 +305,7 @@ index 4e6ab3029feebb2e6eee831c6b5a1fabd5989e94..02fd63ccdd183eb93cb548bb9284ff6a
        skolemss: List[List[Option[SkolemType]]],
        buf: DefBuffer): Boolean =
      tp match
-@@ -398,23 +528,27 @@ class Inliner(val call: tpd.Tree)(using Context):
+@@ -398,23 +533,27 @@ class Inliner(val call: tpd.Tree)(using Context):
            paramSpan(name) = arg.span
            paramBinding(name) = arg.tpe.stripTypeVar
          }
@@ -325,7 +338,7 @@ index 4e6ab3029feebb2e6eee831c6b5a1fabd5989e94..02fd63ccdd183eb93cb548bb9284ff6a
        case _ =>
          assert(targs.isEmpty)
          assert(argss.isEmpty)
-@@ -789,12 +923,39 @@ class Inliner(val call: tpd.Tree)(using Context):
+@@ -789,12 +928,39 @@ class Inliner(val call: tpd.Tree)(using Context):
    def inlined(rhsToInline: tpd.Tree)(using Context): (List[MemberDef], Tree) =
      inlining.println(i"-----------------------\nInlining $call\nWith RHS $rhsToInline")
  
@@ -369,7 +382,7 @@ index 4e6ab3029feebb2e6eee831c6b5a1fabd5989e94..02fd63ccdd183eb93cb548bb9284ff6a
        case _ => acc
  
      val paramBindings =
-@@ -807,6 +968,7 @@ class Inliner(val call: tpd.Tree)(using Context):
+@@ -807,6 +973,7 @@ class Inliner(val call: tpd.Tree)(using Context):
        if !computeParamBindings(
            inlinedMethod.info, callTypeArgs,
            mappedCallValueArgss, paramTypess(call, Nil),
@@ -377,6 +390,37 @@ index 4e6ab3029feebb2e6eee831c6b5a1fabd5989e94..02fd63ccdd183eb93cb548bb9284ff6a
            callValueSkolemss,
            paramBindingsBuf)
        then
+diff --git a/tests/neg-custom-args/captures/proxycap-lend/Lib_1.scala b/tests/neg-custom-args/captures/proxycap-lend/Lib_1.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..b9361a5ed3a2ef45f683bdabb882b9ce81c4a1b1
+--- /dev/null
++++ b/tests/neg-custom-args/captures/proxycap-lend/Lib_1.scala
+@@ -0,0 +1,18 @@
++class Handle extends caps.ExclusiveCapability:
++  def alive: Boolean = true
++
++trait Lender:
++  type Result
++  def lend[result](lambda: (handle: Result) ?=> result): result
++
++class HandleLender extends Lender:
++  type Result = Handle^
++  def lend[result](lambda: (handle: Result) ?=> result): result = lambda(using Handle())
++
++given handleLender: HandleLender = HandleLender()
++
++// The closure's parameter has an abstract type member's type, which at the call site
++// aliases `Handle^`: its proxy must keep it declared, so that the closure tracks it
++extension (x: Int)
++  transparent inline def lendInline[result](using lender: Lender^)(lambda: (handle: lender.Result) ?=> result): result =
++    lender.lend(lambda)
+diff --git a/tests/neg-custom-args/captures/proxycap-lend/Test_2.scala b/tests/neg-custom-args/captures/proxycap-lend/Test_2.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..4e55a3dbee7f2e31247d10854532a86f054ebbda
+--- /dev/null
++++ b/tests/neg-custom-args/captures/proxycap-lend/Test_2.scala
+@@ -0,0 +1 @@
++def closure(): () => Boolean = 1.lendInline(h ?=> () => h.alive) // error
 diff --git a/tests/neg-custom-args/captures/proxycap.scala b/tests/neg-custom-args/captures/proxycap.scala
 new file mode 100644
 index 0000000000000000000000000000000000000000..09dd33084ec4a11eec80f15cdfa468c521bb3c46
@@ -402,6 +446,37 @@ index 0000000000000000000000000000000000000000..09dd33084ec4a11eec80f15cdfa468c5
 +def args(io: Res, other: Res, o: Object^{other}): Unit =
 +  useOnly(io)(identity(o))  // error
 +  usePure(identity(o))      // error
+diff --git a/tests/pos-custom-args/captures/proxycap-lend/Lib_1.scala b/tests/pos-custom-args/captures/proxycap-lend/Lib_1.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..b9361a5ed3a2ef45f683bdabb882b9ce81c4a1b1
+--- /dev/null
++++ b/tests/pos-custom-args/captures/proxycap-lend/Lib_1.scala
+@@ -0,0 +1,18 @@
++class Handle extends caps.ExclusiveCapability:
++  def alive: Boolean = true
++
++trait Lender:
++  type Result
++  def lend[result](lambda: (handle: Result) ?=> result): result
++
++class HandleLender extends Lender:
++  type Result = Handle^
++  def lend[result](lambda: (handle: Result) ?=> result): result = lambda(using Handle())
++
++given handleLender: HandleLender = HandleLender()
++
++// The closure's parameter has an abstract type member's type, which at the call site
++// aliases `Handle^`: its proxy must keep it declared, so that the closure tracks it
++extension (x: Int)
++  transparent inline def lendInline[result](using lender: Lender^)(lambda: (handle: lender.Result) ?=> result): result =
++    lender.lend(lambda)
+diff --git a/tests/pos-custom-args/captures/proxycap-lend/Test_2.scala b/tests/pos-custom-args/captures/proxycap-lend/Test_2.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..7dca7cd00a46e5f4391ed10a2ed7cb498a63d77c
+--- /dev/null
++++ b/tests/pos-custom-args/captures/proxycap-lend/Test_2.scala
+@@ -0,0 +1 @@
++def use(): Boolean = 1.lendInline(h ?=> h.alive == true)
 diff --git a/tests/pos-custom-args/captures/proxycap.scala b/tests/pos-custom-args/captures/proxycap.scala
 new file mode 100644
 index 0000000000000000000000000000000000000000..bf53644a8fadbeff5dc8b61677326affc65da87c

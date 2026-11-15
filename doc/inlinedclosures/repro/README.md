@@ -8,7 +8,7 @@ scalac -d . Lib_1.scala
 scalac -Zcheck-inlined-closures -cp . -d . Test_2.scala
 ```
 
-Without the patch (or without the flag), Scala 3.10.0 accepts `Test_2.scala`,
+Without the patch (or without the flag), Scala 3.9.0 and 3.10.0 accept `Test_2.scala`,
 though `file` escapes the closure `usingFile` passes it to. Compiled with
 `Lib_1.scala` in one run, the same code is rejected.
 
