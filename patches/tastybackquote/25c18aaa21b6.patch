@@ -13,21 +13,25 @@ pattern matcher took the identifier for a variable pattern: the case matched
 every value, and the class was emitted without a diagnostic.
 
 A typed pattern binds a variable only with a `Bind`, so an identifier in one
-that has the name of a variable pattern, other than `_`, can only have been
-written in backquotes. The unpickler now marks it so when it reads a case.
+that has the name of a variable pattern, other than `_` and the `_*` of a
+sequence wildcard, can only have been written in backquotes. The unpickler
+now marks it so when it reads a case. (Revision 2 excludes `_*`, which the
+first revision marked: the pattern matcher then compiled `case Seq(x, rest*)`
+as an equality test against it, and the backend crashed.)
 
 Written with LLM assistance (Claude Code); reviewed content.
 
 Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Proscala-Patch: tastybackquote
 ---
- .../tools/dotc/core/tasty/TreeUnpickler.scala | 18 ++++++++++++++
- tests/run/backquoted-pattern-from-tasty.scala | 24 +++++++++++++++++++
- 2 files changed, 42 insertions(+)
+ .../tools/dotc/core/tasty/TreeUnpickler.scala | 18 +++++++++++
+ tests/run/backquoted-pattern-from-tasty.scala | 32 +++++++++++++++++++
+ 2 files changed, 50 insertions(+)
  create mode 100644 tests/run/backquoted-pattern-from-tasty.scala
 
 diff --git a/compiler/src/dotty/tools/dotc/core/tasty/TreeUnpickler.scala b/compiler/src/dotty/tools/dotc/core/tasty/TreeUnpickler.scala
-index 16cc83bc13b0bddf8f4a54a633721dcccc80df25..30e66a1fa032a10c8340015e2d7f5d50939c5054 100644
+index 16cc83bc13b0bddf8f4a54a633721dcccc80df25..13ecd5e8d4b2fbd68b5a484e8cd3d2165e0aeafb 100644
 --- a/compiler/src/dotty/tools/dotc/core/tasty/TreeUnpickler.scala
 +++ b/compiler/src/dotty/tools/dotc/core/tasty/TreeUnpickler.scala
 @@ -1794,11 +1794,29 @@ class TreeUnpickler(reader: TastyReader,
@@ -42,14 +46,14 @@ index 16cc83bc13b0bddf8f4a54a633721dcccc80df25..30e66a1fa032a10c8340015e2d7f5d50
  
 +    /** Mark as backquoted every identifier in pattern `pat` which has the name of a
 +     *  variable pattern. A typed pattern binds a variable only with a `Bind`, so such
-+     *  an identifier, unless it is `_`, refers to a stable value, and can only have been
-+     *  written in backquotes. TASTy does not record that, and without the mark the
-+     *  pattern matcher and the exhaustivity checker take the identifier for a variable
-+     *  pattern, which matches anything.
++     *  an identifier, unless it is `_` or the `_*` of a sequence wildcard, refers to a
++     *  stable value, and can only have been written in backquotes. TASTy does not record
++     *  that, and without the mark the pattern matcher and the exhaustivity checker take
++     *  the identifier for a variable pattern, which matches anything.
 +     */
 +    private def markStableIdents(pat: Tree): Unit = pat match
 +      case pat: Ident =>
-+        if pat.name != nme.WILDCARD && pat.name.isVarPattern then
++        if pat.name != nme.WILDCARD && pat.name != nme.WILDCARD_STAR && pat.name.isVarPattern then
 +          pat.putAttachment(Backquoted, ())
 +      case Bind(_, body) => markStableIdents(body)
 +      case Typed(expr, _) => markStableIdents(expr)
@@ -62,13 +66,15 @@ index 16cc83bc13b0bddf8f4a54a633721dcccc80df25..30e66a1fa032a10c8340015e2d7f5d50
        val tpe = readType()
 diff --git a/tests/run/backquoted-pattern-from-tasty.scala b/tests/run/backquoted-pattern-from-tasty.scala
 new file mode 100644
-index 0000000000000000000000000000000000000000..ab163ef930bc6de72f041571d2744e0db5646b90
+index 0000000000000000000000000000000000000000..03bad5cd8f98be85b115a792f1af452b98943ba2
 --- /dev/null
 +++ b/tests/run/backquoted-pattern-from-tasty.scala
-@@ -0,0 +1,24 @@
+@@ -0,0 +1,32 @@
 +// A backquoted identifier in a pattern refers to a stable value. Read back from TASTy,
 +// which does not record the backquotes, it was taken for a variable pattern and matched
 +// anything: the first three assertions failed when this test was run from its own TASTy.
++// The `_*` of a sequence wildcard is not backquoted, though its name has the same form:
++// marked as one, it was compiled as an equality test, and crashed the backend.
 +
 +object Test:
 +  def nested(label: String, value: (String, Int)): Int = value match
@@ -83,6 +89,10 @@ index 0000000000000000000000000000000000000000..ab163ef930bc6de72f041571d2744e0d
 +    case bound @ (`label` | `other`) => 2
 +    case _                           => -1
 +
++  def rest(values: Seq[Int]): Int = values match
++    case Seq(first, rest*) => rest.length
++    case _                 => -1
++
 +  def main(args: Array[String]): Unit =
 +    assert(nested("a", "z" -> 5) == -1)
 +    assert(direct("a", "z") == -1)
@@ -90,3 +100,5 @@ index 0000000000000000000000000000000000000000..ab163ef930bc6de72f041571d2744e0d
 +    assert(nested("a", "a" -> 5) == 5)
 +    assert(direct("a", "a") == 1)
 +    assert(alternative("a", "b", "b") == 2)
++    assert(rest(Seq(1, 2, 3)) == 2)
++    assert(rest(Nil) == -1)

@@ -9,5 +9,9 @@ object Use:
     case `label` => 1
     case _       => -1
 
+  def rest(values: Seq[Int]): Int = values match
+    case Seq(first, rest*) => rest.length
+    case _                 => -1
+
   def main(args: Array[String]): Unit =
-    println(s"${nested("a", "z" -> 5)} ${direct("a", "z")}")
+    println(s"${nested("a", "z" -> 5)} ${direct("a", "z")} ${rest(Seq(1, 2, 3))}")
