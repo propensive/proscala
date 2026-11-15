@@ -64,6 +64,8 @@ Two targeted changes in `compiler/src/dotty/tools/dotc/cc/Setup.scala`:
 
 Both changes only *remove* capture information that is provably vacuous, so no capability tracking is lost: a pure type cannot capture anything, and a tuple of pure types cannot either.
 
+The second symptom is one case of a wider fault — a capture set variable in an overriding method's parameter type that nothing relates to the one it must equal — which [overridevars](../overridevars/overridevars.md) repairs for every type, always on. With that patch the tuple's override is accepted without this flag as well; the flag still keeps the variable from being made in the first place.
+
 ## Code
 
 ```scala
