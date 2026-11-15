@@ -1,0 +1,82 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sun, 15 Nov 2026 19:49:08 +0900
+Subject: Give java.lang.Enum its no-argument constructor whichever root loads
+ it
+
+An enum may write its parent as `java.lang.Enum[X]`, without the name and
+ordinal that `CompleteJavaEnums` adds later. `Definitions` makes that typecheck
+by replacing the loader of `java.lang.Enum` with one that, after reading the
+class file, strips the parameters from its primary constructor and enters a
+copy with both. But the class file is read for the class and its companion
+together, by whichever is completed first, and only the class got the new
+loader. A reference to a static member, such as `java.lang.Enum.valueOf`,
+completes the companion first, the class is left with only its two-parameter
+constructor, and an enum typed after it fails with "not enough arguments" from
+source, or "wrong number of arguments" when it is read from TASTy after a unit
+which uses the static member.
+
+The module class now gets the new loader too, as a proxy, and the constructors
+are adjusted in `doComplete`, which runs once for both roots.
+
+Written with LLM assistance (Claude Code).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Proscala-Patch: javaenumctor
+---
+ .../src/dotty/tools/dotc/core/Definitions.scala | 17 ++++++++++++++---
+ tests/pos/javaenum-static-first.scala           |  8 ++++++++
+ 2 files changed, 22 insertions(+), 3 deletions(-)
+ create mode 100644 tests/pos/javaenum-static-first.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/core/Definitions.scala b/compiler/src/dotty/tools/dotc/core/Definitions.scala
+index 007aa0445f56f71408446dc5f976e864f5117c6e..755bfbd22fa4924288a25fba636746b5ef04fc6e 100644
+--- a/compiler/src/dotty/tools/dotc/core/Definitions.scala
++++ b/compiler/src/dotty/tools/dotc/core/Definitions.scala
+@@ -786,11 +786,14 @@ class Definitions {
+     // a new constructor symbol with 2 arguments, so that both
+     // `X extends jl.Enum[X]` and `X extends jl.Enum[X](name, ordinal)`
+     // pass typer and go through jl.Enum-specific checks in RefChecks.
++    // The class file is loaded for the class and its companion together, by whichever
++    // is completed first, so the module class must be given the new loader as well:
++    // a reference to a static member such as `jl.Enum.valueOf` completes it first.
+     cls.infoOrCompleter match {
+       case completer: ClassfileLoader =>
+-        cls.info = new ClassfileLoader(completer.classfile) {
+-          override def complete(root: SymDenotation)(using Context): Unit = {
+-            super.complete(root)
++        val loader = new ClassfileLoader(completer.classfile) {
++          override def doComplete(root: SymDenotation)(using Context): Unit = {
++            super.doComplete(root)
+             val constr = cls.primaryConstructor
+             val noArgInfo = constr.info match {
+               case info: PolyType =>
+@@ -806,6 +809,14 @@ class Definitions {
+             constr.termRef.recomputeDenot()
+           }
+         }
++        cls.info = loader
++        val moduleClass = cls.scalacLinkedClass
++        moduleClass.infoOrCompleter match
++          case moduleCompleter: SymbolLoader =>
++            moduleClass.info = loader.proxy
++              .withDecls(moduleCompleter.decls)
++              .withSourceModule(moduleCompleter.sourceModule)
++          case _ =>
+         cls
+     }
+   }
+diff --git a/tests/pos/javaenum-static-first.scala b/tests/pos/javaenum-static-first.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..9321b8f13b08bcbdfafd81ba5c51e39f4b64f4e5
+--- /dev/null
++++ b/tests/pos/javaenum-static-first.scala
+@@ -0,0 +1,8 @@
++// A reference to a static member of java.lang.Enum, typed before an enum which
++// extends it, completed the class from its companion's loader; the class then kept
++// only its two-parameter constructor, and the enum's parent call lacked arguments.
++object Lookup:
++  def green: Color = java.lang.Enum.valueOf(classOf[Color], "Green")
++
++enum Color extends java.lang.Enum[Color]:
++  case Red, Green

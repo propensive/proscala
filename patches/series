@@ -83,3 +83,5 @@ inlinetraitimport
 overridevars
 unionatoms
 splicesingleton
+tastyattrs
+javaenumctor

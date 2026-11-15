@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sun, 15 Nov 2026 19:49:07 +0900
+Subject: Compile a unit read from TASTy with the language settings it was
+ compiled with
+
+A unit compiled with capture checking, or with pure functions, enabled by a
+command-line option rather than by a language import, carries no trace of it
+in its trees, and a run which recompiled it from TASTy went by the options it
+was given itself. The phases after capture checking go by the setting
+(`UncacheGivenAliases`, the pattern matcher, the inliner), so without the
+option repeated the unit was compiled to other code than from source: a given
+alias that was cached became a plain method. A run over a classpath mixing
+units compiled with and without the option could not be given one set of
+options that suited both.
+
+The unit's TASTy attributes record both settings. `ReadTasty` now restores
+them on the unit, and marks capture checking as enabled somewhere in the run,
+as the option would. `UncacheGivenAliases` keeps a given alias cached when
+capture checking is on anywhere in a run from source, since a checked unit can
+name the alias of another; a run from TASTy checks no captures, so there it
+goes by the unit itself, and each unit of a mixed run gets the code it had.
+
+Written with LLM assistance (Claude Code).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Proscala-Patch: tastyattrs
+---
+ compiler/src/dotty/tools/dotc/fromtasty/ReadTasty.scala   | 8 ++++++++
+ .../dotty/tools/dotc/transform/UncacheGivenAliases.scala  | 4 +++-
+ 2 files changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/compiler/src/dotty/tools/dotc/fromtasty/ReadTasty.scala b/compiler/src/dotty/tools/dotc/fromtasty/ReadTasty.scala
+index eccc5144b710e36684009310a1331b0f7338cae3..8d75fc3ab04d3be9f8d7256d11956026705c15c2 100644
+--- a/compiler/src/dotty/tools/dotc/fromtasty/ReadTasty.scala
++++ b/compiler/src/dotty/tools/dotc/fromtasty/ReadTasty.scala
+@@ -56,6 +56,14 @@ class ReadTasty extends Phase {
+                 else
+                   val unit = CompilationUnit(cls, cls.rootTree, forceTrees = true)
+                   unit.pickled += (cls -> (() => unpickler.unpickler.bytes))
++                  // A unit compiled with capture checking or pure functions, enabled by an
++                  // option rather than by an import in its tree, says so only in its
++                  // attributes. The phases after them go by these settings, so without them
++                  // the unit would be compiled to other code than it was from source.
++                  if attributes.captureChecked then
++                    unit.needsCaptureChecking = true
++                    ctx.run.nn.ccEnabledSomewhere = true
++                  if attributes.withPureFuns then unit.knowsPureFuns = true
+                   Some(unit)
+               }
+             case tree: Tree[?] =>
+diff --git a/compiler/src/dotty/tools/dotc/transform/UncacheGivenAliases.scala b/compiler/src/dotty/tools/dotc/transform/UncacheGivenAliases.scala
+index 5980887a3828529ab526705c1a9b6cd0a398d04a..cf9aae5a84dc919f17e16ca3041fb1f29704a7a7 100644
+--- a/compiler/src/dotty/tools/dotc/transform/UncacheGivenAliases.scala
++++ b/compiler/src/dotty/tools/dotc/transform/UncacheGivenAliases.scala
+@@ -59,8 +59,10 @@ class UncacheGivenAliases extends MiniPhase with IdentityDenotTransformer:
+     // to a def gives it an ExprType underlying, which is no longer a legal capability
+     // and crashes cc Setup (IllegalCaptureRef) when a later cast or summon forces the
+     // set. Skip the optimization when cc is on anywhere; semantics are unchanged.
++    // A run from TASTy checks no captures, and only has to give each unit the code
++    // it was compiled to, so it goes by whether the unit itself was capture-checked.
+     if sym.isAllOf(LazyGiven) && !needsCache(sym, tree.rhs)
+-        && !Feature.ccEnabledSomewhere then
++        && !(if ctx.settings.fromTasty.value then Feature.ccEnabled else Feature.ccEnabledSomewhere) then
+       sym.copySymDenotation(
+         initFlags = sym.flags &~ Lazy | Method,
+         info = ExprType(sym.info))

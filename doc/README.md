@@ -66,6 +66,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [iarraypure](iarraypure/iarraypure.md) | Treat `IArray` as pure under capture checking | 3.9, 3.10 | bug fix | yes | `-Zpure-iarrays` |
 | [iarraypure-mutalias](iarraypure-mutalias/iarraypure-mutalias.md) | Classify opaque aliases over mutable types under capture checking | 3.9, 3.10 | bug fix | yes | `-Zopaque-mutability` |
 | [frozenpure](frozenpure/frozenpure.md) | Classify a frozen type as pure under capture checking | 3.9, 3.10 | bug fix | yes | `-Zfrozen-pure` |
+| [javaenumctor](javaenumctor/javaenumctor.md) | Give java.lang.Enum its no-argument constructor whichever root loads it | 3.9, 3.10 | bug fix | yes | always on |
 | [implicitparts](implicitparts/implicitparts.md) | Do not assert on an open type parameter reached through a term's info | 3.10 | bug fix (crash) | yes | always on |
 | [inertcache](inertcache/inertcache.md) | Cache inert types in capture-checking Setup | 3.9, 3.10 | bug fix (hang) | yes | always on |
 | [inlinedclosures](inlinedclosures/inlinedclosures.md) | Capture-check closures inlined from compiled code | 3.10 | bug fix | yes | `-Zcheck-inlined-closures` |
@@ -108,6 +109,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [gatherable](gatherable/gatherable.md) | Receive repeated parameters as the type a `Gatherable` instance names | 3.9, 3.10 | feature | yes | `-Zgatherable-varargs` |
 | [staleread](staleread/staleread.md) | Tolerate reading newer denotations from stale run contexts | 3.9 | bug fix (crash) | yes | always on |
 | [tastybackquote](tastybackquote/tastybackquote.md) | Mark the stable identifiers of a pattern read from TASTy as backquoted | 3.9, 3.10 | bug fix | yes | always on |
+| [tastyattrs](tastyattrs/tastyattrs.md) | Compile a unit read from TASTy with the language settings it was compiled with | 3.9, 3.10 | bug fix | yes | always on |
 | [tastymacro](tastymacro/tastymacro.md) | Do not suspend a unit read from TASTy for a macro with bytecode beside it | 3.9, 3.10 | bug fix | yes | always on |
 | [tastynocc](tastynocc/tastynocc.md) | Do not check captures in a run which reads its units from TASTy | 3.9, 3.10 | bug fix | yes | always on |
 | [tastysource](tastysource/tastysource.md) | Compile a unit read from TASTy in the source its trees were written in | 3.9, 3.10 | bug fix | yes | always on |

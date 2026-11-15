@@ -55,14 +55,14 @@ scala -classpath b app.Use      # 5 1 without the patch
 
 After Typer, the two kinds of pattern no longer need the attachment to be told
 apart: a variable is always a `Bind`, so an `Ident` in a pattern with the name
-of a variable pattern, other than the wildcard `_`, can only have been written
-in backquotes. The unpickler (`core/tasty/TreeUnpickler.scala`) therefore puts
+of a variable pattern, other than the wildcard `_` and the `_*` of a sequence
+wildcard, can only have been written in backquotes. The unpickler (`core/tasty/TreeUnpickler.scala`) therefore puts
 the attachment back when it has read the pattern of a case:
 
 ```scala
 private def markStableIdents(pat: Tree): Unit = pat match
   case pat: Ident =>
-    if pat.name != nme.WILDCARD && pat.name.isVarPattern then
+    if pat.name != nme.WILDCARD && pat.name != nme.WILDCARD_STAR && pat.name.isVarPattern then
       pat.putAttachment(Backquoted, ())
   case Bind(_, body) => markStableIdents(body)
   case Typed(expr, _) => markStableIdents(expr)
@@ -74,6 +74,13 @@ private def markStableIdents(pat: Tree): Unit = pat match
 It follows the pattern through the nodes that can hold another pattern — a
 binding, a type ascription, alternatives and the arguments of an extractor —
 and stops at anything else.
+
+`_*` has to be named as well as `_`: in `case Seq(first, rest*)`, read back as
+`` Seq(first @ _, rest @ _*) ``, it is an `Ident` whose name, beginning with an
+underscore, has the form of a variable pattern. The first revision of the patch
+marked it too, and the pattern matcher then compiled an equality test against a
+value called `_*`, which crashed the backend; the reproduction's third match is
+that case.
 
 Restoring the mark where the tree is read, instead of changing the question the
 pattern matcher asks, means that every reader of the tree sees what it would
@@ -88,5 +95,5 @@ and makes that what the source compiles to. Worth reporting upstream with the
 reproduction.
 
 `tests/run/backquoted-pattern-from-tasty.scala` covers a nested pattern, a
-direct one and alternatives under a binding; it shows the fault only where a
+direct one, alternatives under a binding and a sequence wildcard; it shows the fault only where a
 test is also run from its own TASTy, as upstream's suite runs its `run` tests.
