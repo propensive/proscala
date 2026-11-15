@@ -48,7 +48,7 @@ def test = withFile(file => () => file)
 ```
 
 The closure `() => file` lets `file` escape `usingFile`. Compiled in one run,
-Scala 3.10.0 rejects `test`:
+Scala 3.9.0 and 3.10.0 reject `test`:
 
 ```
 Capability `file` outlives its scope: it leaks into outer capture set 's1 which
@@ -86,8 +86,9 @@ against the expected type of `usingFile`'s argument, where one run reports it
 once.
 
 The patch comes after [closurerecheck](../closurerecheck/closurerecheck.md) in the
-series, which edits the same lines to keep a closure that was already checked
-from being checked again. It is gated
+series, which edits the same lines on the 3.10 line to keep a closure that was
+already checked from being checked again; the 3.9 line has no `closurerecheck`, and
+there the patch adds only the gated recheck. It is gated
 because it can reject code that compiles today: any capture error in a caller's
 code inlined into such a closure, which was previously unreported. The patch's
 test is `neg-custom-args/captures/inlinedclosures`.

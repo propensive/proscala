@@ -37,29 +37,68 @@ The contextual `Tactic` capability provided at the call site cannot be proven to
 
 Skip localization for type aliases: leave `caps.any` global in an alias's own info. Since capture-checked callees never read that info (aliases are expanded and localized per use site during their own Setup), this changes nothing for fully capture-checked code. For the mixed-compilation case, a *global* root in the late-dealiased signature is freshened by recheck per application — exactly what happens for capture-checked callees — so the use-site capability can satisfy it.
 
-The commit notes a cosmetic diagnostic shift in three neg tests (`boundschecks2`, `boundschecks3`, `i19330`): explanatory notes now print "the root capability caps.any" instead of "a root capability in the type of type T"; the errors themselves are unchanged.
+## Keeping a lent parameter tracked
+
+With the alias's root global, an alias of a capability can be used at all where a
+type member is fixed only by a path. Without the flag, every use of this lending
+method is rejected, even a harmless one:
+
+```scala
+trait Lender:
+  type Result
+  def lend[result](lambda: (handle: Result) ?=> result): result
+
+class HandleLender extends Lender:
+  type Result = Handle^
+  def lend[result](lambda: (handle: Result) ?=> result): result = lambda(using Handle())
+
+extension (x: Int)
+  def lendDef[result](using lender: Lender^)(lambda: (handle: lender.Result) ?=> result): result =
+    lender.lend(lambda)
+
+def use(): Boolean = 1.lendDef(h ?=> h.alive)                   // accepted with the flag
+def closure(): () => Boolean = 1.lendDef(h ?=> () => h.alive)   // must be rejected
+```
+
+The flag makes `use` compile, and that exposed a hole that the alias's own root had
+been hiding. `closure` lets the handle escape the scope that lends it, and it was
+accepted. The lambda's result goes into the capture set of `lendDef`'s type
+argument `result`, through the dependent function type
+`(handle: lender.Result) ?=> result`, after `handleLender` has been substituted
+for `lender`. Capture-set variables are not copied by substitution: they are
+mapped, and a capability added to the mapped set is mapped back to the original.
+Mapped back, `handle` is the parameter of the *unsubstituted* function type,
+whose type is the abstract `lender.Result`. That captures nothing, so `handle`
+counted as pure, every set accounted for it, and it never reached the level check
+that rejects it when the parameter is written `lender.Result^`.
+
+So under the flag, a parameter that is tracked where it is added, but would not be
+once mapped back, is not added. `closure` is now rejected (``capability `h` cannot
+flow into capture set``), and `use` still compiles.
 
 ## Code
 
-The entire patch is one new branch at the end of `Setup.transformExplicitType` (`compiler/src/dotty/tools/dotc/cc/Setup.scala`):
+The alias branch at the end of `Setup.transformExplicitType`:
 
 ```scala
 if initialVariance < 0 then tp2
-else if sym.isAliasType then
-  // Keep `caps.any` global in a type alias's own info. Capture-checked units expand
-  // aliases during Setup of each USING symbol, localizing root capabilities per use
-  // site, so the alias's own info is not consulted there. It is consulted when the
-  // signature of a symbol from a unit that was NOT capture-checked mentions the alias:
-  // such signatures are fluidified without following aliases, so rechecking dealiases
-  // late and would expose a LocalCap owned by the alias itself — a capability at the
-  // alias's own (package-)level that no use-site capability can flow into. Leaving the
-  // root global here lets recheck freshen it per application, matching the behaviour
-  // of capture-checked callees (mixed-compilation interop).
-  tp2
+else if sym.isAliasType && config.Proscala.enabled(config.Proscala.AliasCaptures) then
+  tp2   // keep `caps.any` global in a type alias's own info
 else globalCapToLocal(tp2, Origin.InDecl(sym))
 ```
 
-Previously every non-contravariant position fell through to `globalCapToLocal(tp2, Origin.InDecl(sym))`; now alias infos return `tp2` untouched, preserving the global root.
+and, in `CaptureSet.BiMapped.tryInclude`, the backward propagation to a mapped set's
+source:
+
+```scala
+val sourceElem = bimap.inverse.mapCapability(elem)
+if config.Proscala.enabled(config.Proscala.AliasCaptures) && lostTracking(elem, sourceElem)
+then failWith(IncludeFailure(this, elem))
+else source.tryInclude(sourceElem, this)
+```
+
+where `lostTracking` holds for a parameter that is tracked while its pre-image is
+not. The tests are `{pos,neg}-custom-args/captures/aliascap-lend`.
 
 ## Relevance to Soundness
 
@@ -69,4 +108,4 @@ The error in the commit message is Soundness's `raises` alias from Contingency, 
 infix type raises [success, error <: Hazard] = Tactic[error]^ ?=> success
 ```
 
-This alias appears in signatures throughout Soundness — e.g. `Zipfile.write` in Zeppelin, or Galilei's `def decode(text: Text): %.type raises PathError`. The reproduction `rep/capturing-raises/CapturingRaises.scala` in the Soundness repo documents exactly this failure ("capability `any` ... cannot flow into capture set {any} ... not visible from any in type raises") when calling `Zipfile.write` from capture-checked client code, affecting at least seven test suites (zeppelin, cordillera, burdock, perihelion, surveillance, ziggurat, contingency).
+This alias appears in signatures throughout Soundness — e.g. `Zipfile.write` in Zeppelin, or Galilei's `def decode(text: Text): %.type raises PathError`. Without the patch, calling such a method from capture-checked code (`Zipfile.write`, say) fails as above, in at least seven test suites. The lending method above has the shape of Aperture's `session`.

@@ -82,8 +82,35 @@ about captures (`FileHandle^`, which is what catches `useFile(l => l)`), and
 inferred where it says nothing, rather than declared from a capture-free Typer
 type that would give an array a root of its own.
 
+An alias says what its expansion says. This matters for a parameter typed by a
+type member that the call site fixes:
+
+```scala
+trait Lender:
+  type Result
+  def lend[result](lambda: (handle: Result) ?=> result): result
+
+class HandleLender extends Lender:
+  type Result = Handle^
+  ...
+
+extension (x: Int)
+  transparent inline def lendInline[result](using lender: Lender^)
+      (lambda: (handle: lender.Result) ?=> result): result =
+    lender.lend(lambda)
+
+def closure(): () => Boolean = 1.lendInline(h ?=> () => h.alive)  // rejected
+```
+
+At the call, the closure's parameter is a `handleLender.Result`, which is a
+`Handle^`, so it stays declared, as upstream declares it. If it were inferred, its
+capture set would be a variable that could be solved as empty, making `h` pure, and
+`() => h.alive` would let the handle escape the scope that lends it. That is what
+an earlier revision did when `lendInline` was read from TASTy.
+
 The patch's tests, `pos-custom-args/captures/proxycap.scala` (separation-checked)
 and `neg-custom-args/captures/proxycap.scala`, cover each case in both
-directions. Every error in upstream's `cc-inline1` is still reported, and the
+directions, and `{pos,neg}-custom-args/captures/proxycap-lend` the lending method,
+compiled separately. Every error in upstream's `cc-inline1` is still reported, and the
 outcome of every other test in `tests/{neg,pos}-custom-args/captures` is
 unchanged.
