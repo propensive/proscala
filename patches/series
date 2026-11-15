@@ -81,5 +81,7 @@ tastynocc
 refinedsingleton
 inlinetraitimport
 overridevars
+unionatoms
+splicesingleton
 tastyattrs
 javaenumctor
