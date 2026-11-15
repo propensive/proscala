@@ -103,6 +103,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [skolemcap](skolemcap/skolemcap.md) | Widen skolems in retains sets to the top capability | 3.9, 3.10 | bug fix | yes | `-Zretains-skolems` |
 | [smap](smap/smap.md) | `-Zinline-source-maps`: JSR-45 SMAP attributes mapping inlined code to its source files | 3.9, 3.10 | feature | yes | `-Zinline-source-maps` |
 | [splicealias](splicealias/splicealias.md) | Give spliced type binders their spliced type as info | 3.9 | bug fix | yes | always on |
+| [splicesingleton](splicesingleton/splicesingleton.md) | Keep an adapted singleton from being widened again under capture checking | 3.9, 3.10 | bug fix | yes | always on |
 | [spreadable](spreadable/spreadable.md) | Splice any type with a `Spreadable` instance into a vararg position | 3.9, 3.10 | feature | yes (2: `repro`, `repro-cc`) | `-Zspreadable-varargs` |
 | [gatherable](gatherable/gatherable.md) | Receive repeated parameters as the type a `Gatherable` instance names | 3.9, 3.10 | feature | yes | `-Zgatherable-varargs` |
 | [staleread](staleread/staleread.md) | Tolerate reading newer denotations from stale run contexts | 3.9 | bug fix (crash) | yes | always on |
@@ -113,6 +114,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [tastyspecialize](tastyspecialize/tastyspecialize.md) | Mark a unit read from TASTy which uses inline traits as having specializations | 3.10 | bug fix | yes | always on |
 | [tastythisprefix](tastythisprefix/tastythisprefix.md) | Recognise the prefix of an inline call by its class, not by type equality | 3.9, 3.10 | bug fix | yes | always on |
 | [unboxedpure](unboxedpure/unboxedpure.md) | Do not box pure types with vacuous or pure-tuple capture sets | 3.9, 3.10 | bug fix | yes | `-Zunboxed-pure-types` |
+| [unionatoms](unionatoms/unionatoms.md) | Make a singleton conform to a union containing it under capture checking | 3.9, 3.10 | bug fix | yes | always on |
 | [unioncaps](unioncaps/unioncaps.md) | Classify and preserve capture information on union types | 3.10 | bug fix | yes | `-Zunion-captures` |
 | [valuebased](valuebased/valuebased.md) | Keep the synthetic `jdk.internal.ValueBased` class valid across runs | — | bug fix (crash) | yes | always on |
 | [virtualdir](virtualdir/virtualdir.md) | Backport the `io.virtualDirectory` factory from the 3.10 stream | 3.9 | API backport | yes | always on |
