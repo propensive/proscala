@@ -1,0 +1,129 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sun, 15 Nov 2026 15:44:57 +0900
+Subject: Strip capture sets when normalizing the atoms of a singleton
+
+Under capture checking a singleton did not conform to a union containing it,
+when the singleton was a member of an object nested anywhere but in a package:
+
+    object P:
+      val k1 = Kind()
+      val k2 = Kind()
+      val e: k1.type = k1
+      val f: k1.type | k2.type = e
+
+    Found:    (P.e : (P.k1 : Kind^{}))
+    Required: (P.k1 : Kind^{}) | (P.k2 : Kind^{})
+
+A subtype test against a union of singletons is first decided by the
+singletons' atoms, which normalize a prefix `this` of an object to the object
+itself, by following its underlying type while it is a singleton. A union
+caches its atoms for the run, so those of `k1.type | k2.type` were found
+while typing, where `this` of `P` is `P.type`. While capture checking, Setup
+has given `P`'s class a self type with a capture variable, `P.type^{'s}`,
+which is not a singleton, so normalization stopped there, and the atom of
+`e` kept the prefix `this`. The atoms differed, and the comparison answered
+false outright, without trying the members of the union.
+
+A capture set does not change which value a singleton is, so it is now
+stripped from the underlying type while normalizing. An object in a package
+was unaffected because its prefix is the package.
+
+Written with LLM assistance (Claude Code).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Proscala-Patch: unionatoms
+---
+ .../src/dotty/tools/dotc/core/Types.scala     |  7 ++-
+ .../captures/singleton-union-atoms.scala      | 11 +++++
+ .../captures/singleton-union-atoms.scala      | 43 +++++++++++++++++++
+ 3 files changed, 60 insertions(+), 1 deletion(-)
+ create mode 100644 tests/neg-custom-args/captures/singleton-union-atoms.scala
+ create mode 100644 tests/pos-custom-args/captures/singleton-union-atoms.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/core/Types.scala b/compiler/src/dotty/tools/dotc/core/Types.scala
+index 22bfe301b52bfe787c2828a06b8995774f3beab1..9a5e59cd6714b5ea0a62ecd4d1df384f1b552b14 100644
+--- a/compiler/src/dotty/tools/dotc/core/Types.scala
++++ b/compiler/src/dotty/tools/dotc/core/Types.scala
+@@ -1504,9 +1504,14 @@ object Types extends TypeUtils {
+      *  Overridden and cached in OrType.
+      */
+     def atoms(using Context): Atoms =
++      // A singleton's underlying type may carry a capture set: under capture checking,
++      // `Setup` gives a module class a self type with one, so `this` of an object is
++      // `C.type^{'s}`, not `C.type`. It does not change which value the singleton is, so
++      // it is stripped; otherwise an atom found while capture checking keeps a prefix
++      // that one found while typing (as the cached atoms of a union were) normalized away.
+       def normalize(tp: Type): Type = tp match
+         case tp: SingletonType =>
+-          tp.underlying.dealias match
++          tp.underlying.dealias.stripCapturing match
+             case tp1: SingletonType => normalize(tp1)
+             case _ =>
+               tp match
+diff --git a/tests/neg-custom-args/captures/singleton-union-atoms.scala b/tests/neg-custom-args/captures/singleton-union-atoms.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..c2857e6a2564959ed4f28160f15acb8c87c74e69
+--- /dev/null
++++ b/tests/neg-custom-args/captures/singleton-union-atoms.scala
+@@ -0,0 +1,11 @@
++// Atoms still tell singletons apart under capture checking.
++
++class Kind
++
++object N:
++  val k1 = Kind()
++  val k2 = Kind()
++  val k3 = Kind()
++  val e: k3.type = k3
++  val f: k1.type | k2.type = e  // error
++  val g: k1.type | k2.type = k3 // error
+diff --git a/tests/pos-custom-args/captures/singleton-union-atoms.scala b/tests/pos-custom-args/captures/singleton-union-atoms.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..aeeb9dcf561d8b14e0be905974054aa589099383
+--- /dev/null
++++ b/tests/pos-custom-args/captures/singleton-union-atoms.scala
+@@ -0,0 +1,43 @@
++// A singleton conforms to a union containing it under capture checking. The atoms of a
++// union are cached from typing, where the prefix `this` of an object normalizes to the
++// object; `Setup` gives the object's class a self type with a capture variable, so the
++// singleton's own atoms kept the `this` prefix and the two never matched.
++
++class Kind
++
++trait Registry[-status]
++class Status(val code: Int) extends caps.Pure:
++  def exit(using Registry[this.type]): Int = code
++
++object P:
++  val k1 = Kind()
++  val k2 = Kind()
++  val e: k1.type = k1
++  val f1: k1.type | k2.type = k1
++  val f2: k1.type | k2.type = e
++  def m(x: k1.type): k1.type | k2.type = x
++  def n(x: k1.type | k2.type): k2.type | k1.type = x
++  val self: P.type | k1.type = this
++
++  class C:
++    val a = Kind()
++    val b = Kind()
++    val t: a.type | b.type = a
++
++  def local() =
++    val p = Kind()
++    val q = Kind()
++    val r: p.type | q.type = p
++    r
++
++  // A union of singletons accumulated through a contravariant capability
++  object A extends Status(1)
++  object B extends Status(2)
++  def cond: Boolean = true
++  def ab(using Registry[A.type | B.type]): Int = if cond then A.exit else B.exit
++
++def outer() =
++  object E extends Status(5)
++  object F extends Status(6)
++  def ef(using Registry[E.type | F.type]): Int = if P.cond then E.exit else F.exit
++  ef(using new Registry[Any] {})
