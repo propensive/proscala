@@ -1,0 +1,206 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 21 Nov 2026 07:19:14 +0900
+Subject: Let quoted code refer to the members a class defined in the quote
+ inherits
+
+A class defined in a quote could not reliably use the members of its parent.
+
+A reference to a protected member from quoted code gets an accessor, since the
+quote may be spliced where the member is not accessible, unless it is made
+through the `this` of a class defined in the quote, which inherits the member
+wherever it ends up. That exception looked for a selection `this.m`, but a
+member referred to by its name alone is typed as an identifier, so it never
+applied to one. The accessor was then entered in the quoted class after its
+body had been typed, and the expansion failed with "undefined:
+this.inline$m"; or, where a quote nested in a splice had already made the
+accessor, the accessor's own body was rewritten to call itself, and the
+expanded program did not terminate. The exception now covers identifiers.
+
+A reference from a quote nested in a splice to something defined in the
+enclosing quote is passed into the splice as an argument of its hole. What
+counted as defined in the quote was decided by the symbol alone, so a member
+which a class of the quote only inherits was left in the nested quote as it
+was, with the `this` of a class that does not exist where that quote is
+pickled: "unresolved symbols: anonymous class". Such a reference is now
+captured as one to a member the class defines itself is, whether it is read,
+applied or assigned to. It is recorded under the reference and not the
+member's symbol, because two classes of the quote may inherit the same member.
+
+Written with LLM assistance (Claude Code).
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: quotedthis
+---
+ .../dotc/inlines/PrepareInlineable.scala      |  5 ++
+ .../dotty/tools/dotc/transform/Splicing.scala | 32 ++++++++++---
+ .../quoted-inherited-member/Macro_1.scala     | 46 +++++++++++++++++++
+ .../quoted-inherited-member/Test_2.scala      |  7 +++
+ 4 files changed, 84 insertions(+), 6 deletions(-)
+ create mode 100644 tests/pos-macros/quoted-inherited-member/Macro_1.scala
+ create mode 100644 tests/pos-macros/quoted-inherited-member/Test_2.scala
+
+diff --git a/compiler/src/dotty/tools/dotc/inlines/PrepareInlineable.scala b/compiler/src/dotty/tools/dotc/inlines/PrepareInlineable.scala
+index ebe6df50893ebaa1146b51b2092ed8c23cd4c5ab..98782802ffd9d4c45e44d88c139c78240abbca01 100644
+--- a/compiler/src/dotty/tools/dotc/inlines/PrepareInlineable.scala
++++ b/compiler/src/dotty/tools/dotc/inlines/PrepareInlineable.scala
+@@ -77,6 +77,11 @@ object PrepareInlineable {
+           case Apply(qual, _) => referencesInlineContainedClassDef(qual)
+           case TypeApply(qual, _) => referencesInlineContainedClassDef(qual)
+           case Select(qual, _) => qual.tpe.isInstanceOf[ThisType] && qual.symbol.isContainedIn(inlineSym)
++          case tree: Ident =>
++            // an inherited member referred to by its name alone, which is how it is typed
++            tree.tpe match
++              case TermRef(prefix: ThisType, _) => prefix.cls.isContainedIn(inlineSym)
++              case _ => false
+           case _ => false
+         val sym = refTree.symbol
+         sym.isTerm &&
+diff --git a/compiler/src/dotty/tools/dotc/transform/Splicing.scala b/compiler/src/dotty/tools/dotc/transform/Splicing.scala
+index 8163abbc1588a8bef46722a3cb8f06f2e1b74f56..b4f53b91f15435692cbccf7086a513eb4adb4df4 100644
+--- a/compiler/src/dotty/tools/dotc/transform/Splicing.scala
++++ b/compiler/src/dotty/tools/dotc/transform/Splicing.scala
+@@ -166,7 +166,7 @@ class Splicing extends MacroTransform:
+    *  ```
+    */
+   private class SpliceTransformer(spliceOwner: Symbol, isCaptured: Symbol => Boolean) extends Transformer:
+-    private var refBindingMap = mutable.LinkedHashMap.empty[Symbol, (Tree, Symbol)]
++    private var refBindingMap = mutable.LinkedHashMap.empty[Symbol | TermRef, (Tree, Symbol)]
+     /** Reference to the `Quotes` instance of the current level 1 splice */
+     private var quotes: Tree | Null = null // TODO: add to the context
+ 
+@@ -194,7 +194,7 @@ class Splicing extends MacroTransform:
+               tree
+         case tree: RefTree =>
+           if tree.isTerm then
+-            if isCaptured(tree.symbol) then
++            if isCapturedRef(tree) then
+               val tpe = tree.tpe.widenTermRefExpr match {
+                 case tpw: MethodicType => tpw.toFunctionType()
+                 case tpw => tpw
+@@ -212,13 +212,13 @@ class Splicing extends MacroTransform:
+           if containsCapturedType(tree.tpe) && level >= 1 then getTagRefFor(tree)
+           else tree
+         case tree @ Assign(lhs: RefTree, rhs) =>
+-          if isCaptured(lhs.symbol) then transformSplicedAssign(tree)
++          if isCapturedRef(lhs) then transformSplicedAssign(tree)
+           else super.transform(tree)
+         case CapturedApplication(fn, argss) =>
+           transformCapturedApplication(tree, fn, argss)
+         case Apply(Select(Quote(body, _), nme.apply), quotes :: Nil) if level == 0 && body.isTerm =>
+           body match
+-            case _: RefTree if isCaptured(body.symbol) => capturedTerm(body)
++            case _: RefTree if isCapturedRef(body) => capturedTerm(body)
+             case _ => withCurrentQuote(quotes) { super.transform(tree) }
+         case tree: Quote if level == 0 =>
+           if tree.body.isTerm then transformLevel0Quote(tree)
+@@ -241,7 +241,7 @@ class Splicing extends MacroTransform:
+ 
+       /** Matches and application `f(...)` (possibly with several argument clauses) where `f` is captured */
+       def unapply(tree: Tree)(using Context): Option[(RefTree, List[ArgsClause])] = tree match
+-        case GenericApply(fn: RefTree, args) if isCaptured(fn.symbol) =>
++        case GenericApply(fn: RefTree, args) if isCapturedRef(fn) =>
+           Some((fn, ArgsClause(args) :: Nil))
+         case GenericApply(CapturedApplication(fn, argss), args) =>
+           Some((fn, argss :+ ArgsClause(args)))
+@@ -249,6 +249,21 @@ class Splicing extends MacroTransform:
+           None
+     }
+ 
++    /** If `tree` refers to a member that a class defined in the current quote inherits,
++     *  through the `this` of that class, its type; otherwise `NoType`. The member is not
++     *  itself defined in the quote, but the reference is as local to the quote as one to
++     *  a member the class defines: outside the quote there is no such `this`.
++     */
++    private def capturedThisRef(tree: Tree)(using Context): Type = tree.tpe match
++      case tpe @ TermRef(prefix: ThisType, _) if tree.isTerm && isCaptured(prefix.cls) => tpe
++      case _ => NoType
++
++    /** Does `tree` refer to a term defined in the current quote, or to a member inherited
++     *  by a class defined in it, through that class's `this`?
++     */
++    private def isCapturedRef(tree: Tree)(using Context): Boolean =
++      isCaptured(tree.symbol) || capturedThisRef(tree).exists
++
+     private def containsCapturedType(tpe: Type)(using Context): Boolean =
+       tpe.existsPart(t => isCaptured(t.typeSymbol) || isCaptured(t.termSymbol), StopAt.Static)
+ 
+@@ -301,7 +316,12 @@ class Splicing extends MacroTransform:
+         Param,
+         defn.QuotedExprClass.typeRef.appliedTo(tpe),
+       )
+-      val bindingSym = refBindingMap.getOrElseUpdate(tree.symbol, (tree, newBinding))._2
++      // An inherited member is keyed by the reference, not by its symbol: two classes
++      // of the quote may inherit the same member.
++      val key: Symbol | TermRef = capturedThisRef(tree) match
++        case tpe: TermRef if !isCaptured(tree.symbol) => tpe
++        case _ => tree.symbol
++      val bindingSym = refBindingMap.getOrElseUpdate(key, (tree, newBinding))._2
+       ref(bindingSym)
+ 
+     private def newQuotedTypeClassBinding(tpe: Type)(using Context) =
+diff --git a/tests/pos-macros/quoted-inherited-member/Macro_1.scala b/tests/pos-macros/quoted-inherited-member/Macro_1.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..61eae8d6b083169be8b83abe67e217d9dbf3e336
+--- /dev/null
++++ b/tests/pos-macros/quoted-inherited-member/Macro_1.scala
+@@ -0,0 +1,46 @@
++// Members which a class defined in a quote inherits, referred to through its `this`:
++// directly in the quote, where a protected one needs no accessor, and from quotes
++// nested in a splice, where the reference is captured as one to a local of the quote.
++
++import scala.quoted.*
++
++abstract class Base(protected val table: Array[Int], val open: Array[Int]):
++  var count: Int = 0
++  protected def scale(n: Int): Int = n*10
++  def twice(n: Int): Int = n*2
++  def index(key: Int): Int
++
++object Macro:
++  def at(key: Expr[Int], table: Expr[Array[Int]])(using Quotes): Expr[Int] = '{$table($key)}
++  def same[T](expr: Expr[T])(using Quotes): Expr[T] = expr
++
++  // an inherited protected member, with no nested splice
++  inline def plain: Base = ${plainImpl}
++  def plainImpl(using Quotes): Expr[Base] =
++    '{
++      new Base(Array(1, 2, 3), Array(4, 5, 6)):
++        def index(key: Int): Int = table(key) + scale(key)
++    }
++
++  // inherited members in quotes nested in a splice
++  inline def nested: Base = ${nestedImpl}
++  def nestedImpl(using Quotes): Expr[Base] =
++    '{
++      new Base(Array(1, 2, 3), Array(4, 5, 6)):
++        def index(key: Int): Int =
++          ${same('{count = count + 1})}
++          ${at('key, '{table})} + ${at('key, '{open})} + ${at('key, '{this.open})}
++          + ${same('{scale(key)})} + ${same('{twice(key)})} + ${same('{this.twice(key)})}
++    }
++
++  // the same member of two classes of the quote, in one splice
++  inline def two: Base = ${twoImpl}
++  def twoImpl(using Quotes): Expr[Base] =
++    '{
++      new Base(Array(1, 2, 3), Array(4, 5, 6)):
++        outer =>
++        def index(key: Int): Int =
++          val inner = new Base(Array(7, 8, 9), Array(10, 11, 12)):
++            def index(key: Int): Int = ${same('{open(key)*100 + outer.open(key)})}
++          inner.index(key)
++    }
+diff --git a/tests/pos-macros/quoted-inherited-member/Test_2.scala b/tests/pos-macros/quoted-inherited-member/Test_2.scala
+new file mode 100644
+index 0000000000000000000000000000000000000000..807ba0be4a7601d56050361ba2443661348d3f76
+--- /dev/null
++++ b/tests/pos-macros/quoted-inherited-member/Test_2.scala
+@@ -0,0 +1,7 @@
++object Use:
++  def main(args: Array[String]): Unit =
++    System.out.println(Macro.plain.index(1))
++    val nested = Macro.nested
++    System.out.println(nested.index(1))
++    System.out.println(nested.count)
++    System.out.println(Macro.two.index(1))
