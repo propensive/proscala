@@ -2057,6 +2057,12 @@ project p proscala
     error 51
       source dotc/cc/Setup.scala
       template  {} cannot be tracked since its{} capture set is empty
+    error 52
+      source dotc/cc/CheckCaptures.scala
+      template  {} needs an explicit{} type because the type that is externally visible |in other compilation units does not conform to the inferred type. | | Inferred type : {} | Externally visible type: {}
+    error 53
+      source dotc/cc/Setup.scala
+      template  {} extends `caps.Classifier` but not `caps.Capability`, so it cannot be a classifier. |A classifier class is a class extending `caps.Capability` and directly extending `caps.Classifier`.
 
   subdivision 10 transform
     description  the transformation phases
@@ -2239,8 +2245,8 @@ project p proscala
       text  Cannot use private constructors in inline methods. You can use @publicInBinary to make constructor accessible in inline methods.
     error 60
       source dotc/transform/CheckInlineTraits.scala
-      text  implementation restriction: inline traits cannot have non-local private members. This also means no retained inline methods.
       template  implementation restriction: inline traits cannot have non-local private members. This also means no retained inline methods.
+      text  implementation restriction: inline traits cannot have non-local private members. This also means no retained inline methods.
     error 61
       source dotc/transform/CheckInlineTraits.scala
       text  Only inline traits and inline functions may take Specialized type parameters

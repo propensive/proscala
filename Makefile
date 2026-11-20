@@ -304,7 +304,10 @@ $(INTERFACES_JAR): $(DEPS_STAMP) $(shell find interfaces/src -name '*.java')
 
 # ---- 2. scala-library (Scala 3 stdlib: scalac + javac) -----------------------
 LIBRARY_SRC := $(shell find library/src \( -name '*.scala' -o -name '*.java' \) -type f)
-$(SCALA_LIB_JAR): $(COMMON_ARGS) $(DEPS_STAMP) $(LIBRARY_SRC) library/resources/rootdoc.txt
+# Whatever the tree's library/resources holds goes into the jar, as in upstream's
+# build: rootdoc.txt until upstream #26924, rootdoc.md since.
+LIBRARY_RES := $(wildcard library/resources/*)
+$(SCALA_LIB_JAR): $(COMMON_ARGS) $(DEPS_STAMP) $(LIBRARY_SRC) $(LIBRARY_RES)
 	@echo ">> scala-library ($(words $(LIBRARY_SRC)) sources)"
 	@rm -rf $(CLASSES)/scala-library && mkdir -p $(CLASSES)/scala-library $(LIB)
 	@cp $(COMMON_ARGS) $(CLASSES)/scala-library.args
@@ -313,7 +316,7 @@ $(SCALA_LIB_JAR): $(COMMON_ARGS) $(DEPS_STAMP) $(LIBRARY_SRC) library/resources/
 	$(REFC) @$(CLASSES)/scala-library.args
 	javac $(JAVAC_FLAGS) -cp $(CLASSES)/scala-library -d $(CLASSES)/scala-library \
 	  $(shell find library/src -name '*.java')
-	cp library/resources/rootdoc.txt $(CLASSES)/scala-library/rootdoc.txt
+	cp $(LIBRARY_RES) $(CLASSES)/scala-library/
 	@printf '%s\n' \
 	  'version.number=$(VERSION)' \
 	  'maven.version.number=$(VERSION)' \
