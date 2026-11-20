@@ -4,6 +4,9 @@ import dotty.tools.dotc.core.Symbols.defn
 import dotty.tools.dotc.core.Types.*
 import dotty.tools.dotc.reporting.DiagnosticMarkup
 
+// The `i` interpolator converts its arguments to `Shown`, which needs this from 3.11
+import scala.language.implicitConversions
+
 // Formats, as a diagnostic message would, a type that cannot be pickled: a reference
 // to a method's parameter outside the method type that binds it. With the markup
 // active, formatting a type pickles it.
