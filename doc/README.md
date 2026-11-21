@@ -91,6 +91,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [proxycap](proxycap/proxycap.md) | Capture-check inline argument proxies within their parameters' bounds | 3.10 | bug fix | yes | always on |
 | [proxyskolem](proxyskolem/proxyskolem.md) | No skolem-typed inline argument proxies under capture checking | 3.9, 3.10 | bug fix | yes (2: `repro`, `repro2`) | always on |
 | [prunecomplete](prunecomplete/prunecomplete.md) | Do not force completion when filtering prunable inline methods | — | bug fix (crash) | yes | always on |
+| [quotedthis](quotedthis/quotedthis.md) | Let quoted code refer to the members a class defined in the quote inherits | 3.9, 3.10 | bug fix (crash) | yes | always on |
 | [readonlyadapt](readonlyadapt/readonlyadapt.md) | Keep the type arguments a read-only adaptation does not improve | 3.9, 3.10 | bug fix (crash) | yes | always on |
 | [refinealias](refinealias/refinealias.md) | Drop the implied capture set from a type alias in a refinement | 3.10 | bug fix | yes | always on |
 | [refinedsingleton](refinedsingleton/refinedsingleton.md) | Check a refinement against the tracked value itself, not its widened type | 3.9, 3.10 | bug fix | yes | always on |
