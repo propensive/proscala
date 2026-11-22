@@ -105,9 +105,9 @@ Proscala-Patch: semdiag
  .../reporting/DiagnosticTypePickler.scala     | 136 ++++++++++++
  .../dotty/tools/dotc/reporting/Message.scala  |   2 +
  .../dotc/reporting/MessageRendering.scala     |   8 +-
- .../tools/dotc/reporting/XmlReporter.scala    | 102 +++++++++
+ .../tools/dotc/reporting/XmlReporter.scala    | 104 ++++++++++
  .../dotty/tools/dotc/reporting/messages.scala | 140 +++++++------
- 9 files changed, 579 insertions(+), 74 deletions(-)
+ 9 files changed, 581 insertions(+), 74 deletions(-)
  create mode 100644 compiler/src/dotty/tools/dotc/reporting/DiagnosticMarkup.scala
  create mode 100644 compiler/src/dotty/tools/dotc/reporting/DiagnosticTypePickler.scala
  create mode 100644 compiler/src/dotty/tools/dotc/reporting/XmlReporter.scala
@@ -628,10 +628,10 @@ index 93cf428cbdf23b2f2c80881bcb63bc058faafe3f..1cd586b0c25c656535ee4ba8e776840e
      else if dia.msg.canExplain then
 diff --git a/compiler/src/dotty/tools/dotc/reporting/XmlReporter.scala b/compiler/src/dotty/tools/dotc/reporting/XmlReporter.scala
 new file mode 100644
-index 0000000000000000000000000000000000000000..b4e48be87f12dac50d814ee55caa9f5a02700e11
+index 0000000000000000000000000000000000000000..cfdfe400d7fa55f1238cae8007fdf6c458dff638
 --- /dev/null
 +++ b/compiler/src/dotty/tools/dotc/reporting/XmlReporter.scala
-@@ -0,0 +1,102 @@
+@@ -0,0 +1,104 @@
 +package dotty.tools
 +package dotc
 +package reporting
@@ -689,6 +689,8 @@ index 0000000000000000000000000000000000000000..b4e48be87f12dac50d814ee55caa9f5a
 +      case Node.Marked(kind, attrs0, children) =>
 +        val elem = kind match
 +          case "type" | "sym" | "name" | "code" | "span" => kind
++          // written by a macro in its own message: a tree, and the nodes of one
++          case "tree" | "node" => kind
 +          case _ => "span"
 +        val placeholders =
 +          attrs0.collect { case ("p", v) => v }.flatMap(DiagnosticMarkup.decodePlaceholder)

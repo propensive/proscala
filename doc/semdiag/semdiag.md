@@ -87,6 +87,19 @@ Required: <type tasty="XKGrH5…">Box[Int]<placeholder id="0" kind="local-type"
   rendered sequences (e.g. lists of alternatives or type arguments) are marked
   individually. Line/column attributes are 1-based; `start`/`end` are
   character offsets.
+- `<tree>` and `<node>` are a macro's own. A macro's message is text the
+  compiler passes on as it was written, so a macro may write the same markers
+  into it, and they come out as elements like any others: a `<tree>` holds
+  `<node>` elements, each holding the text of its own line and then its child
+  nodes, with the line breaks and box-drawing that draw the tree as plain text
+  left between them. A consumer wanting the tree reads the elements and ignores
+  that text; one wanting text concatenates it and has the tree drawn. The
+  attributes are the macro's: Frontier's explanation of a contextual value
+  that could not be found (see [`searchdiag`](../searchdiag/searchdiag.md))
+  gives a node its `role` (`resolving`, `candidate`, `requires`, `propose`,
+  `prohibits` or `found`), a `name`, and where they apply a `note` and
+  `repeated="true"`, and gives the tree `omitted`, the number of nodes it left
+  out. A marker of any other kind a macro writes is a `<span>`.
 - `<type tasty="…">` holds the Base64 TASTy of the sanitized type.
   `tastyVersion` gives the TASTy format version (`major.minor-experimental`);
   TASTy is version-locked, so a consumer must unpickle with a matching
