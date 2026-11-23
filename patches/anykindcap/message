@@ -1,0 +1,42 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 4 Aug 2026 09:33:56 +0200
+
+Do not constrain type arguments by an AnyKind bound's capture set
+
+`recheckTypeArg` propagates a formal type parameter's bound capture set onto the
+argument, so `mkAbs[Ref^{r6}]` is rejected when the parameter is declared
+`[A <: Any^{}]`. The guard exempts bounds that say nothing about captures —
+`Any` and `Singleton` — but not `AnyKind`, whose capture set is empty for the
+same reason `Any`'s is: it is the top of the kind lattice, not a statement about
+capabilities.
+
+The consequence is that any capturing type argument to an `AnyKind`-bounded
+parameter is checked against `{}` and rejected:
+
+    def anyKindBound[T <: AnyKind]: Unit = ()
+    anyKindBound[Int => Int]   // error: Reference `any` is not included in
+                               // the allowed capture set {} of the type
+                               // parameter bound scala.AnyKind
+    def anyBound[T]: Unit = ()
+    anyBound[Int => Int]       // fine
+
+`quoted.Type` and `TypeRepr.of` are declared `[T <: AnyKind]`, so this breaks
+every capture-checked macro that mentions a function type reflectively —
+`TypeRepr.of[value => value2]` and friends. Soundness's `mercator` hits it four
+times building a `MethodType` for `map`.
+
+Adding `AnyKind` to the exemptions restores that. The bound `Any^{}` still
+constrains as intended: `tests/neg-custom-args/captures/capset-bounds.scala`,
+added by the commit that introduced this check, still reports both of its
+expected errors unchanged.
+
+Introduced upstream in 196eada95d ("Propagate capsets of type parameter bounds
+into argument capsets", 2026-07-14), which landed with the note "One failing
+test, to be checked". Affects 3.10 only; 3.9 predates the check.
+
+Developed with LLM assistance (Claude, Anthropic). Verified by building the
+compiler, reducing the failure to three lines, confirming the neg test that
+introduced the check is unaffected, and rebuilding Soundness's mercator module.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+Proscala-Patch: anykindcap

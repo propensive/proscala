@@ -1,0 +1,27 @@
+orthant 2 patch
+
+@ 0 1 0 049f5e233357b68b0a44827609974413
++         val newbody = newDefs._1.map(withCallTraces) ::: newDefs._2
+
+@ 3 0 0 0afb8971d3e5485d05ebbb7e0a900625
++   /** `tree`, with the call of every `Inlined` node in it replaced by its call trace, as
++    *  PostTyper replaces the call of a node inlined during typing. The definitions an
++    *  inline trait gives a class are inlined after PostTyper and before pickling, so the
++    *  inline calls expanded in them would otherwise be pickled with the calls they were
++    *  expanded from. Such a call holds its arguments as they were, and an argument which
++    *  is itself an expansion holds definitions, which the bindings of the node hold too:
++    *  the pickler would write the same definitions under two owners, and the class could
++    *  not be read back.
++    */
++   private def withCallTraces(tree: Tree)(using Context): Tree =
++     val traces = new TreeMap:
++       override def transform(tree: Tree)(using Context): Tree = tree match
++         case tree @ Inlined(call, bindings, expansion)
++         if !tree.inlinedFromOuterScope && call.symbol.exists && !call.symbol.isClass =>
++           val pos = call.sourcePos
++           val trace = inlineCallTrace(call.symbol, pos)(using ctx.withSource(pos.source))
++           super.transform(cpy.Inlined(tree)(trace, bindings, expansion))
++         case _ =>
++           super.transform(tree)
++     traces.transform(tree)
++

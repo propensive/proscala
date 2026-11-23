@@ -1,0 +1,14 @@
+orthant 2 patch
+
+@ 0 6 0 0ea412165e86223e19e2a5474afaebb1
++       if inertTypes.containsKey(tp) then tp
++       else
++         val saved = isTopLevel
++         if variance < 0 then isTopLevel = false
++         try
++           val tp1 = tp match
++             case defn.RefinedFunctionOf(rinfo: MethodType) => mapRefinedFunction(tp, rinfo)
++             case _ => innerApply(tp)
++           if tp1 eq tp then inertTypes.put(tp, tp)
++           tp1
++         finally isTopLevel = saved

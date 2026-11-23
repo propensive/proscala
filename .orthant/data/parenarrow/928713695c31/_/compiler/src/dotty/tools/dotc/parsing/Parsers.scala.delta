@@ -1,0 +1,7 @@
+orthant 2 patch
+
+@ 2 0 0 01a9a6f8ef2366290f1f606ba3b8016d
++             // The parenthesized types are not a function's parameters after all, so
++             // what was recorded for each as one does not describe the parameter
++             // that the whole type may yet turn out to be, as in `(A & B)^ => C`.
++             erasedArgs.clear()

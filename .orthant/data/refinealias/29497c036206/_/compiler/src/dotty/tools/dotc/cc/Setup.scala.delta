@@ -1,0 +1,29 @@
+orthant 2 patch
+
+@ 0 9 0 1627ffc9a833befa179c85c168bc551f
++             val t2 =
++               if t.derivesFromCapability
++                   && t.typeParams.isEmpty
++                   && !t.isSingleton
++                   && (!sym.isConstructor || (t ne tp.finalResultType))
++                 // Don't add ^ to result types of class constructors deriving from Capability
++               then t1 match
++                 case t1 @ CapturingType(_, _) => t1
++                 case t1 => CapturingType(t1, CaptureSet.CSImpliedByCapability(t1, sym, variance), boxed = false)
++               else t1
++             t match
++               case _: RefinedType => stripAliasRefinements(t2)
++               case _ => t2
++
++       /** As for a type member's own info (below), an alias refinement drops the capture
++        *  set implied by a capability: `{ type Self = handle }` with `handle <: C^` means
++        *  `handle`, not `handle^`, which instantiation would turn into a fresh root that no
++        *  argument's own captures could match.
++        */
++       private def stripAliasRefinements(t: Type): Type = t match
++         case t @ CapturingType(parent, refs) => t.derivedCapturingType(stripAliasRefinements(parent), refs)
++         case t @ RefinedType(parent, rname, rinfo: TypeAlias) =>
++           t.derivedRefinedType(stripAliasRefinements(parent), rname, stripImpliedCaptureSet(rinfo))
++         case t @ RefinedType(parent, rname, rinfo) =>
++           t.derivedRefinedType(stripAliasRefinements(parent), rname, rinfo)
++         case _ => t

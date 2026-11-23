@@ -1,0 +1,26 @@
+orthant 2 patch
+
+@ 1 0 0 005a55cc7c27f16b1725130bd7c49b33
++           // Literals are not rewritten through `Literate` instances here: this
++           // typing is against a wildcard, only to rank overload alternatives.
++           // The cached argument is adapted to the selected alternative's real
++           // formal afterwards, which is where the expected type can speak.
++           val literateCtx = ctx.fresh.setProperty(Typer.LiterateConversion, ())
+
+@ 0 1 0 080a80fe49a1eef50af0398e32e0f0e1
++             cacheTypedArg(arg, arg => typer.typed(norm(arg, idx))(using literateCtx), force = false, NoType))
+
+@ 0 1 0 0b389f275d74bfaa006498f5565a3f47
++       val argCtx0 =
+
+@ 1 0 0 1a0e1c53aad09de507ba0a192079a32f
++       // An annotation's arguments are typed with `InAnnotation` retracted, so
++       // that mode cannot gate anything here. Literals in them must still keep
++       // their ordinary types: they are read back as constants (`@targetName`,
++       // `@implicitNotFound`), and searching for a `Literate` instance while
++       // the annotated symbol is completing can even cycle through a root
++       // import.
++       val argCtx =
++         if ctx.mode.is(Mode.InAnnotation)
++         then argCtx0.fresh.setProperty(Typer.LiterateConversion, ())
++         else argCtx0

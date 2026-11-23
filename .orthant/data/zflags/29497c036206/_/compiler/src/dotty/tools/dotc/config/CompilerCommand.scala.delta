@@ -1,0 +1,7 @@
+orthant 2 patch
+
+@ 1 0 0 0d26d974d6ebb5b108951e2c978107de
++         else if (settings.Zhelp.value) zusageMessage
+
+@ 0 1 0 123c616e9497cdfb0cf8e659b16cee4a
++     val flags = Set(help, Vhelp,  Whelp, Xhelp, Yhelp, Zhelp, showPlugins, XshowPhases)

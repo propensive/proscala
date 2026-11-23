@@ -1,0 +1,8 @@
+orthant 2 patch
+
+@ 0 2 0 0b04b2bd058f7d5414dc05d8ff3ed96c
++     val out = ctx.settings.outputDir.value // to find classes in case of suspended compilation
++     val parent =
++       if Proscala.enabled(Proscala.IsolatedMacros) then IsolatingLoader(getClass.getClassLoader)
++       else getClass.getClassLoader
++     new AbstractFileClassLoader(dirs ++ Seq(out), ctx.settings.javaOutputVersion.value, parent)

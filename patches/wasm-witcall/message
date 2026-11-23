@@ -1,0 +1,10 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 17 Jul 2026 15:22:47 +0200
+
+witcall: structural witImportCall parameter/result types + WASI facades
+
+Builds on the wasm patch. The vendored IR and build config live on main.
+
+Developed with LLM assistance (Claude Code); reviewed by hand per LLM_POLICY.md.
+
+Proscala-Patch: wasm-witcall

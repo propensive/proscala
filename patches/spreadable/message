@@ -1,0 +1,78 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Mon, 3 Aug 2026 16:29:04 +0200
+
+Splice any type with a Spreadable instance into a vararg position
+
+Squashed from 2 commits, oldest first:
+
+* Splice any type with a Spreadable instance into a vararg position
+
+A `T*` parameter is a `Seq[T]` underneath, so only a `Seq` or an `Array` can be
+spliced with `xs*`. An abstraction that hides one — an opaque type alias over a
+`Vector`, as Soundness's prelude uses throughout — cannot be, and neither can an
+unrelated type that merely has elements to offer.
+
+`scala.Spreadable[T]` grants that permission for one type, and only at splice
+positions. It is not a `Conversion`: the typer consults it nowhere else, so the
+abstraction stays opaque under member selection, which is what made a companion
+`Conversion[Series[e], Seq[e]]` unusable — that also resurrects `head`, `apply`
+and the rest of the `Seq` surface the alias exists to hide.
+
+The instance names the `Seq`/`Array` it spreads to as its `Out`. Where the
+representation already is one — the opaque-alias case — the splice elaborates
+to a cast and `spread` is never called, so nothing is allocated and nothing is
+added at erasure; the instance written inside the alias's own file, where the
+alias is transparent, is just the identity. Otherwise `spread` converts, which
+is what admits a type unrelated to the collections.
+
+The cast targets the representation, never the instance's `Out`: an instance
+naming an `Out` its type does not actually have would otherwise be a
+ClassCastException at runtime rather than a compile error.
+
+Elaboration stays on the failure path of `typedWildcardStarArgExpr`, so every
+splice that already typechecks is untouched, as is behaviour inside the alias's
+defining scope. The retype and the implicit search run in a fresh typer state
+that is committed only when the expression really was spreadable, so an
+erroneous splice — a mistyped one inside a quote, pre-typed during speculative
+overload resolution — cannot leak type variables or quote-hole registrations
+into the enclosing state.
+
+`Out` is deliberately unbounded. `<: Seq[?] | Array[?]` would be the honest
+bound but cannot be written: an opaque alias over an `Array` — `IArray` itself —
+does not conform to it outside its defining scope, which is the very case this
+serves. The compiler checks at the splice site instead, seeing through opaque
+aliases as it goes.
+
+`Spreadable` is `@experimental`, which is the whole gate: instances cannot be
+written outside experimental mode, so no separate language import is needed.
+
+Known limitation: under `-Ycc-new` the instance cannot be keyed on a type
+capturing the root capability — `Spreadable[Vector[() => Unit]]` is rejected
+with "type variable T cannot be instantiated ... captures the root capability
+`any`". That is a general capture-checking restriction on type arguments,
+reproducible with a bare `trait Box[T]`. Element types capturing a named
+capability are unaffected.
+
+Replaces the `spliceopaque` patch, which pierced any opaque alias over a
+`Seq`/`Array` unconditionally, with no way for a library to opt out.
+
+Developed with LLM assistance (Claude, Anthropic). Verified against a compiler
+built from this change: aliases over `Vector` and over `IArray`, an unrelated
+class needing a real conversion, and callee type-parameter inference through the
+splice; an alias without an instance gets the stock error and `.head` on one
+with an instance is still not a member; bytecode shows no `spread` call for the
+alias cases; and both of spliceopaque's crash reproductions error cleanly.
+
+Enabled by `-Z:spreadable-varargs`; without it, upstream's code runs at every site this
+patch touches.
+
+* Ship Spreadable in the supplementary proscala-library jar
+
+The standard library additions of the fork live under library-proscala/src and
+are built into their own jar (proscala-library, plus a Scala.js variant), so the
+scala-library and scalajs-scalalib jars are byte-identical to what upstream
+builds from the same tree. The compiler looks the class up by name and runs
+without it.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: spreadable

@@ -1,0 +1,37 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Mon, 9 Nov 2026 20:09:03 +0900
+
+Give a method body its repeated parameters through a Gatherable instance
+
+A repeated parameter `xs: T*` is a `Seq[T]` in the body of its method. Code
+whose collections are not the standard library's — Soundness hides those
+behind opaque aliases — must convert every such parameter by hand before it
+can use it.
+
+Under -Zgatherable-varargs, desugaring rewrites
+
+    def f(xs: T*) = body
+
+to
+
+    def f(xs: T*) =
+      val xs$1 = xs
+      { val xs = scala.Gatherable.gather(xs$1); body }
+
+so the body sees `xs` as the `Out` of the `scala.Gatherable[T]` instance in
+scope at the definition, converted once on entry. The implicit search is the
+typer's own, at the parameter, and the method does not compile if no instance
+is in scope. The signature is unchanged, so callers are unaffected whether or
+not they are compiled with the flag.
+
+Constructors, compiler-generated methods, macros, `inline` parameters and
+by-name repeated parameters are left as upstream has them.
+
+`Gatherable` ships in the supplementary proscala-library jar. The conversion
+goes through the method `Gatherable.gather` rather than the instance's own
+member because, under capture checking, a member of a trait compiled without
+it cannot be applied at an element type that captures a capability, whereas a
+polymorphic method can.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: gatherable

@@ -1,0 +1,7 @@
+orthant 2 patch
+
+@ 1 0 0 0273539629d462870557f1793718e01a
++   // Looked up leniently: the annotation ships in Proscala's supplementary library
++   // (proscala-library), which need not be on the classpath; without it no given
++   // can carry the annotation, so the search-failure logic never engages.
++   @tu lazy val DiagnosticAnnot: Symbol = getClassIfDefined("scala.annotation.internal.diagnostic")

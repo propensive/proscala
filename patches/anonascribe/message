@@ -1,0 +1,17 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 13 Oct 2026 12:20:03 +0200
+
+Treat an anonymous class instance's ascription as inferred
+
+Typer ascribes an anonymous class instance with the type it avoids the class
+by, as an InferredTypeTree. Read back from TASTy, in an inline body, it is a
+plain TypeTree, and Setup mapped it as a declared type: a bare stateful type
+became read-only (`Stream^{any.rd}`), so an instance returned as an exclusive
+`Stream^` failed at every inline site in another unit (coaxial's
+`wasiSockets`). No source can write `new $anon()`, so Setup now treats such
+an ascription as inferred.
+
+Developed with LLM assistance (Claude Code).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Proscala-Patch: anonascribe

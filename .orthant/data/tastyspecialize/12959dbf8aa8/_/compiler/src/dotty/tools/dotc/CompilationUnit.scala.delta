@@ -1,0 +1,24 @@
+orthant 2 patch
+
+@ 0 1 0 1ca5dd217e056af814f369c05e413b6e
++       unit1.needsInlining = force.containsInline || force.containsSpecialization
++       unit1.hasSpecializations = force.containsSpecialization
+
+@ 1 0 0 10985ef946f4539d194c3c2a5d3a9456
++     /** Does the tree declare or extend an inline trait, or summon a `Specialized`
++      *  instance? These are the conditions under which `CheckInlineTraits` sets
++      *  `hasSpecializations` for a unit compiled from source; a unit read from TASTy
++      *  does not pass through that phase.
++      */
++     var containsSpecialization = false
+
+@ 1 0 0 01c2cc1f4d9df0e412197adcfd178373
++       tree match
++         case tree: tpd.TypeDef if tree.symbol.isInlineTrait =>
++           containsSpecialization = true
++         case tree: tpd.Template
++         if tree.parents.exists(parent => inlines.Inlines.symbolFromParent(parent).isInlineTrait) =>
++           containsSpecialization = true
++         case tree: tpd.Ident if tree.symbol == defn.SpecializedModule_apply =>
++           containsSpecialization = true
++         case _ =>

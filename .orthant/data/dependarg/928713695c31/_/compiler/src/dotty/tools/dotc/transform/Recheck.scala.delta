@@ -1,0 +1,13 @@
+orthant 2 patch
+
+@ 0 2 0 008be22d295685a9135be7a1c4e1261a
++                 if fntpe.isParamDependent then
++                   // Substitute the argument's stable path type (as Typer did) rather than
++                   // the capture-adapted rechecked type: box adaptation can widen/dealias a
++                   // singleton argument, and substituting the widened type turns a later
++                   // formal's `x.Result` selection into a type projection that the actual
++                   // argument no longer conforms to. This mirrors the singleton conservation
++                   // recheckApplication#instArgs already performs for dependent results.
++                   val substArg =
++                     if !argType.isSingleton && arg.tpe.isStable then arg.tpe else argType
++                   formals.tail.map(_.substParam(prefs.head, substArg))

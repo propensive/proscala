@@ -1,0 +1,100 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 28 Aug 2026 12:45:09 +0200
+
+Re-type literals through a Literate instance in scope
+
+Squashed from 7 commits, oldest first:
+
+* Literate: re-type literals through user-provided instances (prototype)
+
+A scala.Literate[From] instance in scope grants permission for a literal
+of type From to be re-typed as the instance's Result — by convention a
+refinement carrying the literal's singleton type, e.g.
+Text { type Original = "foo" } — wherever the expected type does not
+already accept the literal as it is. String literals are rewritten at
+typedLiteral, Int/Double literals at typedNumber's fallback (the
+expected-type-driven FromDigits cases take precedence). The rewrite is
+speculative with full rollback, and is suppressed in patterns, type
+positions, annotations, inline-val rhs, inline expansion, and during
+overload-resolution argument pre-typing, where arguments are ranked
+against a wildcard. With no instance in scope, behaviour is unchanged.
+
+convert is deliberately not a trait member (a deferred inline method
+cannot be invoked through the trait type): instances are named classes
+with a concrete inline convert, resolved on the instance's own type, so
+the conversion erases to nothing.
+
+Developed with LLM assistance (Claude).
+
+* Literate: convert on member selection unconditionally
+
+With an instance in scope, the instance's API is the literal's API: a
+selection on a literal always converts, so a partial String method
+('foo'.charAt(5)) is a compile error rather than a latent runtime
+exception; an ascription (('foo': String).charAt(0)) remains the
+explicit way to the underlying API. WildcardSelectionProto — how
+singleton types (type Topic = 42, val x: 'foo') type their path — names
+no member and keeps the literal.
+
+Developed with LLM assistance (Claude).
+
+* Literate: force instance type variables before committing a rewrite
+
+A polymorphic given (given literate: [str <: String & Singleton] =>
+TextLiterate[str]) leaves fresh type variables in the speculatively
+typed conversion tree; nothing on this re-entrant path interpolates
+them, so they escaped into committed trees — surfacing as 'Required:
+str' errors in inline method bodies and 'error when pickling type str'
+elsewhere. Force both the instance's and the conversion's types with
+ForceDegree.all (the argument constrains the variable to the literal's
+singleton), and refuse the rewrite if anything remains undefined.
+
+Developed with LLM assistance (Claude).
+
+* Literate: exempt synthesized members from literal rewriting
+
+Case-class and enum toString bodies are literals with inferred result
+types; converting them broke the Any.toString override. Skip when the
+owner is Synthetic, except anonymous functions, whose bodies are user
+code.
+
+Developed with LLM assistance (Claude).
+
+* Literate: do not rewrite literals in quote patterns; guard against completion cycles
+
+Two fixes found by the Soundness on-state trial.
+
+A literal in a quote pattern is matched structurally against the literal
+a macro's caller wrote. Converting it made the pattern expect the
+instance's target type, so it silently stopped matching: telekinesis's
+'{("", $status: Http.Status)} case fell through to its generic
+header case, and every named-argument HTTP response failed to compile
+with a misleading message. This is the first defect that changes
+behaviour rather than merely rejecting code. Gate on
+Mode.isQuotedPattern; a 12-line reproduction is in the spike.
+
+Searching for an instance forces whatever the search touches, including
+the root import that supplies it. For a literal in an annotation on a
+symbol of the importing unit, that cycles. Declining a rewrite is always
+sound, so a TypeError during the search now leaves the literal alone.
+Annotation arguments are also suppressed directly in ProtoTypes.typedArg,
+which retracts Mode.InAnnotation and so defeated the mode gate.
+
+Developed with LLM assistance (Claude).
+
+* Enable literal re-typing with -Z:literate-literals
+
+Without the flag, upstream's code runs: a literal keeps its ordinary type
+whether or not a Literate instance is in scope.
+
+* Ship Literate in the supplementary proscala-library jar
+
+The standard library additions of the fork live under library-proscala/src and
+are built into their own jar (proscala-library, plus a Scala.js variant), so the
+scala-library and scalajs-scalalib jars are byte-identical to what upstream
+builds from the same tree. The compiler looks the class up by name and runs
+without it.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: literate

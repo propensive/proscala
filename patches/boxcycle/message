@@ -1,0 +1,15 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 17 Oct 2026 07:07:55 +0200
+
+Guard against cyclic types in boxDeeply
+
+`boxDeeply` recurses into an annotated type's parent, and, for a tracked
+singleton, into the capturing type it makes of it. A parent whose dealiasing
+leads back to the same annotated type — reachable through a cyclic `LazyRef`
+graph, as `Setup`'s type map already guards against — or a capturing type
+that collapses back to the singleton, recursed without bound: the compiler
+died with a stack overflow in capture checking. A type met again on the way
+down is now returned unboxed.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: boxcycle

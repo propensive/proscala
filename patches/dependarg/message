@@ -1,0 +1,27 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 8 Aug 2026 13:09:41 +0200
+
+Conserve stable argument paths in dependent-application rechecking
+
+Rechecking a dependent application substituted the capture-adapted rechecked
+argument type into later formals; box adaptation can widen a stable argument's
+singleton type, and substituting the widened type turns a later formal's
+`x.Result` selection into a type projection that the actual argument no longer
+conforms to. A method whose using evidence selects a member of an earlier
+using parameter through a doubly-nested refining alias (Soundness's
+`value is Multiplicable by value` with `multiplicable.Result =:= value`,
+issue #1411) fails at every non-inline call site under capture checking —
+including the synthesized export forwarders of the soundness package.
+Substituting the argument's stable path (as the typer did) mirrors the
+singleton conservation recheckApplication#instArgs already performs for
+dependent result types.
+
+Developed with LLM assistance (Claude); 8-line reproduction in the feature
+documentation.
+
+The same conservation is applied on the result side: recheckApplication's
+instArgs previously conserved stable paths only for unboxed capturing
+rechecked types, so a stable argument widened to a plain non-capturing type
+still turned a dependent result's member selection into a projection.
+
+Proscala-Patch: dependarg

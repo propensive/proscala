@@ -1,0 +1,20 @@
+orthant 2 patch
+
+@ 0 15 0 12215743cc20c32e1c5e3f574411bf0d
++         if (witCodeGen.isWitImportCall(sym)) {
++           genWitImportCallPrimitive(tree)
++         } else primitives.getPrimitive(tree) match
++           case Some(code) =>
++             genPrimitiveOp(tree, isStat, code)
++           case None =>
++             if (Erasure.Boxing.isBox(sym)) {
++               // Box a primitive value (cannot be Unit)
++               val arg = args.head
++               makePrimitiveBox(genExpr(arg), arg.tpe)
++             } else if (Erasure.Boxing.isUnbox(sym)) {
++               // Unbox a primitive value (cannot be Unit)
++               val arg = args.head
++               makePrimitiveUnbox(genExpr(arg), tree.tpe)
++             } else {
++               genNormalApply(tree, isStat)
++             }

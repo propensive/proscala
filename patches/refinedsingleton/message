@@ -1,0 +1,28 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 14 Nov 2026 19:26:05 +0900
+
+Check a refinement against the tracked value itself, not its widened type
+
+Under capture checking a tracked value did not conform to a refinement of its
+own type which mentions the value:
+
+    def same(reader: Reader^): (Reader { type Topic = reader.Topic })^{reader} = reader
+
+Against a capturing type, the comparer first accounts for the captures of the
+left-hand side, here `{reader}`, and then compares what is left with the
+parent of the right. For a singleton it tried two things: its widened type
+with the capture set stripped, `Reader`, which no longer says which value it
+is, so that `Topic = reader.Topic` cannot be shown; and the singleton as it
+stands, which is not a subtype of the pure class beneath the refinement,
+because its capture set, though already accounted for, is not empty. So the
+conformance failed with "capability `any` cannot flow into capture set
+{reader}", though it holds without capture checking.
+
+Where the parent is a refined type, a singleton is now also compared in two
+parts: its widened, stripped type with what lies beneath the refinements, and
+each refinement with the member of the singleton itself.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: refinedsingleton

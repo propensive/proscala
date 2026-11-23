@@ -1,0 +1,54 @@
+orthant 2 patch
+
+@ 2 0 0 08ad82b77dfc9d66144fd7f94eaed06f
++   /** `tp` with the aliases in it followed, at any depth: an applied match alias reduced
++    *  where it can be, and any other alias replaced by what it stands for. `widenDealias`
++    *  does this only at the top of a type, so an opaque type named through an alias
++    *  elsewhere would not be found in it:
++    *   - a `Cell[String]` that reduces to `Cell.Ref[String]` does not mention `Cell.Ref`.
++    *     Typer leaves no such type in a tree, since it simplifies the type of every tree
++    *     it types, but the type of a definition read from TASTy is as it was written;
++    *   - an `O { type Form = Int }` or a `List[O]`, where `O` is an alias of `Ops.O`
++    *     (such as an `export Ops.O` makes), does not mention `Ops`.
++    *
++    *  An opaque type is where the following stops, also where it is an alias: inside
++    *  the scope that declares it, and seen through the opaque proxy of an enclosing
++    *  inline call (`$proxy1.Scribe[Char]`, in an argument that call passes on to another
++    *  inline method). It names its owner already, and replacing it by its representation
++    *  would cast the argument to a type of the representation, which an opaque value
++    *  made in the inlined body does not conform to.
++    */
++   private def followAliases(tp: Type)(using Context): Type =
++     val follow = new TypeMap:
++       def apply(t: Type) = t match
++         case t: TypeRef if t.symbol.isOpaqueAlias => t
++         case AppliedType(tycon: TypeRef, _) if tycon.symbol.isOpaqueAlias => mapOver(t)
++         case t: AppliedType if t.isMatchAlias =>
++           val reduced = t.tryNormalize
++           if reduced.exists then apply(reduced) else mapOver(t)
++         case t: (TypeRef | AppliedType) =>
++           val dealiased = t.dealiasKeepAnnots
++           if dealiased ne t then apply(dealiased) else mapOver(t)
++         case _ => mapOver(t)
++     follow(tp)
++
+
+@ 1 0 0 05a6130b9288c8620a91f5e1d3888951
++    *
++    *  The aliases in the argument's type are followed (see `followAliases`) only if the
++    *  type as it stands mentions no such object. Where it does, the argument is cast
++    *  exactly as it always was, and an alias elsewhere in its type keeps its name:
++    *  with `type Bytes = Frozen[Byte]`, a `Frozen[Bytes]` is seen as `$proxy1.Frozen[Bytes]`,
++    *  whose elements are still the `Bytes` the caller expects back.
+
+@ 1 0 0 12ac33f143666279174c106dab5da6d2
++     val cast = castToOpaqueProxies(arg, argType)
++     if cast ne arg then cast
++     else
++       val followed = followAliases(argType)
++       if followed ne argType then castToOpaqueProxies(arg, followed) else arg
++
++   /** `arg`, cast to `argType` as seen through the opaque proxies of the objects it
++    *  mentions, or as it is if it mentions none.
++    */
++   private def castToOpaqueProxies(arg: Tree, argType: Type)(using Context): Tree =

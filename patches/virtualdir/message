@@ -1,0 +1,15 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 8 Aug 2026 14:53:45 +0200
+
+Backport the io.virtualDirectory factory from the 3.10 stream
+
+The 3.10 stream's "Improve IO package encapsulation" (upstream da99eb87b0)
+made the VirtualDirectory constructor private[io] and introduced a package-
+level factory as the sanctioned way to obtain an in-memory directory.
+Backporting the factory lets tools that drive the compiler (Soundness's
+anthology) compile against the same API on both streams, instead of relying
+on the constructor where it happens to be public.
+
+Developed with LLM assistance (Claude).
+
+Proscala-Patch: virtualdir

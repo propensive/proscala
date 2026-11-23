@@ -1,0 +1,8 @@
+orthant 2 patch
+
+@ 1 0 0 037edec11877a8130f2c947380d17dc6
++ import dotty.tools.dotc.reporting.BoltCodes
+
+@ 0 1 0 04ceba3706cf40da01bc7d172078ff48
++       if BoltCodes.enabled && BoltCodes.applies(diag.level, diag.msg) then lspDiag.setCode(BoltCodes.code(diag.msg))
++       else lspDiag.setCode(diag.msg.errorId.errorNumber)

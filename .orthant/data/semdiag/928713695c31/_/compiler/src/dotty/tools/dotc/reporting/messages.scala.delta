@@ -1,0 +1,178 @@
+orthant 2 patch
+
+@ 0 1 0 062a58a74e0059350e9b8f5dbbd6af71
++ import Formatting.{hl, delay, Styled, dclOf, locatedOf, fullNameOf}
+
+@ 0 3 0 0e6026224adcb28b1ba445761e66c60d
++     if DiagnosticMarkup.active then
++       // interpolate the types themselves so that they are marked up; a colored
++       // diff of pre-rendered strings is useless to a structured consumer
++       i"""|${preface}Found:    ${found2.normalized}
++           |Required: ${expected2.normalized}${reported.notes}"""
++     else
++       val (foundStr, expectedStr) = Formatting.typeDiff(found2.normalized, expected2.normalized)
++       i"""|${preface}Found:    $foundStr
++           |Required: $expectedStr${reported.notes}"""
+
+@ 0 1 0 06ffb37dad791c9f01cbb94a8bd7515a
++     val treeStr = inTree.map(x => i"\nTree:\n\n$x\n").getOrElse("")
+
+@ 0 1 0 084c8ce1b73cf01518a2632656ae6a75
++         |    object $name extends $selfTpt"""
+
+@ 0 4 0 12e46e38bf5889fd19f62e15d1e294eb
++     val expectedArgString = i"${expectedArgs.map(_.paramName.unexpandedName)}"
++     val actualArgString = i"$actual"
+
+@ 0 3 0 057276bb5198e7161031ff0747dc5ed9
++         case NoSymbol => Styled(fntpe, "")(fntpe.show)
++         case symbol   => fullNameOf(symbol)
++       catch case ex: Exception => Styled(fntpe, "")(fntpe.show)
+
+@ 0 1 0 026b3df7b2da9a8f16ef24cb1b7e0788
++     val existingDecl: String = i"${existing.map(dclOf)}%  \n%"
+
+@ 0 1 0 1d538193bad6d41e1653b50af653d36f
++         |  ${dclOf(member)}
+
+@ 0 1 0 1aa6c126597704560430f0828cd5582c
++     val parents = cls.info.parents.map(_.typeSymbol.name).sortBy(_.show)
+
+@ 0 1 0 1ef4456140fe659e0c0a361016917921
++         |  - ${parents}%\n  - %
+
+@ 0 2 0 0d9847d959e75ccd13dca86f6afbd7ec
++   def clsString(using Context) = locatedOf(proxy.symbol.companionClass)
++   def shadowedString(using Context) = locatedOf(shadowed.termSymbol)
+
+@ 0 1 0 0f3eac18f35ad2f609e163cfc74ba36c
++     val methStr = if (meth.exists) i"${locatedOf(meth)}" else "expression"
+
+@ 0 2 0 01f6bafbefa807ab167a302f06c4b38e
++       if (params.size == 1) i"a type parameter ${params.head}"
++       else i"type parameters ${params}%, %"
+
+@ 0 1 0 17c1596c4348cfef164765d35d134129
++     val symDcl =
++       if sym.exists then i"\n\n  ${Styled(sym, "dcl")(hl(sym.showDcl(using ctx.withoutColors)))}"
++       else ""
+
+@ 0 1 0 1089798cc14b38290e403e41d17a93cf
++     def msg(using Context) = i"""not enough arguments for constructor Enum: ${hl("(name: String, ordinal: Int)")}: ${Styled(parent, "")(hl(parent.show))}"""
+
+@ 0 1 0 1f551b3f385ce1e90aa9afe8516b53e8
++   def msg(using Context) = i"""$sym cannot have the same name as ${locatedOf(cls)} -- """ + reasonMessage
+
+@ 0 1 0 0788e1b5621989f60dfa95d48522b3cd
++   def msg(using Context) = i"Type parameter $undefinedName is undefined. Expected one of ${definedNames}%, %."
+
+@ 0 1 0 18a8e2d58acd50fc00e20d647975dadf
++         |refers to $denotationName in ${denotationOwner.showKind} ${fullNameOf(denotationOwner)} which is not available.
+
+@ 0 1 0 18b72b313b8342aa1d45e02d7a4ee4a9
++   def msg(using Context) = i"${locatedOf(symbol)} has an unparsable version number: $errorMessage"
+
+@ 2 1 0 13d0753d8cc4b7f716b162cb2ae64d2c
++     i"""The ${locatedOf(symbol)} is marked with ${hl("@migration")} indicating it has changed semantics
+
+@ 0 1 0 127f6ad85ea1f62b115b123fddda61da
++   def msg(using Context) = i"${locatedOf(symbol)} has changed semantics in version $migrationVersion: $migrationMessage"
+
+@ 2 1 0 12c8f17ce72793a805148f4410e4d6ed
++     i"""The ${locatedOf(symbol)} is marked with ${hl("@migration")} indicating it has changed semantics
+
+@ 0 2 0 113090c8a66de213119af55f572162d2
++           |${dclOf(previousDecl)} ${symLocation(previousDecl)} and
++           |${dclOf(decl)} ${symLocation(decl)}
+
+@ 0 2 0 1a71a3970fb2788d0988240dfbd01b1f
++         |  ${Styled(previousDecl, "dcl")(atPhase(typerPhase)(previousDecl.showDcl))}
++         |  ${Styled(decl, "dcl")(atPhase(typerPhase)(decl.showDcl))}
+
+@ 0 1 0 1c000ff7763d42ff0b14afcc9145dfdb
++         |      ${Styled(decl, "dcl")(atPhase(typerPhase)(decl.showDcl))}
+
+@ 0 1 0 10ab72fdd090942717e33efd70aea77c
++   def msg(using Context) = i"$sel is imported twice on the same import line."
+
+@ 0 1 0 0c9907f87e84de0109635bee18a0ca77
++     i"$sel is unimported $otherStr on the same import line."
+
+@ 0 1 0 09bee606cc56f08c14c7113957ea23b1
++     i"This type test will never return a result since the scrutinee type $scrutTp does not contain any value."
+
+@ 0 1 0 0b16d5b2539183ca16bc2c184c70b537
++     i"$cls cannot extend from a parent that is derived via its own parameters"
+
+@ 0 2 0 084915ecb56673080188a53c240962dd
++        |The parent class/trait that $cls extends from is obtained from
++        |the parameter of $cls. This is disallowed in order to prevent
+
+@ 0 1 0 0f1efc2222f6f3c0152cf78d9b6b03d4
++        |than obtaining it from the parameters of $cls.
+
+@ 0 1 0 1cc225885ffcabf40fce524cc920421e
++     i"""no enclosing class or object is named '${Styled(name, "")(hl(name.show))}'"""
+
+@ 0 1 0 0a120786d1f4d8671faadd3009850e59
++     |The class or object named '${Styled(name, "")(hl(name.show))}' was used as a visibility
+
+@ 0 1 0 0a4f68ae612740cc1b4fd12ee4dd6ffc
++     |'${Styled(name, "")(hl(name.show))}' is not misspelled and has been imported into the
+
+@ 0 1 0 045bc6ad68dc561e0d2d512d5fb05721
++         | `$mdef` is not a valid expression here.
+
+@ 0 1 0 0e89e6a440a5b217121e1a87519cfa97
++     i"""|The pattern "$tree" provided in the ${hl("case")} expression of the ${hl("summonFrom")},
+
+@ 0 1 0 0a6a5cd896b43d7f1eed91f66625a0b1
++         |`$impl` should either contain an implemented type or at least one extension method.
+
+@ 0 1 0 098cb63fd89b0bd91ff3e7a58cac81a4
++     i"  ${locatedOf(query._1.ref.symbol)}  for  ${query._2}}"
+
+@ 0 1 0 1f088840a878c344180c3cab5859a1df
++               |    ${Styled(original, "")(original.show.replace("\n", "\n    "))}
+
+@ 0 1 0 14a1c6c3139e44ba0a71138f0df216c3
++           i"\n\nNote: ${locatedOf(s.ref.symbol)} was not considered because it was not imported with `import given`."
+
+@ 0 1 0 049730ae5283f3cf0cca278f296a9b19
++           i"\n- ${dclOf(imp.symbol)}${convs.map(c => i"\n    - ${dclOf(c.symbol)}").mkString}"
+
+@ 0 2 0 18011c332e7c4cbc0deec4c15e27b70f
++             i"The following implicits in scope can be implicitly converted to $pt:" +
++             ignoredConvertibleImplicits.map { imp => i"\n- ${dclOf(imp.symbol)}"}.mkString
+
+@ 0 1 0 00f9cb1f8d86e282097983e477385919
++         i"${if (sym.owner == pre.typeSymbol) Styled(sym, "")(sym.show) else locatedOf(sym)} cannot"
+
+@ 0 2 0 0775387e79ec68420e460263d9adbe5a
++             if owner.is(Final) then i"${locatedOf(alt.privateWithin)}"
++             else i"${locatedOf(alt.privateWithin)}, or ${locatedOf(owner)} or one of its subclasses"
+
+@ 0 2 0 1ffce5d11767beba1ac88668837f8030
++             if owner.is(Final) then i"${locatedOf(owner)}"
++             else i"${locatedOf(owner)} or one of its subclasses"
+
+@ 0 1 0 1cd4abe03097727d070d039c57ffbfce
++           i"${locatedOf(alt.privateWithin.orElse(owner))}"
+
+@ 0 1 0 17b60794a9a19d3e086148d9100182af
++        |  @publicInBinary private[$within] $accessorTree
+
+@ 0 1 0 0f2fd7e685688c4617850bfd7e750c33
++     val act = i"$tpt(${args}%, %)"
+
+@ 0 1 0 091d17643f88783f1c125873b917616d
++       i"Type parameter ${shadow.name} for $parent shadows the type defined by ${locatedOf(shadowed)}"
+
+@ 0 1 0 0612d1f604f2306315cfebeb65045e1d
++     i"${locatedOf(shadow)} shadows field ${shadowed.name} inherited from ${shadowed.owner}"
+
+@ 0 1 0 1c36f1cd5d86dc60012c73d7156b4bf2
++     i"${Styled(sym, "dcl")(sym.asSeenFrom(clazz.thisType).mapInfo(_.withCleanParamNames).showDcl)}"
+
+@ 0 1 0 1fd36c81f8fb28fb1508035ea24bf643
++       val notDefined = i"${showDecl(single)} in ${locatedOf(single.owner)} is not defined"

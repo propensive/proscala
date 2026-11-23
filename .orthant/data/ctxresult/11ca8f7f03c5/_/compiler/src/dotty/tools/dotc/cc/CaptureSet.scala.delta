@@ -1,0 +1,12 @@
+orthant 2 patch
+
+@ 1 0 0 15d6ed24229d83bd18d9cee6d8a103f6
++           // A capability bound in a closure that implements a method's context-function
++           // result chain is at the method's level: erasure flattens those closures'
++           // parameters into the method's parameter list (see CCState.contextResultClosures).
++           val adjustedVis = ccState.contextResultClosures.lookup(elemVis) match
++             case meth: Symbol => meth
++             case null => elemVis
+
+@ 1 0 0 093aec8a98f64aa70eef5ae656baaa8f
++           || adjustedVis == owner

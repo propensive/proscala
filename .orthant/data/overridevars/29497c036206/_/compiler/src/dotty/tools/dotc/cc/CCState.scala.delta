@@ -1,0 +1,22 @@
+orthant 2 patch
+
+@ 2 0 0 0935423f0ef7311c0ffce65d00a8c9e1
++   private var atomicIncludes: Boolean = false
++
+
+@ 2 0 0 103092458780539d1261c3c469b9d276
++   /** Run `op` so that including an element in a capture set either succeeds or
++    *  leaves no trace. Otherwise the sets depending on a variable keep an element they
++    *  accepted before another of them rejected it, and a comparison that is tried a second
++    *  way finds it there. That goes unnoticed where a failed comparison is an error, but
++    *  not where it is an attempt, as in the unification done before override checking.
++    */
++   inline def withAtomicIncludes[T](op: => T)(using Context): T =
++     val ccs = ccState
++     val saved = ccs.atomicIncludes
++     ccs.atomicIncludes = true
++     try op finally ccs.atomicIncludes = saved
++
++   /** Should a failed inclusion be undone in the sets it had already reached? */
++   def atomicIncludes(using Context): Boolean = ccState.atomicIncludes
++

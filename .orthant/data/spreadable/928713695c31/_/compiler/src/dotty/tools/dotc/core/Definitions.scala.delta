@@ -1,0 +1,8 @@
+orthant 2 patch
+
+@ 2 0 0 06f90c68901a228c05046006dc2b50ab
++   // Looked up leniently: a splice consults it only on the failure path, so a
++   // library without `scala.Spreadable` simply never matches.
++   @tu lazy val SpreadableClass: Symbol = getClassIfDefined("scala.Spreadable")
++     def Spreadable_spread(using Context): Symbol = SpreadableClass.requiredMethod(nme.spread)
++

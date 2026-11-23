@@ -1,0 +1,37 @@
+orthant 2 patch
+
+@ 0 5 0 117b2bb12b3b71cd11c26d3530f76b16
++     // Guards against a cycle: an annotated type's parent is boxed by recursing into it, and a
++     // tracked singleton by recursing into the capturing type made of it. A parent whose
++     // dealiasing leads back to the same annotated type — reachable through a cyclic `LazyRef`
++     // graph, as `Setup`'s type map guards against — or a capturing type that collapses back to
++     // the singleton, would otherwise recurse without bound. A type met again on the way down
++     // is returned unboxed: nothing new remains to box in it.
++     val boxing = util.HashSet[Type]()
++     def recur(tp: Type): Type =
++       val tp1 = tp.dealiasKeepAnnotsAndOpaques
++       if boxing.contains(tp) || boxing.contains(tp1) then tp
++       else
++         boxing += tp
++         boxing += tp1
++         try recur1(tp, tp1)
++         finally
++           boxing.remove(tp)
++           boxing.remove(tp1)
++     def recur1(tp: Type, tp1: Type): Type = tp1 match
++       case tp1 @ CapturingType(parent, refs) =>
++         if tp1.isBoxed || parent.derivesFromCapSet then tp1
++         else tp1.boxed
++       case tp1 @ AnnotatedType(parent, ann: RetainingAnnotation)
+
+@ 0 4 0 1dc1dc2f3892534f08da0ac3d6fb8839
++       case tp1 @ AnnotatedType(parent, ann) =>
++         tp1.derivedAnnotatedType(box(parent), ann)
++       case tp1: (Capability & SingletonType) if tp1.isTrackableRef && !tp1.isAlwaysPure =>
++         recur(CapturingType(tp1, CaptureSet(tp1)))
+
+@ 1 1 0 0e577d80a09a498e1e3d7838da224124
++     def box(tp: Type): Type = tp match
+
+@ 1 0 0 0d0d3ec6d897ca4908da46cb19062bc5
++     box(tp)

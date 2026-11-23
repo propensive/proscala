@@ -1,0 +1,53 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 13 Nov 2026 15:42:17 +0900
+
+Follow aliases in an inline call's arguments before exposing opaque types
+
+When an inline method defined beside an opaque type is called, the inliner
+looks through each value argument's type for references to the object that
+owns the opaque type, and casts the argument to the same type seen through a
+proxy that exposes the alias, so that the inlined body can use the argument as
+its underlying type. It looked at the widened, dealiased type, which follows
+aliases only at the top of the type. An opaque type named through an alias
+anywhere else was not found, the argument was not cast, and the body was typed
+against the still-opaque type: "expression does not take parameters", or a
+mismatch against the underlying type.
+
+Two kinds of alias were missed.
+
+An applied match alias is not dealiased at all: for
+
+    type Cell[value] = value match
+      case Int => Cell.Whole
+      case _   => Cell.Ref[value]
+
+an argument of type `Cell[String]` mentions neither `Cell.Ref` nor the object
+`Cell`. Typer hides this, because it simplifies the type of every tree it
+types, the declared type of a definition included, and simplifying reduces
+match aliases; a definition read from TASTy keeps its type as written. So the
+call failed whenever the argument was a member of a separately compiled class
+declared with such a type, and for every such call in a unit recompiled with
+`-from-tasty`.
+
+An ordinary alias below the top is left alone: with `export Ops.O`, an
+argument of type `O { type Form = Int }` or `List[O]` names the opaque type
+`Ops.O` only through the alias the export made, in a single compilation too.
+
+The argument's type now has its aliases followed at any depth, match aliases
+reduced where they can be, before the opaque references are sought in it.
+
+The following is confined to what upstream missed, in two ways. It is done only
+for an argument whose type, as it stands, mentions no object with opaque
+members: one that does is cast exactly as upstream casts it, so that with
+`type Bytes = Frozen[Byte]` a `Frozen[Bytes]` keeps `Bytes` as its element type
+and is not given `Array[Byte]` elements, which separation checking rejects
+where the caller expects a `Frozen[Byte]` back. And it stops at an opaque type
+even where that is an alias, as it is through the opaque proxy of an enclosing
+inline call: a lambda over `$proxy1.Scribe[Char]`, passed on to a second inline
+method, was otherwise cast to a function of the representation, and could no
+longer be applied to an opaque value made in the inlined body.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: matchopaque

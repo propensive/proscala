@@ -1,0 +1,4 @@
+orthant 2 patch
+
+@ 0 1 0 1ecfda6b864df8211bfa20a2875dca8d
++     String diagnosticCode = dotty.tools.dotc.reporting.BoltCodes.diagnosticCode(dia, ctx);

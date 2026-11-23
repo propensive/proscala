@@ -8,7 +8,7 @@
 #
 # <tree> is a tree made by bin/proscala-tree and built with `make` (its
 # distribution, release/<name>/, is found inside it). For every patch the tree
-# carries, in patches/series order:
+# carries, in the store's order:
 #
 #   reproductions  each doc/<patch>/repro*/test.sh — an executable spec (below)
 #                  — is run in a scratch copy of its directory

@@ -1,0 +1,24 @@
+orthant 2 patch
+
+@ 0 1 0 1b4781c75d6a83ab0cf21a51024c311a
++     private def transformTT(tree: TypeTree, sym: Symbol, boxed: Boolean, typeArgFormal: Type = NoType, inferred: Boolean = false)(using Context): Unit =
+
+@ 0 1 0 04635a8a8f8375bf013a4b56d2098082
++           if inferred || tree.isInferred || sym.is(ModuleVal)
+
+@ 2 0 0 05a542e9817b23d904160d025421e83c
++         case tree @ Typed(expr, tpt: TypeTree) if isAnonymousInstance(expr) =>
++           // Typer ascribes an anonymous class instance with the type it avoids the class by.
++           // That type is inferred, but read back from TASTy, in an inline body, it is a
++           // plain TypeTree.
++           traverse(expr)
++           transformTT(tpt, NoSymbol, boxed = false, inferred = true)
++
+
+@ 2 0 0 1783cd90b66b520109f1e794409687b2
++     /** Is `tree` the instantiation `new $anon()` of an anonymous class? */
++     private def isAnonymousInstance(tree: Tree)(using Context): Boolean =
++       tree.tpe.typeSymbol.isAnonymousClass && (methPart(tree) match
++         case Select(New(_), nme.CONSTRUCTOR) => true
++         case _ => false)
++

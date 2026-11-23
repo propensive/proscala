@@ -1,0 +1,27 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 14 Nov 2026 18:16:37 +0900
+
+Mark a unit read from TASTy which uses inline traits as having specializations
+
+`CompilationUnit.hasSpecializations` says that a unit declares or extends an
+inline trait. The phases which finish the work of inline traits after
+pickling all do nothing without it: `PruneInlineTraits` and
+`PruneInlinedMethods`, which empty the trait's own definitions and mark it as
+having no initializer, and `Erasure`'s treatment of a specialized class. It is
+set in one place, the frontend phase `CheckInlineTraits`, which a unit read
+from TASTy does not pass through.
+
+So a unit declaring an inline trait did not recompile from its TASTy: the
+trait's body kept its inline calls, and `Erasure` reported each as "declared
+as `inline`, but was not inlined". A class extending an inline trait did
+recompile, to a constructor calling the trait's `$init$`, which does not
+exist: a `NoSuchMethodError` when the class is instantiated.
+
+`CompilationUnit.Force`, which already works out `needsInlining` and
+`needsStaging` for an unpickled tree, now works out `hasSpecializations` too,
+from the conditions `CheckInlineTraits` uses.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: tastyspecialize

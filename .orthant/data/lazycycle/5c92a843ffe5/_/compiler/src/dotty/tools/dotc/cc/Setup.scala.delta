@@ -1,0 +1,10 @@
+orthant 2 patch
+
+@ 2 0 0 0b6d2f22a00a32601be6355f6d0daa5b
++     // Guards against cyclic `LazyRef` graphs: `mapConserveSuper` forces a LazyRef's
++     // underlying type eagerly, and a reference cycle (reachable e.g. through denotations
++     // surviving a compilation-suspension re-run) would otherwise recurse without bound.
++     // A re-entered LazyRef is returned unmapped; its underlying type is transformed when
++     // it is forced in a context outside this traversal.
++     protected val mappingLazyRefs = mutable.HashSet[Type]()
++

@@ -1,0 +1,8 @@
+orthant 2 patch
+
+@ 0 1 0 1dfdf072cc627359112b9aa1e6de7df0
++           anonfun.ensureCompleted() // this will recheck def, if its result type is inferred
++           // A closure with a declared result type, as every closure read from TASTy in an
++           // inline body has, is not rechecked by its completion
++           if config.Proscala.enabled(config.Proscala.InlinedClosures) && !skipRecheck(anonfun)
++           then recheckDef(mdef, anonfun)

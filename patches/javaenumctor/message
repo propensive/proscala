@@ -1,0 +1,24 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sun, 15 Nov 2026 19:49:08 +0900
+
+Give java.lang.Enum its no-argument constructor whichever root loads it
+
+An enum may write its parent as `java.lang.Enum[X]`, without the name and
+ordinal that `CompleteJavaEnums` adds later. `Definitions` makes that typecheck
+by replacing the loader of `java.lang.Enum` with one that, after reading the
+class file, strips the parameters from its primary constructor and enters a
+copy with both. But the class file is read for the class and its companion
+together, by whichever is completed first, and only the class got the new
+loader. A reference to a static member, such as `java.lang.Enum.valueOf`,
+completes the companion first, the class is left with only its two-parameter
+constructor, and an enum typed after it fails with "not enough arguments" from
+source, or "wrong number of arguments" when it is read from TASTy after a unit
+which uses the static member.
+
+The module class now gets the new loader too, as a proxy, and the constructors
+are adjusted in `doComplete`, which runs once for both roots.
+
+Written with LLM assistance (Claude Code).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Proscala-Patch: javaenumctor

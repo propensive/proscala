@@ -1,0 +1,8 @@
+orthant 2 patch
+
+@ 1 0 0 02f249c90a27d09b15b69d115598dad4
++           case tree: Ident =>
++             // an inherited member referred to by its name alone, which is how it is typed
++             tree.tpe match
++               case TermRef(prefix: ThisType, _) => prefix.cls.isContainedIn(inlineSym)
++               case _ => false

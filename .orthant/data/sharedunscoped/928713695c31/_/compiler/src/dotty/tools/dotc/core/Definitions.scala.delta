@@ -1,0 +1,6 @@
+orthant 2 patch
+
+@ 1 0 0 1251123e44b0858b16995346dcc16be6
++     // Looked up leniently, like `Spreadable`: the trait ships in the supplementary
++     // proscala-library jar, and a classpath without it simply classifies nothing this way.
++     @tu lazy val Caps_SharedUnscoped: Symbol = getClassIfDefined("scala.caps.SharedUnscoped")

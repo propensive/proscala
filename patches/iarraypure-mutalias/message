@@ -1,0 +1,25 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Mon, 27 Jul 2026 07:45:45 +0200
+
+Classify opaque aliases over mutable types under capture checking
+
+An opaque alias over Array (or a Stateful class) previously lost its
+mutability classification outside its defining scope: the classification
+recursion falls through to the alias's upper bound, so plain parameters
+of such a type were untracked pure values that subsumed into exclusive
+receivers, silently bypassing the read-only discipline. The recursion
+now pierces opaque aliases via translucentSuperType, so an alias over a
+mutable type is tracked exactly like the type it hides.
+
+The stdlib's IArray alias stays excluded, matching its iarraypure
+treatment: aliases over IArray classify as immutable, both directly and
+when IArray is reached by dealiasing inside a defining scope.
+
+Developed and tested with LLM assistance (Claude, Anthropic), reviewed
+by hand.
+
+Enabled by `-Z:opaque-mutability`; without it, upstream's code runs at every site this
+patch touches.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: iarraypure-mutalias

@@ -1,0 +1,14 @@
+orthant 2 patch
+
+@ 2 0 0 1fc7af20eebe1b1d1519cba4ce7433d4
++   /** The source file the trees of this unit were written in. For a unit read from
++    *  TASTy that is not `source`, which is the TASTy file, but the source the trees
++    *  were given when they were unpickled, whose lines the TASTy file records.
++    */
++   def treeSource: SourceFile =
++     if source.file != null && source.file.ext.isTasty && tpdTree.source.exists
++     then tpdTree.source
++     else source
+
+@ 2 0 0 04093822299f31d1082efa98ec4e6c8a
++

@@ -1,0 +1,23 @@
+orthant 2 patch
+
+@ 0 1 0 0afda23f319114ea0408e5c61dcf7aaa
++ import transform.{Recheck, PreRecheck, CapturedVars, ContextFunctionResults}
+
+@ 2 0 0 18e769c9e99f21081d76ca685fd9c084
++         // Register the closures that implement this method's context-function result
++         // chain: erasure flattens their parameters into the method's parameter list
++         // (see ContextFunctionResults), so level checking treats references bound
++         // inside the chain as being at the method's level (see CCState.contextResultClosures).
++         def registerContextResults(rhs: Tree, n: Int)(using Context): Unit =
++           if n > 0 then rhs match
++             case Block(List(anonDef: DefDef), _: Closure) =>
++               ccState.contextResultClosures(anonDef.symbol) = sym
++               registerContextResults(anonDef.rhs, n - 1)
++             case Block(_, expr) => registerContextResults(expr, n)
++             case Inlined(_, _, expansion) => registerContextResults(expansion, n)
++             case Typed(expr, _) => registerContextResults(expr, n)
++             case _ =>
++         if !sym.isAnonymousFunction then
++           registerContextResults(
++             tree.rhs, ContextFunctionResults.contextResultCount(sym))
++

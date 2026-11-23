@@ -1,0 +1,12 @@
+orthant 2 patch
+
+@ 0 1 0 1e58b3eeb18a28fc18aedc61fa7432ed
++         // A reference bound inside a closure that implements a method's
++         // context-function result chain is at the method's level: erasure
++         // flattens those closures' parameters into the method's parameter list.
++         // See CCState.contextResultClosures.
++         val refLevel = ref.levelOwner
++         val adjustedLevel = ccState.contextResultClosures.lookup(refLevel) match
++           case meth: Symbol => meth
++           case null => refLevel
++         ccOwner.isContainedIn(adjustedLevel.widenOwner(skipModules = true))

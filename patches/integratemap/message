@@ -1,0 +1,18 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 10 Jul 2026 11:54:24 +0200
+
+Evaluate IntegrateMap symbols in the spliced run context
+
+IntegrateMap's anonymous constructor Context wins implicit resolution
+inside its body over the inherited mapCtx var. When a lazy type
+containing such a map is forced in a later run (after a compilation
+suspension), the LazyRef run-splicing in TypeMap.mapOver updates
+mapCtx, but symbol computations kept using the frozen creation-time
+context — bringing denotations backward across runs and failing
+updateValidity ('denotation ... invalid in run N. ValidFor: N+1').
+
+Shadow the stale parameter with a local given of mapCtx in apply and
+derivedSelect.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Proscala-Patch: integratemap

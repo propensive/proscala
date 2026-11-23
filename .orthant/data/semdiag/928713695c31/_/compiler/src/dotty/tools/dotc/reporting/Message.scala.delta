@@ -1,0 +1,5 @@
+orthant 2 patch
+
+@ 1 0 0 1a49bbdb9bd2fb571fbcccc2d21616d3
++           if config.Proscala.enabled(config.Proscala.SemanticDiagnostics)(using ctx1) then
++             ctx1.setProperty(DiagnosticMarkup.Active, ())

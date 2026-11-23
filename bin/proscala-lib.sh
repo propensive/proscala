@@ -2,33 +2,32 @@
 #
 # The repository model these helpers encode (see AGENTS.md):
 #
-#   patches/series            every patch, in the one order they are applied in,
-#                             `zflags` (the stream base) first
-#   patches/<p>/meta          when <p> applies, and which versions of it exist:
+#   .orthant/                 the patches, as an Orthant store (see proscala-store.sh):
+#                             what each patch does at each scala/scala3 commit, and
+#                             the one order the patches are applied in, `zflags` (the
+#                             stream base) first
+#   patches/<p>/message       the patch's author, date and commit message, which ends
+#                             `Proscala-Patch: <p>`
+#   patches/<p>/meta          where <p> applies, if not everywhere:
 #       needed-from   <sha>   only on descendants of <sha> (upstream introduced the need)
 #       obsolete-from <sha>   not on descendants of <sha> (upstream fixed it)
 #       absent-from   <sha>   not on descendants of <sha> (deliberately not carried there)
-#       variant <file> <revision> <anchor-sha> [<anchor-sha>...]
-#   patches/<p>/<file>.patch  one version: `git format-patch` output for exactly one
-#                             commit, whose message ends `Proscala-Patch: <p>`, known
-#                             to apply plainly at each of its anchors
 #
 # Upstream targets (any scala/scala3 commit: a stream's pin, a release tag, a
-# nightly, a branch head) get, for each patch in range, the first version that
-# applies: highest revision first, then versions anchored at an ancestor of the
-# target, then the nearest anchor.
+# nightly, a branch head) get every patch in range, as the store has it at the
+# nearest earlier commit at which something was checked in, carried onto the target.
 
 # shellcheck shell=bash
 
 PROSCALA_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROSCALA_PROG="${PROSCALA_PROG:-$(basename "$0")}"
 PROSCALA_SCALA3_URL="${PROSCALA_SCALA3_URL:-https://github.com/scala/scala3.git}"
-# The supported window of upstream history: every anchor and bound must be newer.
+# The supported window of upstream history: every commit of the store and every bound must be newer.
 PROSCALA_SINCE="${PROSCALA_SINCE:-2026-05-01}"
 # How many commits of history a shallow clone fetches behind each upstream commit
 # it needs: enough to reach back past PROSCALA_SINCE (about 1000 in October 2026).
 # Choosing patches tests ancestry, which a shallow boundary would silently falsify,
-# so the tools refuse to choose when an anchor sits on one (see check_history).
+# so the tools refuse to choose when a commit they need sits on one (see check_history).
 PROSCALA_DEPTH="${PROSCALA_DEPTH:-5000}"
 P="$PROSCALA_ROOT/patches"
 
@@ -37,14 +36,11 @@ note() { echo ">> $*"; }
 warn() { echo >&2 "!! $*"; }
 g()    { git -C "$PROSCALA_ROOT" "$@"; }
 
-# git, with every user setting that would change the bytes of a generated patch
-# pinned, so the same commit always exports to the same file on every machine.
-pgit() {
-  git -c diff.noprefix=false -c diff.mnemonicPrefix=false -c diff.algorithm=myers \
-      -c diff.renames=true -c diff.relative=false -c diff.suppressBlankEmpty=false \
-      -c format.signOff=false -c format.coverLetter=false -c format.numbered=false \
-      -c format.thread=false \
-      -c format.useAutoBase=false -c core.quotePath=true -c color.ui=false "$@"
+# git diff, with every user setting that would change its bytes pinned
+gdiff() {
+  g -c diff.noprefix=false -c diff.mnemonicPrefix=false -c diff.algorithm=myers -c diff.relative=false \
+    -c diff.suppressBlankEmpty=false -c core.quotePath=true -c color.ui=false \
+    diff --no-color --no-ext-diff --no-renames --full-index --src-prefix=a/ --dst-prefix=b/ "$@"
 }
 
 # --- streams -------------------------------------------------------------------
@@ -174,19 +170,16 @@ dist() {
 
 # --- the patches -------------------------------------------------------------------
 
-series() { sed 's/#.*//' "${PROSCALA_SERIES:-$P/series}" | tr -d '[:blank:]' | grep -v '^$' || true; }
+series() { store_patches; }
 in_series() { [ "$(series | grep -cx -- "$1")" -gt 0 ]; }
 
 meta() { sed 's/#.*//' "$P/$1/meta" 2>/dev/null | awk 'NF' || true; }
 # bounds <p> — "<kind> <sha>" lines
 bounds() { meta "$1" | awk '$1 ~ /^(needed|obsolete|absent)-from$/ { print $1, $2 }'; }
-# variants <p> — "<file> <revision> <anchor>..." lines
-variants() { meta "$1" | awk '$1 == "variant" { $1 = ""; sub(/^ /, ""); print }'; }
-max_revision() { variants "$1" | awk 'BEGIN { m = 0 } $2 > m { m = $2 } END { print m }'; }
-# every commit named in any meta file
+# every commit named in a bound, or which is a value of the store
 all_anchors() {
   local p
-  for p in $(series); do meta "$p" | awk '$1 ~ /-from$/ { print $2 } $1 == "variant" { for (i = 4; i <= NF; i++) print $i }'; done | sort -u
+  { for p in $(series); do bounds "$p" | awk '{ print $2 }'; done; store_values | awk '{ print $3 }'; } | sort -u
 }
 
 # in_range <p> <t> — prints "in", or "<kind> <sha>" for the bound that excludes it
@@ -202,138 +195,51 @@ in_range() {
   echo in
 }
 
-# candidates <p> <t> — the patch's version files, best first
-candidates() {
-  local file rev anchors a best key
-  while read -r file rev anchors; do
-    best=""
-    for a in $anchors; do
-      if is_anc "$a" "$2"; then key="0 $(dist "$a" "$2")"; else key="1 $(dist "$a" "$2")"; fi
-      if [ -z "$best" ] || [ "$(printf '%s\n%s\n' "$key" "$best" | sort -k1,1n -k2,2n | head -1)" = "$key" ]; then best="$key"; fi
-    done
-    echo "$((100000 - rev)) $best $P/$1/$file"
-  done < <(variants "$1") | sort -k1,1n -k2,2n -k3,3n | awk '{ print $4 }'
-}
+# --- what a patch changes ------------------------------------------------------------
 
-# select_plan <target> <planfile> [<p>=<file>...]
-# Apply every in-range patch onto <target> in a throwaway index, choosing each
-# patch's version as above. Writes "<p>\t<status>\t<file>\t<detail>" lines to
-# <planfile>, with status one of:
-#   plain     a version applied as it is
-#   3way      no version applied plainly, but one did with a three-way merge
-#             (only with SELECT_3WAY=1; needs the patch's preimage blobs)
-#   out       the patch's bounds exclude the target (detail: the bound)
-#   missing   in range, but no version applies
-#   skipped   not asked for (SELECT_ONLY)
-# Overrides force a file for a patch. Leaves the index in SELECT_INDEX (the caller
-# removes it); SELECT_PRE[<p>] / SELECT_POST[<p>] are the trees before and after it.
-SELECT_INDEX=""
-declare -gA SELECT_PRE=() SELECT_POST=()
-select_plan() {
-  local t="$1" plan="$2"; shift 2
-  local -A force=()
-  local kv p f r ok bak files
-  for kv in "$@"; do force["${kv%%=*}"]="${kv#*=}"; done
-  SELECT_PRE=() SELECT_POST=()
-  SELECT_INDEX="$(mktemp "${TMPDIR:-/tmp}/proscala-index.XXXXXX")"
-  bak="$SELECT_INDEX.bak"
-  : > "$SELECT_INDEX"
-  GIT_INDEX_FILE="$SELECT_INDEX" g read-tree "$t"
-  if [ "$(g rev-parse --is-shallow-repository)" = true ]; then
-    ensure_commits $(all_anchors)
-    check_history "$t" $(all_anchors)
-  fi
-  : > "$plan"
-  while IFS= read -r p; do
-    if [ -n "${SELECT_ONLY:-}" ] && [ "$p" != zflags ] && [ "$p" != "$SELECT_ONLY" ]; then
-      printf '%s\tskipped\t-\t-\n' "$p" >> "$plan"; continue
-    fi
-    r="$(in_range "$p" "$t")"
-    if [ "$r" != in ]; then printf '%s\tout\t-\t%s\n' "$p" "$r" >> "$plan"; continue; fi
-    if [ "${SELECT_TREES:-0}" = 1 ]; then SELECT_PRE[$p]="$(GIT_INDEX_FILE="$SELECT_INDEX" g write-tree)"; fi
-    ok=""
-    if [ -n "${force[$p]:-}" ]; then files="${force[$p]}"; else files="$(candidates "$p" "$t")"; fi
-    for f in $files; do
-      if GIT_INDEX_FILE="$SELECT_INDEX" g apply --cached "$f" 2>/dev/null; then ok="plain $f"; break; fi
-    done
-    if [ -z "$ok" ] && [ "${SELECT_3WAY:-0}" = 1 ]; then
-      for f in $files; do
-        cp "$SELECT_INDEX" "$bak"
-        if GIT_INDEX_FILE="$SELECT_INDEX" g apply --cached -3 "$f" >/dev/null 2>&1; then ok="3way $f"; break; fi
-        cp "$bak" "$SELECT_INDEX"
-      done
-    fi
-    if [ -n "$ok" ]; then
-      if [ "${SELECT_TREES:-0}" = 1 ]; then SELECT_POST[$p]="$(GIT_INDEX_FILE="$SELECT_INDEX" g write-tree)"; fi
-      printf '%s\t%s\t%s\t-\n' "$p" "${ok%% *}" "${ok#* }" >> "$plan"
-    else
-      printf '%s\tmissing\t-\t%s version(s) tried\n' "$p" "$(echo $files | wc -w | tr -d ' ')" >> "$plan"
-    fi
-  done < <(series)
-  if [ -f "$bak" ]; then rm -f "$bak"; fi
-  return 0
-}
-plan_count() { awk -F'\t' -v s="$2" '$2 == s' "$1" | wc -l | tr -d ' '; }
-plan_names() { awk -F'\t' -v s="$2" '$2 == s { print $1 }' "$1" | tr '\n' ' '; }
-
-# --- patch files -------------------------------------------------------------------
-
-patch_commits() { grep -c '^From [0-9a-f]\{40\} ' "$1"; }
-patch_trailer() {
-  awk '/^---$/ { exit } { print }' "$1" | sed -nE 's/^Proscala-Patch:[[:space:]]*([^[:space:]]+)[[:space:]]*$/\1/p' | tail -1
-}
-# patch_id <file|-> — ignores line numbers, whitespace and `index` lines
-patch_id() { g patch-id --stable < "${1:-/dev/stdin}" | cut -d' ' -f1; }
-# payload <file|-> — what a patch changes: file headers and +/- lines, no context,
-# so two versions differing only in where and around what they apply compare equal
+# diff_id <tree> <tree> — identifies a change, whatever lines it is at
+diff_id() { gdiff "$1" "$2" | g patch-id --stable | cut -d' ' -f1; }
+# payload <file|-> — what a diff changes: file headers and +/- lines, no context, so
+# the same change made at different places, among different lines, compares equal
 payload() {
   awk '/^diff --git / { d = 1; print; next } d && /^(\+\+\+|---) / { next } d && /^[-+]/ { print }' "${1:-/dev/stdin}"
 }
-payload_id() { payload "$1" | g hash-object --stdin; }
+# payload_id <tree> <tree>
+payload_id() { gdiff "$1" "$2" | payload | g hash-object --stdin; }
 
-# export_commit <dir> <commit> — the canonical patch file for one commit, on stdout
-export_commit() {
-  pgit -C "$1" format-patch -1 --stdout -k -N -M --binary --full-index --zero-commit \
-       --no-signature --no-color --no-ext-diff --diff-algorithm=myers \
-       --src-prefix=a/ --dst-prefix=b/ "$2"
+# --- a patch's message -----------------------------------------------------------------
+# patches/<p>/message: `Author: <name> <<email>>`, `Date: <date>`, an empty line, and
+# the commit message, whose last trailer is `Proscala-Patch: <p>`.
+
+message_author() { sed -n '1,/^$/ s/^Author: //p' "$P/$1/message" | head -1; }
+message_date()   { sed -n '1,/^$/ s/^Date: //p' "$P/$1/message" | head -1; }
+message_body()   { awk 'body { print } /^$/ { body = 1 }' "$P/$1/message"; }
+message_trailer() {
+  message_body "$1" | sed -nE 's/^Proscala-Patch:[[:space:]]*([^[:space:]]+)[[:space:]]*$/\1/p' | tail -1
+}
+# write_message <p> <dir> <commit> — take a patch's message from a commit of a tree
+write_message() {
+  mkdir -p "$P/$1"
+  { git -C "$2" log -1 --format='Author: %an <%ae>%nDate: %aD%n' "$3"
+    git -C "$2" log -1 --format=%B "$3" \
+      | awk '{ l[NR] = $0 } END { n = NR; while (n > 0 && l[n] == "") n--; for (i = 1; i <= n; i++) print l[i] }'
+  } > "$P/$1/message"
+}
+# commit_patch <p> <tree> <parent> — a commit of the patch, with its message; prints it
+commit_patch() {
+  local author name email date
+  author="$(message_author "$1")"; date="$(message_date "$1")"
+  name="${author% <*}"; email="${author##*<}"; email="${email%>}"
+  message_body "$1" \
+    | GIT_AUTHOR_NAME="$name" GIT_AUTHOR_EMAIL="$email" GIT_AUTHOR_DATE="$date" GIT_COMMITTER_DATE="$date" \
+      GIT_COMMITTER_NAME="$(g config user.name || echo 'Proscala build')" \
+      GIT_COMMITTER_EMAIL="$(g config user.email || echo 'build@proscala.invalid')" \
+      g commit-tree "$2" -p "$3" -F -
 }
 
-# commit_from_trees <pre-tree> <post-tree> <source-patch> — a commit turning one
-# tree into the other, with the author, date and message of <source-patch>; prints it
-commit_from_trees() {
-  local info msg parent name email date subject
-  info="$(mktemp)"; msg="$(mktemp)"
-  g mailinfo -k "$msg" /dev/null < "$3" > "$info"
-  name="$(sed -n 's/^Author: //p' "$info")"; email="$(sed -n 's/^Email: //p' "$info")"
-  date="$(sed -n 's/^Date: //p' "$info")"; subject="$(sed -n 's/^Subject: //p' "$info")"
-  parent="$(GIT_AUTHOR_DATE="$date" GIT_COMMITTER_DATE="$date" g commit-tree "$1" -m base)"
-  { printf '%s\n\n' "$subject"; cat "$msg"; } \
-    | GIT_AUTHOR_NAME="$name" GIT_AUTHOR_EMAIL="$email" GIT_AUTHOR_DATE="$date" \
-      GIT_COMMITTER_NAME="$name" GIT_COMMITTER_EMAIL="$email" GIT_COMMITTER_DATE="$date" \
-      g commit-tree "$2" -p "$parent" -F -
-  rm -f "$info" "$msg"
-}
-
-# --- meta editing ------------------------------------------------------------------
-variant_name() { echo "$(printf '%s' "$1" | cut -c1-12).patch"; }
-# set_variant <p> <file> <revision> <anchor>... — add or replace the line for <file>
-set_variant() {
-  local p="$1" file="$2" rev="$3"; shift 3
-  local m="$P/$p/meta"
-  mkdir -p "$P/$p"; touch "$m"
-  { awk -v f="$file" '!($1 == "variant" && $2 == f)' "$m"; echo "variant $file $rev $*"; } > "$m.tmp"
-  mv "$m.tmp" "$m"
-}
-# drop_variant <p> <file> — forget a version and delete its file
-drop_variant() {
-  local p="${1:?drop_variant: no patch}" file="${2:?drop_variant: no file}"
-  local m="$P/$p/meta"
-  awk -v f="$file" '!($1 == "variant" && $2 == f)' "$m" > "$m.tmp" && mv "$m.tmp" "$m"
-  case "$file" in *.patch) [ -f "$P/$p/$file" ] && rm -f "$P/$p/$file" ;; esac
-  return 0
-}
-variant_line() { variants "$1" | awk -v f="$2" '$1 == f'; }
+# --- bounds ------------------------------------------------------------------------
 add_bound() { # add_bound <p> <kind> <sha> <reason>
+  mkdir -p "$P/$1"
   printf '%-13s %s   # %s\n' "$2" "$3" "$4" >> "$P/$1/meta"
 }
 
@@ -367,19 +273,19 @@ tree_base() {
   die "$1: every commit has a Proscala-Patch trailer; cannot find its upstream base"
 }
 
-# The applied-manifest: for each patch the tool applied, "<p>\t<patch-id>\t<file>".
-# A commit whose patch-id still matches holds no local work; if its file has
-# changed since, the tree is merely out of date.
+# The applied-manifest: for each patch the tool put in a tree, "<p>\t<diff-id>\t<payload-id>":
+# what its commit changed, as it was built. A commit which still changes that holds
+# no work; if the store has come to say otherwise since, the tree is merely out of date.
 manifest_path() { printf '%s/proscala-applied\n' "$(gitdir_of "$1")"; }
 manifest_field() { # manifest_field <dir> <p> <2|3>
   local m; m="$(manifest_path "$1")"
   if [ -f "$m" ]; then awk -F'\t' -v p="$2" -v f="$3" '$1 == p { v = $f } END { if (v) print v }' "$m"; fi
   return 0
 }
-manifest_set() { # manifest_set <dir> <p> <id> <file>
+manifest_set() { # manifest_set <dir> <p> <diff-id> <payload-id>
   local m; m="$(manifest_path "$1")"
   touch "$m"
-  { awk -F'\t' -v p="$2" '$1 != p' "$m"; printf '%s\t%s\t%s\n' "$2" "$3" "${4#"$PROSCALA_ROOT"/}"; } > "$m.tmp" && mv "$m.tmp" "$m"
+  { awk -F'\t' -v p="$2" '$1 != p' "$m"; printf '%s\t%s\t%s\n' "$2" "$3" "$4"; } > "$m.tmp" && mv "$m.tmp" "$m"
 }
 
 # default_targets — the targets coverage is measured on: the streams, every
@@ -465,3 +371,6 @@ release_targets() {
 
 # artifact_version <scala version> <proscala version>
 artifact_version() { printf '%s-pro-%s\n' "$1" "$2"; }
+
+# shellcheck source=proscala-store.sh
+. "$PROSCALA_ROOT/bin/proscala-store.sh"

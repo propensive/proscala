@@ -6,7 +6,8 @@ compiler, standard library and language spec. It maintains a small set of
 patches on top of upstream `scala/scala3`.
 
 This repository does not store the Scala compiler's source. It holds Proscala's
-**patches**, as `git format-patch` files under [`patches/`](patches), together
+**patches**, in an [Orthant](https://github.com/propensive/orthant) store under
+`.orthant/` (with each patch's message and bounds under [`patches/`](patches)), together
 with the documentation (this README, the licence and attribution notices, the
 policies and process documentation, and the per-feature documentation under
 [`doc/`](doc/README.md)) **and the build** (the `Makefile`, per-stream config,
@@ -47,17 +48,19 @@ release lines:
 The Patches
 -----------
 
-- **`patches/series`** lists every patch in the order they are applied. The
-  first, `zflags`, is the **stream base**: it adds the `-Z` setting through which
-  the fork's opt-in behaviours are enabled by name
-  ([`doc/zflags/`](doc/zflags/zflags.md)).
-- **`patches/<patch>/`** holds a patch: each is a single, self-contained change
-  (e.g. `aliascap`, `unboxedpure`, `wasm`), documented under
-  [`doc/<patch>/`](doc/README.md). Its `meta` file says where upstream needs it
-  (from the commit that introduced a problem, until the one that fixed it), and
-  lists its **versions** — the same change, adapted to different upstream code,
-  each with the upstream commits it is known to apply to. For any target, the
-  tools apply each patch in range, in its best-fitting version.
+- **`.orthant/`** holds the patches, as an
+  [Orthant](https://github.com/propensive/orthant) store: every patch, in the
+  order they are applied, and what each does at each upstream commit where that
+  differs — the same change, adapted to different upstream code — which Orthant
+  carries onto every later commit. The first patch, `zflags`, is the **stream
+  base**: it adds the `-Z` setting through which the fork's opt-in behaviours are
+  enabled by name ([`doc/zflags/`](doc/zflags/zflags.md)).
+- **`patches/<patch>/`** describes a patch: each is a single, self-contained
+  change (e.g. `aliascap`, `unboxedpure`, `wasm`), documented under
+  [`doc/<patch>/`](doc/README.md). Its `message` file is its commit message, and
+  its `meta` file says where upstream needs it (from the commit that introduced
+  a problem, until the one that fixed it). For any target, the tools derive each
+  patch in range, as it should be there.
 - **`mk/<s>.mk`** defines a development **stream**: `UPSTREAM_SHA`, the
   `scala/scala3` commit we develop against (taken from the branch named by
   `UPSTREAM_REF`), and its tested build config.
@@ -76,7 +79,9 @@ Building
 
 Proscala builds with a plain `Makefile` — a simplified, non-bootstrapped build
 that compiles every module with a downloaded reference compiler. You need GNU
-`make`, a JDK (17 or newer), and `curl`, `javac` and `jar` on your `PATH`.
+`make`, a JDK (17 or newer), and `curl`, `javac` and `jar` on your `PATH`; and,
+to generate a source tree, [`orthant`](https://github.com/propensive/orthant)
+(the version in `etc/orthant-version`).
 
 Generate a source tree, then build it:
 
@@ -88,11 +93,11 @@ make
 
 The target can equally be a `scala/scala3` release tag (`3.10.0`), a branch
 (`main`, `lts-3.9`), a nightly version or a commit id; `bin/proscala-tree
-<target> --plan` shows which patch versions it would apply, and
-`bin/proscala-coverage` which upstreams lack a version of some patch.
+<target> --plan` shows how each patch stands there, and
+`bin/proscala-coverage` which upstreams do not have every patch cleanly.
 
 `bin/proscala-tree` fetches the one `scala/scala3` commit it needs (so a plain
-clone of this repository is enough), applies the patches as one commit each, and
+clone of this repository is enough), makes one commit for each patch, and
 copies the Makefile and build inputs in as untracked, git-excluded files, picking
 the right vendored Scala.js IR for the tree. `make` then downloads the reference
 compiler and third-party dependencies from Maven Central (cached under

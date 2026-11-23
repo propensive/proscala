@@ -1,0 +1,27 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Mon, 13 Jul 2026 20:34:05 +0200
+
+Widen skolems in retains sets to the top capability
+
+An inline expansion that substitutes an unstable argument into a
+dependent result's capture set (e.g. a given of type
+`(tactic: Tactic) => (X is Decodable)^{tactic, caps.any}` applied
+during summonInline with a non-path tactic) leaves a SkolemType in the
+@retains annotation of the inliner's evidence proxy val. The proxy's
+type is explicit, so Setup interprets the annotation as written and
+toCapability rejected the skolem with "Illegal capture reference:
+(?1 : Any)" — an error the user can neither cause nor avoid in source,
+and one that comes and goes with symbol-completion order (zinc and
+batch compilation gave opposite verdicts on the same file). Skolem
+infos are already erased to Any by RetainingAnnotation.sanitize, so
+the underlying captures cannot be recovered; widen the skolem to
+caps.any, the standard sound over-approximation for a capability that
+cannot be named.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Enabled by `-Z:retains-skolems`; without it, upstream's code runs at every site this
+patch touches.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: skolemcap

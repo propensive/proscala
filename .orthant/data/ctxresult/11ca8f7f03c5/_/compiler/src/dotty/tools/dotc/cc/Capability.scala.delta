@@ -1,0 +1,66 @@
+orthant 2 patch
+
+@ 0 2 0 046e20b0faf54190169e3fd5bbafc67a
++       ref.core match
++         case ResultCap(_) => false
++         // A parameter of one of the context-function layers of this capability's
++         // owner's result type: erasure flattens those layers' parameters into the
++         // owner's own parameter list, so they are at its level, exactly as the
++         // closures implementing those layers are (see CCState.contextResultClosures).
++         case p: ParamRef => isContextResultParam(p, ccOwner)
+
+@ 0 1 0 02e4f05eaf29dbf11c7e1cfb6f47e49f
++           || {
++             // A reference bound inside a closure that implements a method's
++             // context-function result chain is at the method's level: erasure
++             // flattens those closures' parameters into the method's parameter list.
++             // See CCState.contextResultClosures.
++             val refLevel = ref.levelOwner
++             val adjustedLevel = ccState.contextResultClosures.lookup(refLevel) match
++               case meth: Symbol => meth
++               case null => refLevel
++             ccOwner.isContainedIn(adjustedLevel.widenOwner(skipModules = true))
++           }
+
+@ 2 0 0 03d9566d6f738af91757ecf378003f6a
++     /** Is `p` bound by one of the context-function layers of `meth`'s result type
++      *  that erasure flattens into `meth`'s parameters (the first
++      *  `ContextFunctionResults.contextResultCount(meth)` of them)? The binder is
++      *  matched by shape, not identity: the checker compares against a copy of the
++      *  result type whose roots have been instantiated, with fresh method types.
++      */
++     private def isContextResultParam(p: ParamRef, meth: Symbol)(using Context): Boolean =
++       // Cheap tests first, and the method's info last: an ordinary parameter (of a
++       // non-contextual method type) is never one of these, and forcing the info (or
++       // the annotations) of a method whose own signature is being checked would be a
++       // cyclic reference, as for a given with a `using` clause whose result type
++       // mentions its parameters.
++       val contextualBinder = p.binder match
++         case b: MethodType => b.isContextualMethod
++         case _ => false
++       contextualBinder && meth.is(Method) && !meth.isAnonymousFunction
++       && !meth.denot.isCompleting
++       && transform.ContextFunctionResults.contextResultCount(meth) > 0
++       && {
++         def sameLayer(mt: MethodType): Boolean = (mt eq p.binder) || (p.binder match
++           case b: MethodType => b.paramNames == mt.paramNames
++           case _ => false)
++         // A layer whose parameter names differ from the binder's (a non-dependent layer,
++         // `A ?=> B`, has none) is the binder's layer if their parameters agree.
++         def sameArgs(args: List[Type]): Boolean = p.binder match
++           case b: MethodType =>
++             b.paramInfos.length == args.length
++             && b.paramInfos.lazyZip(args).forall: (param, arg) =>
++               param.stripCapturing.classSymbol == arg.stripCapturing.classSymbol
++           case _ => false
++         def inChain(tp: Type, n: Int): Boolean =
++           n > 0 && (tp.dealias match
++             case CapturingType(parent, _) => inChain(parent, n)
++             case tp @ defn.RefinedFunctionOf(mt: MethodType) =>
++               sameLayer(mt) || sameArgs(mt.paramInfos) || inChain(mt.resType, n - 1)
++             case defn.ContextFunctionType(args, res) => sameArgs(args) || inChain(res, n - 1)
++             case _ => false)
++         inChain(meth.info.finalResultType,
++           transform.ContextFunctionResults.contextResultCount(meth))
++       }
++

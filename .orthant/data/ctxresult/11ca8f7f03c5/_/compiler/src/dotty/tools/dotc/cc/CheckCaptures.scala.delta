@@ -1,0 +1,27 @@
+orthant 2 patch
+
+@ 0 1 0 04c00f191520c1b70794ba0369933a51
++       val anonfun = tree.meth.symbol
++       val cs = anonfun.useSet
+
+@ 0 1 0 0f6450a40414f84d143580519cffcb5e
++       // A closure implementing a layer of a method's context-function result chain has
++       // its parameters at the method's level (see CCState.contextResultClosures). Where
++       // the layers after it capture them, and its declared layer is not itself dependent,
++       // its type names them by their symbols, which that level admits, rather than
++       // approximating the dependency away to `any`.
++       def expectsDependent = pt.stripCapturing.dealias match
++         case defn.RefinedFunctionOf(_) => true
++         case _ => false
++       val tp = tree.meth.tpe.widen match
++         case mt: MethodType
++         if tree.tpt.isEmpty && mt.isResultDependent && !mt.isParamDependent
++             && !mt.hasErasedParams && !expectsDependent
++             && ccState.contextResultClosures.lookup(anonfun) != null =>
++           anonfun.paramSymss match
++             case params :: Nil if params.length == mt.paramInfos.length =>
++               defn.FunctionNOf(mt.paramInfos, mt.instantiate(params.map(_.termRef)),
++                 mt.isContextualMethod)
++             case _ => super.recheckClosure(tree, pt, forceDependent)
++         case _ => super.recheckClosure(tree, pt, forceDependent)
++       tp.capturing(cs)

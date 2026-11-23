@@ -3,9 +3,8 @@
 # proscala-tree — build a source tree: any scala/scala3 commit plus the Proscala patches.
 #
 # Usage:
-#   bin/proscala-tree <target> [<dir>] [--only <patch>] [--3way] [--allow-missing] [--reset]
-#   bin/proscala-tree <target> [<dir>] --continue
-#   bin/proscala-tree <target> --plan            # say what would be applied, change nothing
+#   bin/proscala-tree <target> [<dir>] [--only <patch>] [--allow-stale] [--allow-missing] [--reset]
+#   bin/proscala-tree <target> --plan            # say what would be built, change nothing
 #
 # <target> is a stream (3.9, 3.10: its pinned UPSTREAM_SHA and its tested build
 # config), or any scala/scala3 commit: a release tag (3.10.0, 3.9.0-RC3), a branch
@@ -13,35 +12,36 @@
 # bb20dff-NIGHTLY) or a commit id. Only that commit is fetched (with history back
 # to PROSCALA_SINCE in a shallow clone).
 #
-# Creates a git worktree at <dir> (default worktrees/<target>), detached at the
-# target, and applies each patch whose bounds include the target (see
-# patches/<patch>/meta), choosing for each the best version that applies, as one
-# commit each with `git am`. Then it overlays the build, so `make` works there.
+# Creates a git worktree at <dir> (default worktrees/<target>) with, above the
+# target, one commit for each patch whose bounds include it (see patches/<patch>/meta):
+# the patch as the Orthant store has it at that commit. Then it overlays the build,
+# so `make` works there.
 #
-#   --only <patch>   apply just `zflags` and <patch>
-#   --3way           where no version applies plainly, let one apply with a
-#                    three-way merge (bin/proscala-fill records such results)
-#   --allow-missing  build even if some in-range patch has no version that applies
-#                    (the tree then lacks it; the patches left out are listed)
+#   --only <patch>   just `zflags` and <patch>
+#   --allow-stale    build even if upstream has changed lines which some patch changes
+#                    or sits beside: the patch's own lines are used there, as a
+#                    three-way merge would have them (bin/proscala-fill records the
+#                    ones which are right; the rest want fixing in the tree, and
+#                    bin/proscala-export --adapt)
+#   --allow-missing  build even if the store has nothing, at this commit, for some
+#                    patch in range (the tree then lacks it; those left out are listed)
 #   --reset          replace an existing <dir>; refused if it holds work that has
-#                    not been exported back to patches/ (see bin/proscala-export)
-#   --continue       after fixing a patch that did not apply (and `git am
-#                    --continue`), apply the rest
+#                    not been exported back to the store (see bin/proscala-export)
 
 set -euo pipefail
 PROSCALA_PROG=proscala-tree
 # shellcheck source=proscala-lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/proscala-lib.sh"
 
-spec="" dir="" only="" reset=0 cont=0 three=0 allow=0 planonly=0
+spec="" dir="" only="" reset=0 stale=0 allow=0 planonly=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --only)          only="${2:-}"; [ -n "$only" ] || die "--only needs a patch name"; shift 2 ;;
     --reset)         reset=1; shift ;;
-    --continue)      cont=1; shift ;;
-    --3way)          three=1; shift ;;
+    --allow-stale|--3way) stale=1; shift ;;
     --allow-missing) allow=1; shift ;;
     --plan)          planonly=1; shift ;;
+    --continue)      die "--continue is no more: a patch which does not carry cleanly is built with --allow-stale, and put right in the tree" ;;
     -h|--help)       sed -n '3,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*) die "unknown option $1" ;;
     *)  if [ -z "$spec" ]; then spec="$1"
@@ -51,64 +51,30 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$spec" ] || die "no target given (a stream: $(streams | tr '\n' ' ')or a scala/scala3 tag, branch, nightly or commit)"
-if [ -n "$only" ]; then in_series "$only" || die "'$only' is not in patches/series"; fi
+need_orthant
+if [ -n "$only" ]; then in_series "$only" || die "'$only' is not a patch of the store"; fi
 dir="${dir:-$PROSCALA_ROOT/worktrees/$(printf '%s' "$spec" | tr '/:' '__')}"
 case "$dir" in /*) ;; *) dir="$PWD/$dir" ;; esac
 
 # --- the plan ------------------------------------------------------------------
 t="$(resolve_target "$spec")"
 plan="$(mktemp "${TMPDIR:-/tmp}/proscala-plan.XXXXXX")"
-trap 'rm -f "$plan"; if [ -n "${SELECT_INDEX:-}" ]; then rm -f "$SELECT_INDEX"; fi' EXIT
-make_plan() {
-  SELECT_3WAY="$three" SELECT_ONLY="$only" select_plan "$t" "$plan"
-  rm -f "$SELECT_INDEX"; SELECT_INDEX=""
-}
+trap 'rm -f "$plan"; store_drop' EXIT
 show_plan() {
-  awk -F'\t' -v root="$PROSCALA_ROOT/" '{
-    f = $3; sub(root, "", f)
-    if ($2 == "plain" || $2 == "3way") printf "   %-20s %-6s %s\n", $1, $2, f
-    else if ($2 == "out") printf "   %-20s out    (%s)\n", $1, $4
-    else if ($2 == "missing") printf "   %-20s MISSING: no version applies (%s)\n", $1, $4
+  awk -F'\t' '{
+    if ($2 == "plain") printf "   %-20s plain\n", $1
+    else if ($2 == "stale") printf "   %-20s STALE: upstream changed lines it changes, or sits beside\n", $1
+    else if ($2 == "out") printf "   %-20s out    (%s)\n", $1, $3
+    else if ($2 == "missing") printf "   %-20s MISSING: the store has nothing for it here\n", $1
   }' "$plan"
 }
+store_plan "$t" "$plan"
 
 if [ "$planonly" = 1 ]; then
-  make_plan
   note "scala/scala3 $(g log -1 --format='%h %ad' --date=short "$t") ($spec):"
   show_plan
   exit 0
 fi
-
-# apply_rest <dir> <plan> — `git am` every planned patch the tree does not yet hold
-apply_rest() {
-  local d="$1" pl="$2" base p st f c n=0 how
-  local -A have=()
-  base="$(tree_base "$d")"
-  while IFS= read -r c; do
-    p="$(commit_patch_name "$d" "$c")"
-    if [ -n "$p" ]; then have["$p"]=1; fi
-  done < <(git -C "$d" rev-list "$base..HEAD")
-  while IFS=$'\t' read -r p st f _; do
-    case "$st" in plain|3way) ;; *) continue ;; esac
-    if [ -n "${have[$p]:-}" ]; then continue; fi
-    how=""; [ "$st" = 3way ] && how=--3way
-    if ! git -C "$d" am --quiet -k --committer-date-is-author-date $how "$f"; then
-      echo >&2
-      echo >&2 "$PROSCALA_PROG: ${f#"$PROSCALA_ROOT"/} ($p) does not apply."
-      echo >&2 "The tree is stopped mid-'git am'. To fix it:"
-      echo >&2 "    cd $d"
-      echo >&2 "    git am --show-current-patch=diff      # what the patch wanted"
-      echo >&2 "    # edit the files, then"
-      echo >&2 "    git add <files> && git am --continue"
-      echo >&2 "    $PROSCALA_ROOT/bin/proscala-tree $spec $d --continue"
-      echo >&2 "    $PROSCALA_ROOT/bin/proscala-export $d --adapt"
-      exit 1
-    fi
-    manifest_set "$d" "$p" "$(patch_id "$f")" "$f"
-    n=$((n + 1))
-  done < "$pl"
-  note "applied $n patch$([ "$n" = 1 ] || echo es)"
-}
 
 # overlay <dir> — the build from this checkout's HEAD: a stream's own config, or
 # for any other target mk/target.mk, generated from the tree's sbt build
@@ -127,54 +93,75 @@ overlay() {
   note "done. Build with:  cd $d && make"
 }
 
-# --- --continue --------------------------------------------------------------
-if [ "$cont" = 1 ]; then
-  [ "$reset" = 0 ] || die "--continue and --reset do not combine"
-  [ -d "$dir" ] || die "$dir does not exist; nothing to continue"
-  op="$(in_progress "$dir")"
-  [ -z "$op" ] || die "$dir is still mid-operation ($op); finish it with 'git am --continue' (or --skip / --abort) first"
-  cp "$(gitdir_of "$dir")/proscala-plan" "$plan" 2>/dev/null || die "$dir has no recorded plan; rebuild it with --reset"
-  apply_rest "$dir" "$plan"
-  overlay "$dir"
-  exit 0
-fi
-
 # --- the plan must be complete -----------------------------------------------------
-make_plan
 missing="$(plan_names "$plan" missing)"
+stales="$(plan_names "$plan" stale)"
+if [ -n "$missing$stales" ]; then show_plan >&2; fi
+if [ -n "$stales" ]; then
+  if [ "$stale" = 0 ]; then
+    die "upstream has changed beneath: ${stales}at $spec. bin/proscala-fill $spec records those whose change is unaltered; --allow-stale builds with each as it stands, to be put right in the tree (see AGENTS.md, 'Covering a new target')"
+  fi
+  warn "building $spec with, as they stand: $stales"
+fi
 if [ -n "$missing" ]; then
-  show_plan >&2
   if [ "$allow" = 0 ]; then
-    die "no version of: ${missing}applies to $spec. Use --3way to try three-way merges, --allow-missing to build without them, or make a version (see AGENTS.md, 'Covering a new target')"
+    die "the store has nothing at $spec for: ${missing}. Use --allow-missing to build without them, and make them there (see AGENTS.md, 'Covering a new target')"
   fi
   warn "building $spec WITHOUT: $missing"
 fi
 
+# --- the commits: one for each patch which does something here ---------------------------
+head="$t" n=0
+built="$(mktemp "${TMPDIR:-/tmp}/proscala-built.XXXXXX")"
+if [ -z "$only" ]; then
+  while IFS=$'\t' read -r p st _; do
+    case "$st" in plain|stale) ;; *) continue ;; esac
+    head="$(commit_patch "$p" "${STORE_POST[$p]}" "$head")"
+    printf '%s\t%s\t%s\n' "$p" "$(diff_id "${STORE_PRE[$p]}" "${STORE_POST[$p]}")" "$(payload_id "${STORE_PRE[$p]}" "${STORE_POST[$p]}")" >> "$built"
+    n=$((n + 1))
+  done < "$plan"
+else
+  # just zflags, and the one patch's change made to what zflags leaves
+  [ -n "${STORE_POST[zflags]:-}" ] && [ -n "${STORE_POST[$only]:-}" ] || die "the store has nothing for zflags or $only at $spec"
+  head="$(commit_patch zflags "${STORE_POST[zflags]}" "$head")"; n=1
+  printf '%s\t%s\t%s\n' zflags "$(diff_id "${STORE_PRE[zflags]}" "${STORE_POST[zflags]}")" "$(payload_id "${STORE_PRE[zflags]}" "${STORE_POST[zflags]}")" >> "$built"
+  if [ "$only" != zflags ]; then
+    idx="$(mktemp "${TMPDIR:-/tmp}/proscala-index.XXXXXX")"
+    GIT_INDEX_FILE="$idx" g read-tree "${STORE_POST[zflags]}"
+    gdiff "${STORE_PRE[$only]}" "${STORE_POST[$only]}" | GIT_INDEX_FILE="$idx" g apply --cached -3 - >/dev/null 2>&1 \
+      || { rm -f "$idx"; die "$only does not apply to $spec with zflags alone: it is written against the patches before it"; }
+    tree="$(GIT_INDEX_FILE="$idx" g write-tree)"; rm -f "$idx"
+    head="$(commit_patch "$only" "$tree" "$head")"; n=2
+    printf '%s\t%s\t%s\n' "$only" "$(diff_id "${STORE_POST[zflags]}" "$tree")" "$(payload_id "${STORE_POST[zflags]}" "$tree")" >> "$built"
+  fi
+fi
+
 # --- an existing tree --------------------------------------------------------
 if [ -e "$dir" ]; then
-  [ "$reset" = 1 ] || die "$dir already exists (--reset rebuilds it, --continue finishes it)"
+  [ "$reset" = 1 ] || { rm -f "$built"; die "$dir already exists (--reset rebuilds it)"; }
   git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
     || die "$dir exists and is not a git worktree; remove it by hand"
   op="$(in_progress "$dir")"
   [ -z "$op" ] || die "$dir is in the middle of an operation ($op); finish or abort it first"
   [ -z "$(git -C "$dir" status --porcelain --untracked-files=no)" ] \
     || die "$dir has uncommitted changes; commit and export them, or discard them, first"
-  # Discarding the tree must lose nothing: each commit above its base is either
-  # untouched since it was applied, or exactly a version that exists.
+  # Discarding the tree must lose nothing: each commit above its base changes just
+  # what it did when it was built, or what the store has the patch change.
   base="$(tree_base "$dir")"
+  declare -A now=()
+  if [ "$base" = "$t" ]; then
+    while IFS=$'\t' read -r p st _; do
+      case "$st" in plain|stale) now[$p]="$(diff_id "${STORE_PRE[$p]}" "${STORE_POST[$p]}")" ;; esac
+    done < "$plan"
+  fi
   while IFS= read -r c; do
     short="$(git -C "$dir" rev-parse --short "$c")"
     name="$(commit_patch_name "$dir" "$c")"
-    cid="$(export_commit "$dir" "$c" | patch_id)"
-    if [ "$cid" = "$(manifest_field "$dir" "$name" 2)" ]; then continue; fi
-    found=0
-    for f in "$P/$name"/*.patch; do
-      if [ -f "$f" ] && [ "$(patch_id "$f")" = "$cid" ]; then found=1; break; fi
-    done
-    [ "$found" = 1 ] || die "$dir: commit $short ($name) holds changes in no version of the patch; run bin/proscala-export first"
+    cid="$(diff_id "$c^" "$c")"
+    if [ "$cid" = "$(manifest_field "$dir" "$name" 2)" ] || [ "$cid" = "${now[$name]:-}" ]; then continue; fi
+    die "$dir: commit $short ($name) holds changes which are not in the store; run bin/proscala-export first"
   done < <(git -C "$dir" rev-list --reverse "$base..HEAD")
-  # Keep the old commits reachable: a later three-way merge may want their blobs,
-  # and a mistaken reset can be undone from here.
+  # Keep the old commits reachable: a mistaken reset can be undone from here.
   key="$(basename "$dir")"
   g update-ref -m "proscala-tree --reset" "refs/proscala/$key/prev" "$(git -C "$dir" rev-parse HEAD)"
   note "removing $dir (its HEAD is kept as refs/proscala/$key/prev)"
@@ -184,18 +171,18 @@ fi
 # --- build it ----------------------------------------------------------------
 mkdir -p "$(dirname "$dir")"
 note "creating $dir at scala/scala3 $(g log -1 --format='%h %ad' --date=short "$t") ($spec)"
-g worktree add --quiet --detach "$dir" "$t"
+g worktree add --quiet --detach "$dir" "$head"
 gd="$(gitdir_of "$dir")"
 printf '%s\n' "$t" > "$gd/proscala-target"
 cp "$plan" "$gd/proscala-plan"
-: > "$(manifest_path "$dir")"
+mv "$built" "$(manifest_path "$dir")"
+note "$n patch$([ "$n" = 1 ] || echo es), one commit each"
 
-# `git am` makes commits, so it needs an identity; CI runners have none.
+# Work in the tree makes commits, so it needs an identity; CI runners have none.
 if ! git -C "$dir" config user.email >/dev/null 2>&1; then
   git -C "$dir" config extensions.worktreeConfig true
   git -C "$dir" config --worktree user.name  "Proscala build"
   git -C "$dir" config --worktree user.email "build@proscala.invalid"
 fi
 
-apply_rest "$dir" "$plan"
 overlay "$dir"

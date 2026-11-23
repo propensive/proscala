@@ -1,0 +1,8 @@
+orthant 2 patch
+
+@ 0 1 0 00a5d8a83b2683ca0816d8ae021ece08
++           // The error escaped the run it was raised in; this context predates that run (and a
++           // suspended-units run started by `finish` is later still), so a denotation it refers
++           // to is invalid here and rendering it would assert. Render it where it was raised.
++           val msg = ex.toMessage(using if ex.creationCtx.runId > ctx.runId then ex.creationCtx else ctx)
++           println(runOrNull.enrichErrorMessage(s"$msg while compiling ${files.map(_.path).mkString(", ")}"))

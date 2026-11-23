@@ -3,7 +3,7 @@
 # $(JARS) is defined by the Makefile before this file is included.
 
 VERSION            := 3.9.1-dev-propensive
-# The scala/scala3 commit this stream is built on (patches/3.9/series applies
+# The scala/scala3 commit this stream is built on (the patches apply
 # onto it), and the scala/scala3 branch it is taken from. Authoritative: the
 # docs are checked against both. An upstream bump changes UPSTREAM_SHA.
 UPSTREAM_REF       := lts-3.9

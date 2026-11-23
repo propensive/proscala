@@ -1,0 +1,19 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 13 Oct 2026 12:20:33 +0200
+
+-Zcheck-inlined-closures: capture-check closures inlined from compiled code
+
+Completing a closure's anonymous function rechecks its definition only if its
+result type is inferred, and a closure block relied on that. In source a
+lambda's result type always is; in TASTy no type tree is marked inferred, so a
+closure in an inline method's body, read at another unit's inline site, has a
+declared result type, and if its parameter types change in capture checking
+its body was never checked: `withFile(file => () => file)` leaks `file` when
+`withFile` is compiled separately, and is rejected when compiled with it. With
+the flag, the block rechecks the definition after completing it, unless the
+completer already has. Gated, since it rejects code upstream accepts.
+
+Developed with LLM assistance (Claude Code).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Proscala-Patch: inlinedclosures

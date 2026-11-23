@@ -1,0 +1,7 @@
+orthant 2 patch
+
+@ 0 1 0 094babb6a2953d6b0d83b0d591804a99
++             && !resultType.captureSet.elems.exists(elem =>
++                  elem.derivesFromCapTrait(defn.Caps_Unscoped)
++                  || defn.Caps_SharedUnscoped.exists
++                     && elem.derivesFromCapTrait(defn.Caps_SharedUnscoped.asClass))

@@ -1,0 +1,13 @@
+orthant 2 patch
+
+@ 1 0 0 088e948c2c8bd2670f74eea93e0c3c9e
++ import config.Feature
+
+@ 0 1 0 181b6912aaccca580d4cc2f42525c632
++     // Under capture checking, a stable given alias val is a trackable reference that
++     // may already be named in capture sets ({x} in a retains annotation). Demoting it
++     // to a def gives it an ExprType underlying, which is no longer a legal capability
++     // and crashes cc Setup (IllegalCaptureRef) when a later cast or summon forces the
++     // set. Skip the optimization when cc is on anywhere; semantics are unchanged.
++     if sym.isAllOf(LazyGiven) && !needsCache(sym, tree.rhs)
++         && !Feature.ccEnabledSomewhere then

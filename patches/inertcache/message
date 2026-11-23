@@ -1,0 +1,15 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 17 Jul 2026 15:22:49 +0200
+
+Cache inert types in capture-checking Setup
+
+A type that Setup maps to the identical instance contains nothing to
+transform under any traversal state, so it never needs re-walking.
+Without this, deeply-nested alias unions — such as HTML content
+category types, hundreds of shared singleton labels behind several
+alias layers — are re-expanded once per path through
+mapFollowingAliases, which is exponential in the alias nesting depth:
+a single method signature over such a type did not finish compiling.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Proscala-Patch: inertcache

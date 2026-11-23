@@ -1,0 +1,7 @@
+orthant 2 patch
+
+@ 2 0 0 17471e7c7a7072ed0bc1e5219eeb8041
++   // Looked up leniently, like Spreadable: only a method with a repeated parameter
++   // compiled under `-Zgatherable-varargs` refers to it, and reports its absence.
++   @tu lazy val GatherableModule: Symbol = getModuleIfDefined("scala.Gatherable")
++

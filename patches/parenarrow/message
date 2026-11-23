@@ -1,0 +1,30 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 13 Nov 2026 17:59:45 +0900
+
+Forget a parenthesized type's elements once it is not a parameter list
+
+`Parsers.typ` records, for each type it reads inside parentheses, whether it is
+an erased parameter, in case the parentheses turn out to be the parameter list
+of a function type. If they do not — no arrow follows — it goes on to read the
+rest of the type with those entries still recorded. Should that type then turn
+out to be the single parameter of a function type after all, as in
+
+    (A & B)^ ?=> T
+
+where the capture set comes between the parentheses and the arrow, one more
+entry was added for it, and `FunctionWithMods` was built with one parameter and
+two entries: an AssertionError out of the parser, with no diagnostic. With
+capture checking off, `^` is not read as part of the type and the same source
+gets an ordinary syntax error.
+
+The entries are now dropped when the parentheses are found not to be a
+parameter list. None of them can be `true` there: an erased element sends the
+parser down the function path.
+
+Upstream no longer has the buffer (0114fb812f6, "Simplify erased parameters"),
+so this is needed only before that.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: parenarrow

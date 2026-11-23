@@ -1,0 +1,6 @@
+orthant 2 patch
+
+@ 0 1 0 14dce0c92d395e93113a15770a13ba57
++       // `treeSource`, so that a tree made while a unit read from TASTy is compiled is
++       // placed in the source the unit's own trees are in, not in the TASTy file
++       setSource(compilationUnit.treeSource)

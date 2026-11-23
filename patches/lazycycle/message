@@ -1,0 +1,13 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 7 Jul 2026 23:31:36 +0200
+
+Guard against cyclic LazyRef graphs in capture-checking Setup
+
+SetupTypeMap forces a LazyRef's underlying type eagerly via
+mapConserveSuper; a reference cycle — reachable e.g. through
+denotations surviving a compilation-suspension re-run — recursed
+without bound. A re-entered LazyRef is now returned unmapped; its
+underlying type is transformed when forced outside the traversal.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Proscala-Patch: lazycycle

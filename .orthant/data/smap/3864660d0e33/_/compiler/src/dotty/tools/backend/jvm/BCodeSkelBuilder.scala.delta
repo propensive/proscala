@@ -1,0 +1,18 @@
+orthant 2 patch
+
+@ 0 2 0 02c136123789ff9e1bb20628c1829239
++       if (emitSource) {
++         // Runs after the class's methods have been emitted, so `usedSyntheticLines` is complete.
++         cnode.visitSource(ctx.compilationUnit.source.name, sourceDebugExtension(usedSyntheticLines))
+
+@ 0 6 0 1df2d891197e1c1c097ad2a3dfc5efe9
++         val nr = tree.getAttachment(InlinedSourceLine) match
++           case Some(syntheticLine) => // inlined from another source file (-Zinline-source-maps)
++             usedSyntheticLines += syntheticLine
++             syntheticLine
++           case None =>
++             val sourcePos = tree.sourcePos
++             (
++               if sourcePos.exists then sourcePos.line
++               else ctx.source.offsetToLine(tree.span.point) // fallback
++             ) + 1

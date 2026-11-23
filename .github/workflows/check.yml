@@ -1,7 +1,7 @@
 name: Check
 
-# Check `main` against the facts it describes: that the patches are well-formed,
-# that every version applies at each upstream commit it is anchored at, that each
+# Check `main` against the facts it describes: that the store of patches is
+# well-formed and agrees with each patch's bounds at each of its commits, that each
 # stream (UPSTREAM_SHA in mk/<stream>.mk) gets every patch it should, and that the
 # documentation agrees with its sources of truth. bin/proscala-check fetches the
 # scala/scala3 history it needs on its own, shallowly, so a plain checkout of main
@@ -28,6 +28,11 @@ jobs:
         # upstream commits, which a shallow checkout cannot see.
         with:
           fetch-depth: 0
+      # The patches are in an Orthant store (.orthant/), which the tools read with `orthant`.
+      - name: Install Orthant
+        run: |
+          curl -fsSL "https://github.com/propensive/orthant/releases/download/$(cat etc/orthant-version)/install.sh" | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Check the patches and the documentation
         run: bin/proscala-check -v

@@ -1,0 +1,11 @@
+orthant 2 patch
+
+@ 0 3 0 0366699871e3fb2019bc25eca2bfc62b
++     // The array has a number of slots corresponding to the max fuel: the configured one
++     // once `initialize` has run, and the default until then, so that a base which is never
++     // initialized (one made only to parse and traverse trees, say) has the same room for
++     // recursion as a compiler run with no `-Xmax-fuel`.
+
+@ 0 1 0 15050ca6d36fb8400a11a38e68f43041
++     private[dotc] var recursiveOperations: Array[RecursiveOperation] =
++       Array.fill(ScalaSettings.XmaxFuel.valueIn(ScalaSettings.defaultState))(RecursiveOperation.blank())

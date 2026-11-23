@@ -1,0 +1,4 @@
+orthant 2 patch
+
+@ 0 1 0 1362b8a556295f9f1208f0d8a2f65aa3
++     DiagnosticMarkup.plain(msg.message).replaceAll("\u001B\\[[;\\d]*m", "")

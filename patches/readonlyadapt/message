@@ -1,0 +1,20 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 13 Nov 2026 17:53:55 +0900
+
+Keep the type arguments a read-only adaptation does not improve
+
+Adapting a read-only reference to an expected type of a different class goes
+through the actual type's base type: the base type's arguments are improved
+against the expected ones, and each improvement is carried back to the original
+argument it came from. The improvements were collected in a map and the map was
+then applied to every original argument as a function, so an argument with no
+improvement threw NoSuchElementException out of the capture checker: for
+`Right(r)` against `Either[Int, Ref^{r.rd}]`, only the second of `Right`'s two
+arguments is improved, and the first, `Nothing`, was not in the map.
+
+An argument without an improvement now stays as it is.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: readonlyadapt

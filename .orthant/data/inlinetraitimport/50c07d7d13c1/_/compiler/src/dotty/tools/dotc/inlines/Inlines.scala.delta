@@ -1,0 +1,7 @@
+orthant 2 patch
+
+@ 1 0 0 196d5038d3acf0140915214a99bd4acf
++                          // An import has served its purpose once the trait's body is typed, and
++                          // has no place in the child: copied, it is an `Inlined` node whose type
++                          // is an import type, which cannot be erased.
++                          .filterNot(_.isInstanceOf[Import])

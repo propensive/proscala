@@ -1,0 +1,15 @@
+orthant 2 patch
+
+@ 1 0 0 0319797d04b941d805070fe14b837220
++     case _: TypeBounds if config.Proscala.enabled(config.Proscala.RetainsBounds) =>
++       // An ApproximatingTypeMap turned a retained element into a range: e.g.
++       // `deskolemized` (applied to inferred result types in Namer#inferredResultType)
++       // maps a skolem element of a dependent method's capture set to a range, which
++       // `derivedOrType` merges with neighbouring elements and `derivedAppliedType`
++       // re-packs as a wildcard argument `>: lo <: hi` of @retains. A TypeBounds is
++       // not a legal capability: it either crashes the pickler ("no TypeBounds
++       // allowed") or surfaces as "Illegal capture reference" when the annotation is
++       // converted to a capture set, e.g. for an export forwarder of a transparent
++       // inline method. Capture sets are covariant and the range's upper bound has
++       // absorbed the surviving refs, so approximate by the top capability.
++       defn.Caps_any.termRef

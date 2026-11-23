@@ -1,0 +1,25 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 8 Aug 2026 12:28:58 +0200
+
+Sanitize TypeBounds in @retains arguments to the top capability
+
+Namer#inferredResultType applies `deskolemized` to inferred result types; on a
+type whose capture set holds a skolem (a dependent method applied to an
+unstable argument), the ApproximatingTypeMap maps the skolem element to a
+range, `derivedOrType` merges it with neighbouring elements, and
+`derivedAppliedType` re-packs the range as a wildcard argument of @retains.
+A TypeBounds is not a legal capability: it crashed the pickler before 3.9
+("no TypeBounds allowed") and now surfaces as "Illegal capture reference"
+when the annotation is forced, e.g. for the export forwarder of a transparent
+inline method (Soundness #1410). Capture sets are covariant and the range's
+upper bound has absorbed the surviving refs, so approximating the bounds by
+`any` loses no precision, in analogy to the existing skolem case.
+
+Developed with LLM assistance (Claude); mechanism and fix validated against a
+minimal reproduction and a full Soundness build.
+
+Enabled by `-Z:retains-bounds`; without it, upstream's code runs at every site this
+patch touches.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: retainbounds

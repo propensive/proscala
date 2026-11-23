@@ -1,0 +1,68 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 11 Aug 2026 19:21:49 +0200
+
+-Zinline-source-maps: JSR-45 SMAP attributes mapping inlined code to its source files
+
+Squashed from 4 commits, oldest first:
+
+* Add -Xjsr45: JSR-45 SMAP emission for inlined code
+
+Under -Xjsr45, trees inlined from other source files accumulate their
+chain of inline call sites as Inlined nodes are dropped at Erasure. The
+chains are resolved to synthetic line numbers past the end of the unit's
+primary source, emitted in the LineNumberTable and mapped back by a
+SourceDebugExtension (JSR-45 SMAP) attribute with two strata: 'Scala'
+(definition sites, used by JSR-45-aware debuggers for breakpoints and
+stepping) and 'ScalaDebug' (inline call sites in output numbering, so a
+consumer can recover the full inline stack of a stack frame).
+
+Developed with LLM assistance (Claude Code), reviewed by hand.
+
+* Emit a ScalaClass stratum naming each synthetic line's defining class
+
+A JSR-45 SMAP names only files and lines, but tooling that wants the
+inline method behind a synthetic line needs the TASTy of its top-level
+class, and there is no contract from a file name to a class name. The
+Inlined node's call trace references exactly that class, so each inline
+frame now records it: a fresh chain's head takes the callee class of its
+own level, and the chain's last frame - the call site, which lies in the
+enclosing expansion - is filled in when the enclosing call appends its
+frame. The registry serializes a third stratum, ScalaClass, whose
+'files' are binary class names and whose entries map each synthetic line
+to its defining class (input line always 1). Call sites in the primary
+source keep no class: the classfile itself provides that context.
+
+Also removes a stale assertion in Jsr45Test.inlineAcrossFiles that
+demanded a call-site line entry the folded expansion never emits.
+
+Developed with LLM assistance (Claude Code), reviewed by hand.
+
+* Emit only the part of a unit's SMAP each class actually uses
+
+Every class of a unit carried the whole unit's SMAP, on the assumption
+that the duplication would cost a few hundred bytes. For a unit that
+inlines heavily it costs megabytes: compiling Soundness produced 4.5 GB
+of SMAP text across 13,222 classfiles, with single classes carrying
+2.75 MB each, which exhausted downstream tools — a Scala Native link and
+a staged build both died on it.
+
+The backend now records which synthetic lines each class emitted, and
+the registry serializes only those. Because a line's call site may
+itself be a synthetic line the class never emitted (the inner call of a
+nested expansion), the entries are closed over the ScalaDebug chain, so
+following the chain still reaches a real line. Mirror classes hold only
+forwarders, which carry no line numbers, so they get no SMAP at all.
+
+The emission point already ran after the class's methods were generated,
+so the used-line set is complete when the attribute is written.
+
+Developed with LLM assistance (Claude Code), reviewed by hand.
+
+* Enable SMAP emission with -Z:inline-source-maps
+
+The -Xjsr45 setting is replaced by the inline-source-maps entry of the shared
+-Z registry; nothing else changes.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: smap

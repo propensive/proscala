@@ -1,0 +1,4 @@
+orthant 2 patch
+
+@ 0 1 0 0c863c145972d14b082f00de8c172b68
++     if !s.isEmpty then doReport(Warning(s.toMessage.withBoltOrigin(BoltCodes.Uncoded), NoSourcePosition))

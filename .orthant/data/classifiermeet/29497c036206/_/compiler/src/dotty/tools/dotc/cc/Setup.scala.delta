@@ -1,0 +1,16 @@
+orthant 2 patch
+
+@ 1 0 0 070d2741df715a0f04592fe3e517d2fa
++     val classifiers = cls.baseClasses.filter(_.isClassifiedCapabilityClass).distinct
++
++     // Two unrelated classifiers are acceptable when another classifier among the base classes
++     // derives from both: a declared meet, which `classifier` then picks as the least classifier.
++     def met(c: ClassSymbol, c1: ClassSymbol): Boolean =
++       classifiers.exists(m => m.derivesFrom(c) && m.derivesFrom(c1))
++
+
+@ 0 1 0 0207bac0afec76cf13737392270d35ce
++           if !c.derivesFrom(c1) && !c1.derivesFrom(c) && !met(c, c1) then
+
+@ 0 1 0 056b3f8b687172a810e826d52f14b2dd
++     recur(classifiers)

@@ -1,0 +1,7 @@
+orthant 2 patch
+
+@ 0 1 0 0272e843b28b49930b5568a7643e1cd0
++ import util.{SimpleIdentitySet, MutableIdentitySet, EqHashMap}
+
+@ 0 1 0 1d52f26a9679ca961082ba3670e73fee
++     private val variants: MutableIdentitySet[ResultCap] = new MutableIdentitySet

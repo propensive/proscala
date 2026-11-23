@@ -1,0 +1,13 @@
+orthant 2 patch
+
+@ 1 0 0 171659b0ebe21e0807334181bc6cd812
++         // The anonymous constructor `using Context` would otherwise win implicit
++         // resolution over the inherited `mapCtx` var: when a lazy type containing this
++         // map is forced in a later run, the run-splicing in `mapOver`'s `LazyRef` case
++         // updates `mapCtx`, and symbol computations must follow it rather than the
++         // frozen creation-time context (which would bring denotations backward and
++         // fail `updateValidity`).
++         given Context = mapCtx
+
+@ 1 0 0 01927c02b2eb70a013e3b58a50828c5e
++         given Context = mapCtx  // see `apply`

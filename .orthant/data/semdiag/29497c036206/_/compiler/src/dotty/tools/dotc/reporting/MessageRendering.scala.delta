@@ -1,0 +1,13 @@
+orthant 2 patch
+
+@ 0 1 0 0c66eb07c87b68760e89369b46967009
++     sb.append(EOL).append(DiagnosticMarkup.plain(m.explanation))
+
+@ 0 1 0 1a845ca14f518d011ec1cb541d782f96
++       val err = errorMsg(pos1, DiagnosticMarkup.plain(msg.message), srcAfter.nonEmpty)
+
+@ 0 1 0 1fd09d06ef6260f10080f11ff8112c2b
++     else sb.append(DiagnosticMarkup.plain(msg.message))
+
+@ 0 1 0 0a32d47cdf9e04351cbb1f71459b7c3e
++       DiagnosticMarkup.plain(dia.msg.explanation).split(raw"\R").foreach: line =>

@@ -1,0 +1,11 @@
+orthant 2 patch
+
+@ 0 1 0 05d76eafe0f7d49a0ab4d55975e850d1
++             // Mark the memoizing val's type inferred: under capture checking the dictionary
++             // instance captures whatever its (possibly capability-typed) entries capture, so
++             // `new <dictionary>` has a non-empty capture set. An inferred type lets capture
++             // checking solve that set from the constructor rather than forcing the pure
++             // `classSym.typeRef`, which would reject the capturing instance. This is a private
++             // detail of the recursive-implicit memoization: the escaping result term's type
++             // (`res` below) is unchanged, so a laundered/pure resolution stays pure at its use.
++             val inst = ValDef(valSym, New(classSym.typeRef, Nil), inferred = true)

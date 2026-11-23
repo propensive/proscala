@@ -1,0 +1,31 @@
+orthant 2 patch
+
+@ 0 1 0 1a58c947b2d53aab08471691c1146a97
++ import dotty.tools.dotc.ast.Trees.{InlinedSourceLine, SyntheticUnit}
+
+@ 2 0 0 14d33e82872829571690614a7de75edc
++     /** The synthetic line numbers this class's methods actually emitted, so that its
++      *  SourceDebugExtension carries only the part of the unit's SMAP it needs (-Zinline-source-maps).
++      */
++     private val usedSyntheticLines = mutable.Set.empty[Int]
++
+
+@ 1 0 0 0a33b6c7a97f299a179c489a3c228029
++       usedSyntheticLines.clear()
+
+@ 0 1 0 066f7e1cb30d0b3c1c0fe774a8955d83
++         // Runs after the class's methods have been emitted, so `usedSyntheticLines` is complete.
++         cnode.visitSource(ctx.compilationUnit.source.file.name,
++             sourceDebugExtension(usedSyntheticLines))
+
+@ 0 6 0 0a613fb39b84b1fd0558687adb9ca0d4
++         val nr = tree.getAttachment(InlinedSourceLine) match
++           case Some(syntheticLine) => // inlined from another source file (-Zinline-source-maps)
++             usedSyntheticLines += syntheticLine
++             syntheticLine
++           case None =>
++             val sourcePos = tree.sourcePos
++             (
++               if sourcePos.exists then sourcePos.source.positionInUltimateSource(sourcePos).line
++               else ctx.source.offsetToLine(tree.span.point) // fallback
++             ) + 1

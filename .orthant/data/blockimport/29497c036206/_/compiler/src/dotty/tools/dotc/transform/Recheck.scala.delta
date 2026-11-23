@@ -1,0 +1,20 @@
+orthant 2 patch
+
+@ 0 2 0 034d504b36ad23a70be45aa15748048e
++       // The result expression is rechecked in the context the statements leave
++       // behind, since an `import` among them is in scope for it too — exactly as
++       // Typer rechecks it in the context `typedBlockStats` returns.
++       val exprCtx = recheckStats(stats)
++       val exprType = recheck(expr, pt)(using exprCtx)
+
+@ 0 2 0 010be16ecb267c4f131dc72037d35714
++     /** Recheck all statements, returning the context they leave in scope: an
++      *  `import` among them applies to whatever follows the statement list as
++      *  well, so callers that have a trailing expression must recheck it in the
++      *  returned context rather than their own.
++      */
++     def recheckStats(stats: List[Tree])(using Context): Context =
++       @tailrec def traverse(stats: List[Tree])(using Context): Context = stats match
+
+@ 1 1 0 1b00c0560cdffd9f037ddd35e58cbfd2
++         case _ => ctx

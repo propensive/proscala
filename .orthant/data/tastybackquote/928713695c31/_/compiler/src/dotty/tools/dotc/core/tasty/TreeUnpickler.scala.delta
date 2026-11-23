@@ -1,0 +1,23 @@
+orthant 2 patch
+
+@ 1 0 0 168550255e4c020a1eaa7f452357230c
++       markStableIdents(pat)
+
+@ 3 0 0 021fcce75181759f1e89bd04180b04a7
++     /** Mark as backquoted every identifier in pattern `pat` which has the name of a
++      *  variable pattern. A typed pattern binds a variable only with a `Bind`, so such
++      *  an identifier, unless it is `_` or the `_*` of a sequence wildcard, refers to a
++      *  stable value, and can only have been written in backquotes. TASTy does not record
++      *  that, and without the mark the pattern matcher and the exhaustivity checker take
++      *  the identifier for a variable pattern, which matches anything.
++      */
++     private def markStableIdents(pat: Tree): Unit = pat match
++       case pat: Ident =>
++         if pat.name != nme.WILDCARD && pat.name != nme.WILDCARD_STAR && pat.name.isVarPattern then
++           pat.putAttachment(Backquoted, ())
++       case Bind(_, body) => markStableIdents(body)
++       case Typed(expr, _) => markStableIdents(expr)
++       case Alternative(pats) => pats.foreach(markStableIdents)
++       case UnApply(_, _, pats) => pats.foreach(markStableIdents)
++       case _ =>
++

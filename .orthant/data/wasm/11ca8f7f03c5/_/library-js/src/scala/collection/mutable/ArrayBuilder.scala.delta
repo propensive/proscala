@@ -1,0 +1,13 @@
+orthant 2 patch
+
+@ 1 0 0 0e52aa43adc0963a02aaaa4baf4ff3d9
++ import scala.scalajs.LinkingInfo.linkTimeIf
+
+@ 0 3 0 0392549331d4dc5d10b1a4c3ede44e6f
++   def make[T: ClassTag]: ArrayBuilder[T] = {
++     linkTimeIf(LinkingInfo.isWebAssembly) {
++       makeForWasm
++     } {
++       makeForJS
++     }
++   }

@@ -1,0 +1,22 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Wed, 7 Oct 2026 17:06:48 +0200
+
+Give a differently-classified fresh capability its own root
+
+`VarInTypeTree.normalizeLocalCaps` hides every fresh capability that reached
+an inferred value type in the type's declaration root, asserting that each can
+be classified like that root. Two fresh capabilities of unrelated classifiers
+— a shared strategy from a polymorphic given beside an unscoped sink from an
+inline given, bound into one inlined proxy — therefore crashed the compiler
+with "attempting to add any to {any} of value x$proxy1" instead of producing a
+diagnostic or a type.
+
+A classifier mismatch means the capability cannot be hidden here, which the
+method already expresses for level failures by returning false; the caller
+then mints a further declaration root for it. The inferred type carries one
+root per classifier, which `inDeclRoots` already allows.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: rootclassify

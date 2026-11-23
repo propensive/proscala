@@ -1,0 +1,48 @@
+orthant 2 patch
+
+@ 0 1 0 1577d3aa195613f914471b943fd09a50
++     && derivesFromCapTraitDealiased(cls, frozenIsPure = true)
+
+@ 0 1 0 0165bc823d02b67103cf9db3c71659e1
++   /** Like `derivesFromCapTrait`, but a frozen `T^{}` classifies as `T` itself does:
++    *  "could a value of this class be mutated through *some* reference". Used only
++    *  where the empty set must be *found* non-exclusive rather than taken as a
++    *  reason to skip the exclusivity check (`Mutability.exclusivity`).
++    */
++   def derivesFromCapTraitUnfrozen(cls: ClassSymbol)(using Context): Boolean =
++     (tp.typeSymbol != defn.IArrayAlias || !config.Proscala.enabled(config.Proscala.PureIArrays))
++     && derivesFromCapTraitDealiased(cls, frozenIsPure = false)
++
++   /** Under `-Zfrozen-pure`, a stateful type with an explicit, constant, empty capture set
++    *  -- a frozen `Array[T]^{}`, or an opaque alias over one -- derives from no capability
++    *  class: with no capability reachable through it no `update` is, so it is immutable
++    *  from the type alone, as a `freeze` result is. Classifying it by its head symbol
++    *  alone re-mints a fresh `^{any.rd}` wherever the frozen type is reached through an
++    *  alias (Setup's implied-capability set), which is what this stops.
++    */
++   private def derivesFromCapTraitDealiased(cls: ClassSymbol, frozenIsPure: Boolean)(using Context): Boolean =
++     def recur(tp: Type): Boolean = tp.derivesFromCapTraitDealiased(cls, frozenIsPure)
+
+@ 1 0 0 12ab07996bcb97101ebd563c41d8aaf1
++     case tp @ CapturingOrRetainsType(parent, refs)
++     if frozenIsPure && refs.isAlwaysEmpty
++         && config.Proscala.enabled(config.Proscala.FrozenPure)
++         && parent.derivesFromCapTraitDealiased(defn.Caps_Stateful, frozenIsPure = false) =>
++       false
+
+@ 0 2 0 1f34c575ea2e2d30015c2cff2d1d79ed
++       then recur(tp.translucentSuperType)
++       else recur(tp.superType)
+
+@ 0 1 0 1dab93ac02db65e01d7396dc0d660f30
++       recur(tp.superType)
+
+@ 0 1 0 1519044c2aae976b0ba9ca05351d1ebb
++       recur(tp.tp1) || recur(tp.tp2)
+
+@ 0 1 0 13f84ec2d2c9358d0614a089c6d7408c
++       recur(tp.tp1) && recur(tp.tp2)
+
+@ 1 0 0 1e17f0e0717fb60119bbd48f752a7a70
++   def derivesFromStatefulUnfrozen(using Context): Boolean =
++     derivesFromCapTraitUnfrozen(defn.Caps_Stateful)

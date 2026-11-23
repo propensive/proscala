@@ -1,0 +1,20 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 8 Aug 2026 12:28:58 +0200
+
+Avoid only pattern-bound term symbols in rechecked returns
+
+recheckReturn's AvoidMap exists to avoid pattern-bound *singleton* (term)
+alternatives that PatternMatcher instantiates return types with. Case-flagged
+*type* symbols — notably quote-pattern type variables, which carry the Case
+flag too — were also avoided, but only on the found side: the label's recorded
+return prototype still mentions them through skolem infos, so conformance the
+typer already established fails during rechecking. Concretely, a macro that
+matches on quoted type variables and splices an Expr whose type refines over
+them cannot be capture-checked (Soundness #1428). Restricting the map to term
+symbols leaves the singleton avoidance intact.
+
+Developed with LLM assistance (Claude); the symmetric alternative (avoiding
+the expected side too) was tried and rejected — it broke 17 places in the
+capture-checked standard library.
+
+Proscala-Patch: returnavoid

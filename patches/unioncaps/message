@@ -1,0 +1,30 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 8 Aug 2026 14:21:44 +0200
+
+Classify and preserve capture information on union types
+
+Two union-type gaps in capture checking under strict mutability, which
+together made types like `Unset | Array[Byte]` (Soundness's Optional[Data])
+unusable:
+
+- A union's inherited classifier fell through to its class symbols' common
+  superclasses (Object, Matchable), whose classifier is Any, so a fresh
+  capability instantiated for the union could never be re-absorbed at a local
+  binding the way a bare Array's Unscoped-classified fresh is. The classifier
+  is now the least upper bound of the members' classifiers, with always-pure
+  members contributing nothing.
+
+- CapturingType.apply dropped an empty capture set on a union unless every
+  member derived from a capability trait, so the capability members
+  re-acquired implied capture sets per occurrence, and two mentions of the
+  same aliased union never matched. The empty set is now kept if any dealiased
+  member derives from a capability trait.
+
+Developed with LLM assistance (Claude); source-level fixes for the affected
+Soundness module were exhaustively ruled out before patching the compiler.
+
+Enabled by `-Z:union-captures`; without it, upstream's code runs at every site this
+patch touches.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: unioncaps

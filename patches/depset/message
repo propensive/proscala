@@ -1,0 +1,42 @@
+Author: noti0na1 <noti0na1@users.noreply.github.com>
+Date: Tue, 11 Aug 2026 15:09:42 +0800
+
+Add a mutable IdentitySet to optimize variable dependencies in CC (#26720)
+
+`CaptureSet.Var.deps`, the set of capture sets that depend on a
+capture-set variable, was a `SimpleIdentitySet`. Every `deps += cs`
+therefore copied the whole element array. During capture checking of the
+standard library, dependency sets grow to ~9,000 elements, it was the
+single largest `Object[]` allocation site in the cc phase.
+
+This PR replaces `deps` with a new `MutableIdentitySet`: a mutable,
+insertion-order-preserving identity set. It is safe here because `deps`
+already follows the "linear" discipline the data structure requires: the
+previous value of `deps` is never used again after an update, only the
+owning `Var` mutates it, and rollback operates through
+`TypeComparer.logUndoAction` closures that act on the live object.
+
+Unlike `EqHashSet`, iteration order is deterministic (insertion order
+rather than hash-table order).
+
+### 652-file stdlib: cc + setupCC
+
+| run | baseline cc wall | PR cc wall | baseline cc allocated | PR cc
+allocated |
+|---|---:|---:|---:|---:|
+| 1 | 5.39 s (20.6%) | 4.35 s (17.9%) | 2,622 MB (39.9%) | 1,789 MB
+(31.1%) |
+| 2 | 4.70 s (19.3%) | 4.45 s (17.3%) | 2,669 MB (40.3%) | 1,797 MB
+(31.2%) |
+
+## Have you relied on LLM-based tools in this contribution?
+
+Yes, LLM is used to profile and propose changes.
+
+## How was the solution tested?
+
+`LinearIdentitySet` is tested through new unit test.
+
+`-Yprofile-enabled` can used to collect runtime data.
+
+Proscala-Patch: depset

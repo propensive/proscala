@@ -1,0 +1,7 @@
+orthant 2 patch
+
+@ 3 0 0 156d81985d241f1702b59b0f9e164ea5
++   // Literals in already-typed trees have their meaning; rechecking never
++   // re-routes them through a Literate instance.
++   override def literated(tree: Tree, pt: Type)(using Context): Tree = tree
++

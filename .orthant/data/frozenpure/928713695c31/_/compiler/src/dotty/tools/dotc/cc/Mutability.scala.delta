@@ -1,0 +1,7 @@
+orthant 2 patch
+
+@ 0 1 0 1593034027af5b4b189560305f70513b
++       // Classified through a frozen `^{}`: a frozen array is pure for capture purposes,
++       // but its `update` is still a member, and the empty set is exactly what must be
++       // reported as non-exclusive here.
++       if tp.derivesFromStatefulUnfrozen then

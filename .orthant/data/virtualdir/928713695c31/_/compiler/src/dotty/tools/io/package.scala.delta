@@ -1,0 +1,11 @@
+orthant 2 patch
+
+@ 1 0 0 17a0802d7977d9c90fafb92347bbc9cd
++
++   // Backported from the 3.10 stream ("Improve IO package encapsulation",
++   // upstream da99eb87b0), where the VirtualDirectory constructor became
++   // private[io] and this factory is the sanctioned way to obtain an in-memory
++   // directory. Providing it here lets tooling compile against the same API on
++   // both streams.
++   def virtualDirectory(name: String): AbstractFile =
++     new VirtualDirectory(name)

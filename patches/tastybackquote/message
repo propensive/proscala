@@ -1,0 +1,25 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 14 Nov 2026 18:13:18 +0900
+
+Mark the stable identifiers of a pattern read from TASTy as backquoted
+
+A pattern `case `label` =>` matches the value of `label`. Typer tells it from
+the variable pattern `case label =>` by the `Backquoted` attachment the parser
+puts on the identifier, and so do the pattern matcher, which discards a
+variable pattern as one that discerns nothing, and the exhaustivity checker.
+TASTy does not record the attachment, so in a unit read from TASTy the
+pattern matcher took the identifier for a variable pattern: the case matched
+every value, and the class was emitted without a diagnostic.
+
+A typed pattern binds a variable only with a `Bind`, so an identifier in one
+that has the name of a variable pattern, other than `_` and the `_*` of a
+sequence wildcard, can only have been written in backquotes. The unpickler
+now marks it so when it reads a case. (Revision 2 excludes `_*`, which the
+first revision marked: the pattern matcher then compiled `case Seq(x, rest*)`
+as an equality test against it, and the backend crashed.)
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Proscala-Patch: tastybackquote

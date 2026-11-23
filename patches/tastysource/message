@@ -1,0 +1,31 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 14 Nov 2026 18:25:24 +0900
+
+Compile a unit read from TASTy in the source its trees were written in
+
+The source of a unit read from TASTy is its TASTy file, while its trees are
+given the source file they were written in, whose path and line lengths TASTy
+records. Three things went by the unit's source where the trees' was meant.
+
+The backend named the TASTy file in the `SourceFile` attribute of every class
+it emitted for the unit, so a stack trace read `Trace.tasty`.
+
+When an `Inlined` node is dropped, code inlined from another file is moved to
+the position of the call, since a class file has one source, and code from the
+unit's own file keeps its position. Every tree of the unit was in another
+file than the unit's, so all inlined code was moved, and placed in the TASTy
+file, where its position fell on line 1.
+
+And each phase made its new trees in the context's source, which is the
+unit's, so synthesized code had no line at all.
+
+A unit now has a `treeSource`, the source of its tree where the unit was read
+from TASTy and its own source otherwise, which is what the backend names, what
+the inliner compares against and moves code to, and what a context for the
+unit has as its source. The unit's source is unchanged, and with it the files
+of the run and what counts as defined in it.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: tastysource

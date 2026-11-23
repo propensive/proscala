@@ -1,0 +1,23 @@
+orthant 2 patch
+
+@ 0 1 0 1d89cc5af8d20d690cf25a5ac60d0a50
++           case tree: RefTree if tree.isTerm && level == -1 && awaitsBytecode(tree.symbol) && !tree.symbol.isLocal =>
+
+@ 0 1 0 09d8c128d9d4c41c0f22339efbf56a45
++           case _: This if level == -1 && awaitsBytecode(tree.symbol) =>
+
+@ 1 0 0 141b8fd14d98320c1c3cb7b42adc92bd
++
++   /** Is `sym` defined in the current run, with no bytecode to interpret it from yet?
++    *  A symbol compiled from source has none until its unit has been through the backend,
++    *  which is why a unit calling a macro defined in the same run is suspended. A symbol
++    *  read from a TASTy file given to `-from-tasty` is defined in the current run too,
++    *  but its class file lies beside the TASTy file, and the macro can be run from that.
++    */
++   private def awaitsBytecode(sym: Symbol)(using Context): Boolean =
++     sym.isDefinedInCurrentRun && !(ctx.settings.fromTasty.value && hasClassFile(sym))
++
++   private def hasClassFile(sym: Symbol)(using Context): Boolean =
++     val file = sym.associatedFile
++     file != null && file.ext.isTasty
++     && file.resolveSiblingWithExtension(dotty.tools.io.FileExtension.Class) != null

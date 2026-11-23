@@ -1,0 +1,49 @@
+orthant 2 patch
+
+@ 2 0 0 15103397578131ca1f90c90542d68185
++   private var myBoltOrigin: AnyRef | Null = null
++
++   /** What an unnumbered message is known by, for its bolt code: the template of
++    *  the `em"..."` string that made it, or a `BoltCodes.MacroOrigin`.
++    */
++   def boltOrigin: AnyRef | Null = myBoltOrigin
++
++   def withBoltOrigin(origin: AnyRef | Null): this.type =
++     myBoltOrigin = origin
++     this
++
+
+@ 0 8 0 098fe1eddb43e870129bd18ab2cec287
++   def persist: Message =
++     val persisted = new Message(errorId)(using NoContext):
++       val kind  = self.kind
++       private val persistedMsg = self.message
++       private val persistedExplain = self.explanation
++       def msg(using Context) = persistedMsg
++       def explain(using Context) = persistedExplain
++       override val canExplain = self.canExplain
++       override def isNonSensical = self.isNonSensical
++     persisted.withBoltOrigin(boltOrigin)
+
+@ 0 6 0 01d65f0e820c39881ce2c58bee7c350d
++   def mapMsg(f: String => String): Message =
++     val mapped = new Message(errorId):
++       val kind = self.kind
++       def msg(using Context) = f(self.msg)
++       override def msgPostscript(using Context) = self.msgPostscript
++       def explain(using Context) = self.explain
++       override def canExplain = self.canExplain
++     mapped.withBoltOrigin(boltOrigin)
+
+@ 0 6 0 0c0d05581700698d18dbb49386d5d0ae
++   def appendExplanation(suffix: => String): Message =
++     val appended = new Message(errorId):
++       val kind = self.kind
++       def msg(using Context) = self.msg
++       override def msgPostscript(using Context) = self.msgPostscript
++       def explain(using Context) = self.explain ++ suffix
++       override def canExplain = true
++     appended.withBoltOrigin(boltOrigin)
+
+@ 0 1 0 0068edefa074628c08701781d14fa953
++     new NoExplanation(msgFn, actions.toList).withBoltOrigin(boltOrigin)

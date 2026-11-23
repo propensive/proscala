@@ -1,0 +1,9 @@
+orthant 2 patch
+
+@ 0 1 0 1d3ba50b753c1c92154eab4e16d62b0f
++     // Under capture checking, keep the pre-RC5 widened proxy type: cc has its own
++     // healing of inline-proxy captures, and a skolem-typed proxy bakes the local
++     // binding's capture (and skolem identity) into the expansion type, where it can
++     // neither be avoided into a pure declared result nor unified across a macro
++     // resplice retype (upstream #26563 casualties).
++     val proxySkolem = if argIsBottom || config.Feature.ccEnabled then None else skolem

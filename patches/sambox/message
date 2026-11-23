@@ -1,0 +1,38 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sun, 12 Jul 2026 10:18:51 +0200
+
+cc: keep capability-implied captures on SAM anon-class type members
+
+Under capture checking, a SAM literal whose target is an ordinary trait (not
+a `FunctionN`/`js.Function`) is expanded to an anonymous class by `ExpandSAMs`,
+which runs *before* `cc.Setup`/`cc.CheckCaptures`. On the JVM such a SAM stays a
+closure typed verbatim as the expected refinement, so it is never re-checked
+member-by-member. Under `-scalajs`, `SJSPlatform.isSam` rejects arbitrary traits,
+so the same SAM becomes an anonymous class ahead of capture checking, and its
+synthesised type members are then checked against the declared SAM refinement.
+
+Two things went wrong for a member `type Self = C` whose right-hand side `C`
+derives from `Capability` (so its declared spelling is boxed to `C^{any}` by
+`transformExplicitType`):
+
+1. `transformExplicitType` stripped the capability-implied capture from the
+   member's own info (the `sym.isType` branch), leaving it bare `C`. That is the
+   canonical spelling of a standalone `type X = C`, but here it breaks internal
+   consistency of the anon class: its abstract method's parameter, typed `C^`,
+   no longer conforms to the inherited `stream(value: Self)` seen through the
+   bare member. We now keep the implied set for a synthetic type member of an
+   anonymous class.
+
+2. Even with both spellings boxed, the two universal roots differ — `caps.any`
+   on the freshly synthesised member vs the declared method's `ResultCap`. For a
+   capability type the capture is implied and not independently meaningful, so
+   `hasMatchingMember` now treats two type-alias members whose right-hand sides
+   both derive from `Capability`, and whose capture sets are empty or purely
+   root capabilities, as matching when their capture-stripped forms are equal.
+
+The `hasMatchingMember` relaxation only adds an acceptance branch, so it cannot
+turn a previously-accepted program into a rejected one; both changes are inert
+on the JVM, where the SAM stays a closure with no separate member symbols.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Proscala-Patch: sambox

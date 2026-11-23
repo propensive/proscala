@@ -1,0 +1,10 @@
+orthant 2 patch
+
+@ 0 1 0 0dffe62734f59c7401ddd91db905b18a
++           if BoltCodes.enabled then
++             if BoltCodes.applies(summon[Level].value, message) then s"[${BoltCodes.code(message)}] " else ""
++           else if (message.errorId != ErrorMessageID.NoExplanationID) then
+
+@ 1 0 0 09e7332419a493280363c29331c3728f
++     else if BoltCodes.enabled && BoltCodes.applies(dia.level, msg) then
++       sb.append(s"[${BoltCodes.code(msg)}] ")

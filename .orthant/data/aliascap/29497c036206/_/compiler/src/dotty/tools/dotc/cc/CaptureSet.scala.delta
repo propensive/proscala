@@ -1,0 +1,19 @@
+orthant 2 patch
+
+@ 0 1 0 1a4a593e6c395e390b4bc91b1753b6db
++             val sourceElem = bimap.inverse.mapCapability(elem)
++             if config.Proscala.enabled(config.Proscala.AliasCaptures) && lostTracking(elem, sourceElem)
++             then failWith(IncludeFailure(this, elem))
++             else source.tryInclude(sourceElem, this)
+
+@ 3 0 0 1118c0bd86322bec0f63ce672cbdeaec
++     /** Would propagating `elem` back to the source as `sourceElem` lose it? A parameter
++      *  is tracked by what its type captures, and substitution can change that: in
++      *  `(handle: lender.Result) ?=> R` the parameter captures nothing, but with
++      *  `handleLender` for `lender`, where `type Result = Handle^`, it captures a
++      *  `Handle`. Mapped back to the unsubstituted binder, the parameter would count as
++      *  pure, be accounted for by any set, and so escape without a level check.
++      */
++     private def lostTracking(elem: Capability, sourceElem: Capability)(using Context): Boolean =
++       elem.core.isInstanceOf[ParamRef] && (sourceElem ne elem) && elem.isTracked && !sourceElem.isTracked
++

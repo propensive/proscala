@@ -1,0 +1,17 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 13 Oct 2026 09:12:52 +0200
+
+Drop the implied capture set from a type alias in a refinement
+
+A type member's own info drops the capture set implied by a capability parent
+(`type X = C`, not `type X = C^{any}`). An alias inside a refinement did not:
+`Streamable { type Self = handle }` with `handle <: Res^` became
+`{ type Self = handle^ }`, which instantiating the given turns into a fresh
+root. 3.9's inference widened the call's type argument enough to absorb it;
+3.10 infers it exactly (`Res^{r}`), and the given no longer matches
+(galilei's `Handle.streamable`, guillotine's `Job.writableText`). Alias
+refinements now drop the implied set too, after the usual mapping.
+
+Developed with LLM assistance (Claude Code).
+
+Proscala-Patch: refinealias

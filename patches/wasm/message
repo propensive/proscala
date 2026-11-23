@@ -1,0 +1,13 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 17 Jul 2026 15:06:04 +0200
+
+wasm: WASM and WIT compiler and library support
+
+WASM/WIT code generation (dotty.tools.backend.sjs, transform.sjs) and the
+scala.scalajs.wit library API. The vendored Scala.js IR and the scala-wasm
+build config this needs now live on the main branch and are supplied by
+bin/proscala-overlay at build time.
+
+Developed with LLM assistance (Claude Code); reviewed by hand per LLM_POLICY.md.
+
+Proscala-Patch: wasm

@@ -1,0 +1,29 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 17 Jul 2026 15:22:52 +0200
+
+cc: do not box pure types with vacuous or pure-tuple capture sets
+
+Capture checking wrongly rejected or altered values of pure types in two related
+situations that arise when an inline typeclass method yielding a pure-typed value is
+re-checked under capture checking:
+
+1. direct-mint: a pure parent (e.g. an opaque type bounded by `caps.Pure`) acquires a
+   kept-but-empty capture set `T^{}`, which `finalizeCapturing` rejected with "T is a
+   pure type, it makes no sense to add a capture set to it". We now strip a vacuously
+   empty capture set on an always-pure parent instead of failing; a genuinely non-empty
+   set on a pure type (e.g. `Int^`) still errors as before.
+
+2. fresh-var: a tuple of pure elements in an invariant (type-member) position acquired a
+   fresh capture-set variable `^'sN`, so a derived typeclass method's parameter type no
+   longer overrode the trait's pure member. `needsVariable` now treats a tuple type as
+   capturing exactly what its element types capture, so an all-pure tuple needs no
+   variable.
+
+Adds two pos regression tests reduced from real code (an opaque `Text.decompose` and a
+`Quanta{ type Form = (Pounds, Stones) }.show`).
+
+Enabled by `-Z:unboxed-pure-types`; without it, upstream's code runs at every site this
+patch touches.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: unboxedpure

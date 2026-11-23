@@ -1,0 +1,18 @@
+orthant 2 patch
+
+@ 0 9 0 151285d9f05fcd9616430bfa96035da4
++     val extra =
++       if defn.isFunctionNType(found)
++         && SAMType.deconstruct(expected, ignoreFinalOrSealed = false).isEmpty
++         && SAMType.deconstruct(expected, ignoreFinalOrSealed = true).nonEmpty
++       then i"\nNote that conversion from a function to a single abstract method type is only possible if the type is neither ${hl("final")} nor ${hl("sealed")}"
++       else ""
++     if DiagnosticMarkup.active then
++       // interpolate the types themselves so that they are marked up; a colored
++       // diff of pre-rendered strings is useless to a structured consumer
++       i"""|${preface}Found:    ${found2.normalized}
++           |Required: ${expected2.normalized}${reported.notes}$extra"""
++     else
++       val (foundStr, expectedStr) = Formatting.typeDiff(found2.normalized, expected2.normalized)
++       i"""|${preface}Found:    $foundStr
++           |Required: $expectedStr${reported.notes}$extra"""

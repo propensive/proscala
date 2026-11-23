@@ -1,0 +1,32 @@
+orthant 2 patch
+
+@ 1 0 0 0c148e1a512020ec1d1aca3bf5493205
++ import scala.scalajs.LinkingInfo.{isWebAssembly, linkTimeIf}
+
+@ 0 1 0 0ac1dbc8ddb3f7631b520dd5b8625eb1
++   private val cacheJS = {
++     linkTimeIf(!isWebAssembly) {
++       js.Dictionary.empty[V]
++     } {
++       null
++     }
++   }
+
+@ 2 0 0 15b2630cbedbbbf5178420e21f6e802e
++   private val cacheWasm = {
++     linkTimeIf(isWebAssembly) {
++       new java.util.HashMap[String, V]()
++     } {
++       null
++     }
++   }
++
+
+@ 0 2 0 10cfb3eab98eead000b4de0a9cb1d57c
++   def apply(name: String): V = {
++     linkTimeIf(isWebAssembly) {
++       cacheWasm.nn.computeIfAbsent(name, _ => valueFromKey(name))
++     } {
++       cacheJS.nn.getOrElseUpdate(name, valueFromKey(name))
++     }
++   }

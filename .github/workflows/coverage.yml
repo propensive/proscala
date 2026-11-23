@@ -28,6 +28,11 @@ jobs:
         # upstream commits, which a shallow checkout cannot see.
         with:
           fetch-depth: 0
+      # The patches are in an Orthant store (.orthant/), which the tools read with `orthant`.
+      - name: Install Orthant
+        run: |
+          curl -fsSL "https://github.com/propensive/orthant/releases/download/$(cat etc/orthant-version)/install.sh" | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Report coverage
         run: |
           set -uo pipefail
@@ -36,7 +41,7 @@ jobs:
           {
             echo '### Patch coverage'
             echo
-            if [ "$status" = 0 ]; then echo 'Every target gets every patch it should.'; else echo 'Some targets lack a version of a patch (the `missing` column).'; fi
+            if [ "$status" = 0 ]; then echo 'Every target gets every patch it should.'; else echo 'Some targets do not have every patch cleanly (the `gaps` column).'; fi
             echo
             echo '```'
             cat coverage.txt
@@ -55,6 +60,11 @@ jobs:
         # upstream commits, which a shallow checkout cannot see.
         with:
           fetch-depth: 0
+      # The patches are in an Orthant store (.orthant/), which the tools read with `orthant`.
+      - name: Install Orthant
+        run: |
+          curl -fsSL "https://github.com/propensive/orthant/releases/download/$(cat etc/orthant-version)/install.sh" | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

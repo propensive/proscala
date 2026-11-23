@@ -1,0 +1,7 @@
+orthant 2 patch
+
+@ 0 2 0 1e65c239a7081b6919d09307f2677c48
++       if (emitSource) {
++         // A mirror class holds only forwarders, which carry no line numbers of their own,
++         // so it never references a synthetic line and needs no SMAP.
++         mirrorClass.visitSource("" + ctx.compilationUnit.source.name, null)

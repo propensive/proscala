@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
 #
-# proscala-check — check that the patches are well-formed and apply where they
-# claim to, and that the documentation on `main` agrees with the facts it
+# proscala-check — check that the patches are well-formed and are where they
+# claim to be, and that the documentation on `main` agrees with the facts it
 # describes, so none of the copies can drift apart unnoticed.
 #
 # Usage:
 #   bin/proscala-check            # check everything, exit 1 on any problem
 #   bin/proscala-check -v         # also list the checks that passed
-#   bin/proscala-check --quick    # skip proving every version at every anchor
+#   bin/proscala-check --quick    # skip verifying the store, and deriving the patches at each of its commits
 #
 # Each fact has exactly one source of truth; the docs are copies, and this
 # checks the copies against it:
 #
-#   which patches apply, in what order   ->  patches/series, patches/<p>/meta
+#   which patches there are, in what order ->  the store's patch axis (.orthant/config.tel)
+#   where a patch applies                ->  patches/<p>/meta
 #   which patches a stream carries       ->  the bounds, evaluated at its pin
 #   which scala/scala3 commit it is on   ->  UPSTREAM_SHA in mk/<stream>.mk
 #   which scala/scala3 branch that is on ->  UPSTREAM_REF in mk/<stream>.mk
@@ -41,24 +42,25 @@ section() { echo ">> $*"; }
 PROSCALA_PROG=proscala-check
 # shellcheck source=proscala-lib.sh
 . "$ROOT/bin/proscala-lib.sh"
-[ -f patches/series ] || { echo >&2 "proscala-check: no patches/series — run from a 'main' checkout"; exit 1; }
+[ -f .orthant/config.tel ] || { echo >&2 "proscala-check: no .orthant/config.tel — run from a 'main' checkout"; exit 1; }
+need_orthant
 mapfile -t STREAMS < <(streams)
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/proscala-check.XXXXXX")"
-trap 'rm -rf "$TMP"; if [ -n "${SELECT_INDEX:-}" ]; then rm -f "$SELECT_INDEX"; fi' EXIT
+trap 'rm -rf "$TMP"; store_drop' EXIT
 
-# Every commit the meta files name must be present (fetched, in a shallow clone).
+# Every commit the meta files or the store name must be present (fetched, in a shallow clone).
 mapfile -t ANCHORS < <(all_anchors)
 ensure_commits $(for s in "${STREAMS[@]}"; do upstream_sha "$s"; done) ${ANCHORS[@]+"${ANCHORS[@]}"}
 
 # What each stream's pin carries: the plan, and the tree it builds.
 declare -A STREAM_TREE=()
 for s in "${STREAMS[@]}"; do
-  select_plan "$(upstream_sha "$s")" "$TMP/plan.$s"
-  STREAM_TREE[$s]="$(GIT_INDEX_FILE="$SELECT_INDEX" git write-tree)"
-  rm -f "$SELECT_INDEX"; SELECT_INDEX=""
+  store_plan "$(upstream_sha "$s")" "$TMP/plan.$s"
+  STREAM_TREE[$s]="$STORE_TREE"
+  store_drop
 done
 # patches(<stream>) — the patches the stream carries (zflags, the stream base, is not one)
-patches() { awk -F'\t' '$2 == "plain" || $2 == "3way" || $2 == "missing" { print $1 }' "$TMP/plan.$1" | { grep -vx zflags || true; }; }
+patches() { awk -F'\t' '$2 == "plain" || $2 == "stale" || $2 == "missing" { print $1 }' "$TMP/plan.$1" | { grep -vx zflags || true; }; }
 
 # doc/README.md table: emit "<feature>\t<streams>\t<kind>\t<repro>"
 table() {
@@ -93,8 +95,8 @@ done < <(table)
 # every patch has a doc directory and a table row
 while IFS= read -r p; do
   [ "$p" = zflags ] && continue
-  [ -f "doc/$p/$p.md" ] || problem "patches/series lists '$p' but doc/$p/$p.md is missing"
-  [ "$(table | cut -f1 | grep -cx "$p")" -gt 0 ] || problem "patches/series lists '$p' but doc/README.md has no row for it"
+  [ -f "doc/$p/$p.md" ] || problem "'$p' is a patch of the store but doc/$p/$p.md is missing"
+  [ "$(table | cut -f1 | grep -cx "$p")" -gt 0 ] || problem "'$p' is a patch of the store but doc/README.md has no row for it"
 done < <(series)
 
 # every doc directory is either in the table or deliberately not a patch
@@ -205,58 +207,69 @@ done < <({ git ls-files -- '*.md'
 # --- 6. the patches ----------------------------------------------------------------
 section "patches"
 declare -A IN_SERIES=()
-dups="$(series | sort | uniq -d | tr '\n' ' ')"
-[ -z "$dups" ] || problem "patches/series lists ${dups}more than once"
-[ "$(series | head -1)" = zflags ] || problem "patches/series must start with zflags (the stream base)"
+store_patches >/dev/null 2>"$TMP/chain.err" || problem "the store's patch axis is not a chain: $(cat "$TMP/chain.err")"
+[ "$(series | wc -l | tr -d ' ')" = "$(( $(store_axis .orthant/config.tel "$STORE_PATCH_AXIS" | wc -l) - 1 ))" ] \
+  || problem "the store's patch axis has values which are not in the chain beneath its root"
+[ "$(series | head -1)" = zflags ] || problem "the store's patches must start with zflags (the stream base)"
 for p in $(series); do
   IN_SERIES[$p]=1
-  [ -f "patches/$p/meta" ] || { problem "patches/series lists '$p' but patches/$p/meta does not exist"; continue; }
-  # meta: known lines, full commit ids inside the history window
+  # the message: an author, a date, and the trailer
+  if [ ! -f "patches/$p/message" ]; then problem "patches/$p/message does not exist"
+  else
+    [ -n "$(message_author "$p")" ] && [ -n "$(message_date "$p")" ] || problem "patches/$p/message does not begin with 'Author:' and 'Date:' lines"
+    [ "$(message_trailer "$p")" = "$p" ] || problem "patches/$p/message does not end with the trailer 'Proscala-Patch: $p'"
+  fi
+  # meta: bounds only, with full commit ids inside the history window
   while read -r k rest; do
     case "$k" in
-      needed-from|obsolete-from|absent-from|variant) ;;
+      needed-from|obsolete-from|absent-from) ;;
       *) problem "patches/$p/meta: unknown line '$k $rest'" ;;
     esac
   done < <(meta "$p")
-  for c in $(meta "$p" | awk '$1 ~ /-from$/ { print $2 } $1 == "variant" { for (i = 4; i <= NF; i++) print $i }'); do
+  for c in $(bounds "$p" | awk '{ print $2 }'); do
     [[ "$c" =~ ^[0-9a-f]{40}$ ]] || { problem "patches/$p/meta: '$c' is not a full commit id"; continue; }
     [ "$(git log -1 --format=%cs "$c")" \> "$PROSCALA_SINCE" ] \
       || problem "patches/$p/meta: $c predates PROSCALA_SINCE ($PROSCALA_SINCE), so a shallow clone cannot see it"
   done
-  [ -n "$(variants "$p")" ] || problem "patches/$p has no versions"
-  declare -A FILES=()
-  while read -r f rev anchors; do
-    FILES[$f]=1
-    [ -f "patches/$p/$f" ] || { problem "patches/$p/meta names $f, which does not exist"; continue; }
-    [ -n "$anchors" ] || problem "patches/$p/$f has no anchor"
-    [[ "$rev" =~ ^[1-9][0-9]*$ ]] || problem "patches/$p/$f: revision '$rev' is not a positive number"
-    [ "$(patch_commits "patches/$p/$f")" = 1 ] || problem "patches/$p/$f holds $(patch_commits "patches/$p/$f") commits; a version holds exactly one"
-    [ "$(patch_trailer "patches/$p/$f")" = "$p" ] || problem "patches/$p/$f's message does not end with the trailer 'Proscala-Patch: $p'"
-  done < <(variants "$p")
-  for f in patches/"$p"/*.patch; do
-    [ -e "$f" ] || continue
-    [ -n "${FILES[$(basename "$f")]:-}" ] || problem "$f is not named in patches/$p/meta"
+  [ -d ".orthant/data/$p" ] || problem "the store holds nothing for the patch '$p'"
+  for f in patches/"$p"/*; do
+    case "$(basename "$f")" in message|meta) ;; *) [ ! -e "$f" ] || problem "$f is neither a message nor a meta file" ;; esac
   done
-  # two identical files should be one version with two anchors
-  dupf="$(for f in patches/"$p"/*.patch; do [ -e "$f" ] && git hash-object "$f"; done | sort | uniq -d | head -1)"
-  [ -z "$dupf" ] || problem "patches/$p holds two identical versions; keep one and give it both anchors"
-  # versions behind the latest revision still carry an older change
-  top="$(max_revision "$p")"
-  while read -r f rev _; do
-    if [ "$rev" -lt "$top" ]; then echo "   note: patches/$p/$f is at revision $rev, behind $top: it still carries the older change"; fi
-  done < <(variants "$p")
-  unset FILES
 done
 for d in patches/*/; do
   p="$(basename "$d")"
-  [ -n "${IN_SERIES[$p]:-}" ] || problem "patches/$p/ is not in patches/series"
+  [ -n "${IN_SERIES[$p]:-}" ] || problem "patches/$p/ is not a patch of the store"
 done
+for d in .orthant/data/*/; do
+  p="$(basename "$d")"
+  [ -n "${IN_SERIES[$p]:-}" ] || problem ".orthant/data/$p/ is not a patch of the store"
+done
+# the upstream axis: each value a commit inside the window, descended from its parent's
+ROOTC="$(store_values | awk '$2 == "-" { print $3 }')"
+while read -r vn vp vc; do
+  [[ "$vc" =~ ^[0-9a-f]{40}$ ]] || { problem "the store's value $vn has no full commit id"; continue; }
+  [ "$(git log -1 --format=%cs "$vc")" \> "$PROSCALA_SINCE" ] \
+    || problem "the store's value $vn predates PROSCALA_SINCE ($PROSCALA_SINCE), so a shallow clone cannot see it"
+  [ "$vp" = - ] && continue
+  pc="$(store_values | awk -v n="$vp" '$1 == n { print $3 }')"
+  is_anc "$pc" "$vc" || problem "the store's value $vn does not descend from its parent $vp"
+  # and no other value lies between them: it would be the nearer ancestor
+  while read -r on op oc; do
+    [ "$on" != "$vn" ] && [ "$on" != "$vp" ] && is_anc "$pc" "$oc" && is_anc "$oc" "$vc" && [ "$oc" != "$pc" ] \
+      && [ "$(git rev-list --count "$oc..$vc")" -lt "$(git rev-list --count "$pc..$vc")" ] \
+      && problem "the store's value $vn is beneath $vp, but $on is a nearer ancestor of it"
+  done < <(store_values)
+done < <(store_values)
 
 # every stream builds completely, plainly, and registers the -Z flags its docs give
 for s in "${STREAMS[@]}"; do
   miss="$(plan_names "$TMP/plan.$s" missing)"
-  [ -z "$miss" ] || problem "the $s stream (scala/scala3 $(upstream_sha "$s" | cut -c1-10)) has no applying version of: $miss"
-  pass "$s: every patch it carries applies"
+  [ -z "$miss" ] || problem "the $s stream (scala/scala3 $(upstream_sha "$s" | cut -c1-10)): the store has nothing there for: $miss"
+  stales="$(plan_names "$TMP/plan.$s" stale)"
+  [ -z "$stales" ] || problem "the $s stream (scala/scala3 $(upstream_sha "$s" | cut -c1-10)): upstream has changed beneath: $stales"
+  unreal="$(awk -F'\t' '$2 == "out" && $3 ~ /put right/ { print $1 }' "$TMP/plan.$s" | tr '\n' ' ')"
+  [ -z "$unreal" ] || problem "the $s stream (scala/scala3 $(upstream_sha "$s" | cut -c1-10)): the store still has, though their bounds exclude it: $unreal(bin/proscala-fill $s takes them out)"
+  pass "$s: every patch it carries is there, cleanly"
   registry="$(git cat-file blob "${STREAM_TREE[$s]}:compiler/src/dotty/tools/dotc/config/Proscala.scala" 2>/dev/null || true)"
   [ -n "$registry" ] || problem "$s: the patches build no compiler/src/dotty/tools/dotc/config/Proscala.scala"
   while IFS=$'\t' read -r feat streams flag; do
@@ -268,22 +281,31 @@ for s in "${STREAMS[@]}"; do
   pass "$s flags"
 done
 
-# every version applies plainly at each of its anchors, where the patch is in range
+# the store says where its source is: without that, orthant reads no upstream content
+grep -qx '    repository \.' "$ROOT/.orthant/config.tel" \
+  && pass "the store reads upstream from this repository" \
+  || problem ".orthant/config.tel: the upstream axis's source has no 'repository .' line"
+
+# the store is sound, and at each commit at which something is checked in, every
+# patch is as its bounds say
 if [ "$QUICK" = 0 ]; then
+  out="$(cd "$ROOT" && "$ORTHANT" check 2>&1 </dev/null)" || problem "orthant check: $out"
+  pass "orthant check: $out"
   n=0
-  for p in $(series); do
-    while read -r f rev anchors; do
-      for a in $anchors; do
-        r="$(in_range "$p" "$a")"
-        if [ "$r" != in ]; then problem "patches/$p/$f is anchored at $(git rev-parse --short "$a"), where the patch's bounds exclude it ($r)"; continue; fi
-        select_plan "$a" "$TMP/anchor" "$p=patches/$p/$f"; rm -f "$SELECT_INDEX"; SELECT_INDEX=""
-        st="$(awk -F'\t' -v p="$p" '$1 == p { print $2 }' "$TMP/anchor")"
-        [ "$st" = plain ] || problem "patches/$p/$f does not apply at its anchor $(git rev-parse --short "$a"), after the patches before it"
-        n=$((n + 1))
-      done
-    done < <(variants "$p")
-  done
-  pass "$n version anchors proved"
+  store_view
+  while read -r vn vp vc; do
+    [ "$vp" != - ] || continue
+    store_view_add "$vc"
+    store_derive "$vc" "$TMP/value"
+    short="$(git rev-parse --short "$vc")"
+    unreal="$(awk -F'\t' '$2 == "out" && $3 ~ /put right/ { print $1 }' "$TMP/value" | tr '\n' ' ')"
+    [ -z "$unreal" ] || problem "at $short the store still has, though their bounds exclude it: $unreal(bin/proscala-fill $short takes them out)"
+    stales="$(plan_names "$TMP/value" stale)"
+    [ -z "$stales" ] || echo "   note: at $short upstream has changed beneath: $stales"
+    n=$((n + 1))
+  done < <(store_values)
+  store_drop
+  pass "the patches derived at $n commits"
 fi
 
 # --- report -------------------------------------------------------------------
