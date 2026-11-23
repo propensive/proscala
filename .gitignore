@@ -1,3 +1,4 @@
 /worktrees/
 /release/
 /.build/
+__pycache__/
