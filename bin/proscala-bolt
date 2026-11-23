@@ -34,10 +34,21 @@
 # keep the old code instead, move the `template` line to the old error by hand
 # (an error may have several).
 #
-# The registry is a TEL document of the `bolt` schema (`bolt.tel` in the `bolt`
-# repository): `subdivision 7` / `error 40`, with a `template` or a `text` for
-# each key and, for the reader only, the `source` file it was first seen in.
+# The registry, `mk/bolt-codes.tel`, is the record of Proscala's codes, which the
+# index of bolt codes (`projects.tel` in the `bolt` repository) names. It is a
+# TEL document of the `bolt` schema (`bolt.tel` there): `subdivision 7` /
+# `error 40`, with a `template` or a `text` for each key and, for the reader
+# only, the `source` file it was first seen in.
+#
+# Each level has a name in kebab-case, which spells the long form of its code:
+# `↯/proscala.standard.type-mismatch` is `↯/p.1.7`. A message upstream numbers
+# takes its name from upstream's (`TypeMismatch`), and has a `symbol` where that
+# is not its name in Pascal case; the others have none until they are given one
+# by hand, as the line after the number.
+#
 # This tool reads and writes the form it writes itself, not the whole of TEL.
+# What else the schema allows beneath a code (its `conditions`, `mitigation`,
+# `example` and the rest of its documentation) it keeps as it finds it.
 
 import os
 import re
@@ -58,8 +69,8 @@ AREAS = [
 
 GENERAL = [
     ("2", "general", "messages with no subdivision of their own"),
-    ("2.1", "Unassigned", "a message with no bolt code of its own"),
-    ("2.2", "Macro", "a message reported by a macro; carries the macro's own bolt code, if it gave one"),
+    ("2.1", "unassigned", "a message with no bolt code of its own"),
+    ("2.2", "macro", "a message reported by a macro; carries the macro's own bolt code, if it gave one"),
 ]
 
 SOURCE = "compiler/src/dotty/tools"
@@ -208,6 +219,18 @@ def templates(text):
 
 LEVELS = ["subdivision", "error", "variant", "site"]
 PRAGMA = "tel 1.0 propensive.dev/bolt"
+KNOWN = ["retired", "name", "symbol", "summary", "description", "source", "template", "text"]
+NAME = re.compile(r"[a-z][a-z0-9]*(-[a-z][a-z0-9]*)*")
+
+
+def kebab(symbol):
+    """The standard name of what the source calls `symbol`: `TypeMismatch` is `type-mismatch`."""
+    return re.sub(r"(?<!^)(?=[A-Z])", "-", symbol).lower()
+
+
+def pascal(name):
+    """A standard name in Pascal case: `type-mismatch` is `TypeMismatch`."""
+    return "".join(word[:1].upper() + word[1:] for word in name.split("-"))
 
 
 def phrases(content):
@@ -232,8 +255,9 @@ def phrases(content):
 
 
 def read_registry(path):
-    """The registry's rows — code, state, name, origin, key — from its TEL: one
-    for each key of a code, or one without a key."""
+    """The registry's rows — code, state, name, origin, key, symbol, and the
+    lines beneath it this tool does not read — from its TEL: one for each key
+    of a code, or one without a key."""
     records = []
     if not os.path.exists(path):
         return []
@@ -251,6 +275,19 @@ def read_registry(path):
         words = phrases(line.strip(" "))
         keyword, atoms = words[0], words[1:]
         if keyword == "#" or (keyword == "tel" and not records and not stack):
+            continue
+        owner = next((entry for entry in reversed(stack) if entry[0] < indent), None)
+        if (owner and owner[2] is not None and owner[0] == indent - 1 and keyword not in LEVELS
+                and keyword not in KNOWN):
+            # documentation: kept as it is, with everything beneath it
+            end = index
+            while end < len(lines) and (not lines[end].strip(" ") or
+                                        len(lines[end]) - len(lines[end].lstrip(" ")) > indent * 2):
+                end += 1
+            while not lines[end - 1].strip(" "):
+                end -= 1
+            owner[2]["extra"] += lines[index - 1:end]
+            index, previous = end, None
             continue
         if previous is not None and indent == previous + 2:
             # a source atom: the value of the line above, verbatim
@@ -272,9 +309,15 @@ def read_registry(path):
             if not atoms:
                 sys.exit(f"proscala-bolt: {path}:{index}: a {keyword} needs its number")
             code = (code + "." if code else "") + atoms[0]
-            record = {"code": code, "state": "active", "name": "-", "origin": "", "keys": []}
+            record = {"code": code, "state": "active", "name": "-", "origin": "", "keys": [],
+                      "symbol": "", "extra": []}
             if len(atoms) > 1:
                 record["name"] = atoms[1]
+                if not NAME.fullmatch(atoms[1]):
+                    # a name as upstream writes it, from before names were standard
+                    record["name"] = kebab(atoms[1])
+                    if pascal(record["name"]) != atoms[1]:
+                        record["symbol"] = atoms[1]
             if "retired" in atoms[2:]:
                 record["state"] = "retired"
             records.append(record)
@@ -284,7 +327,9 @@ def read_registry(path):
                 owner["state"] = "retired"
             elif keyword == "name" and value:
                 owner["name"] = value
-            elif keyword in ("description", "source") and value:
+            elif keyword == "symbol" and value:
+                owner["symbol"] = value
+            elif keyword in ("summary", "description", "source") and value:
                 owner["origin"] = value
             elif keyword == "template" and value:
                 owner["keys"].append(value)
@@ -295,7 +340,8 @@ def read_registry(path):
     rows = []
     for record in records:
         for key in record["keys"] or [""]:
-            rows.append([record["code"], record["state"], record["name"], record["origin"], key])
+            rows.append([record["code"], record["state"], record["name"], record["origin"], key,
+                         record["symbol"], record["extra"]])
     return rows
 
 
@@ -313,15 +359,19 @@ def write_registry(path, rows):
 
     merged = {}
     for row in sorted(rows, key=order):
-        entry = merged.setdefault(row[0], {"state": row[1], "name": row[2], "origin": row[3], "keys": []})
+        entry = merged.setdefault(row[0], {"state": row[1], "name": row[2], "origin": row[3], "keys": [],
+                                           "symbol": row[5], "extra": row[6]})
         if row[1] == "retired":
             entry["state"] = "retired"
         if row[4]:
             entry["keys"].append(row[4])
 
     out = [PRAGMA, "",
-           "# Bolt codes of Proscala: `subdivision 1` / `error 7` is ↯/p.1.7.",
-           "# Maintained by Proscala's bin/proscala-bolt.", "",
+           "# Bolt codes of Proscala: `subdivision 1` / `error 7` is ↯/p.1.7, or, by the names of",
+           "# each, ↯/proscala.standard.type-mismatch. This is the record of the letter `p` which the",
+           "# index of bolt codes, `projects.tel` in propensive/bolt, names; its schema is `bolt.tel`",
+           "# there. Maintained by bin/proscala-bolt, which assigns the numbers; a name, and the",
+           "# documentation of a code, are written by hand.", "",
            "project p proscala"]
     for code, entry in merged.items():
         depth = len(code.split("."))
@@ -337,13 +387,16 @@ def write_registry(path, rows):
         out.append(head)
         if entry["state"] == "retired" and not named:
             out.append(f"{pad}  retired")
+        if entry["symbol"]:
+            out += value("symbol", entry["symbol"], depth + 1)
         if entry["origin"]:
-            kind = "source" if entry["origin"].endswith(".scala") else "description"
+            kind = "source" if entry["origin"].endswith(".scala") else "summary"
             out += value(kind, entry["origin"], depth + 1)
         for key in [key for key in entry["keys"] if not key.startswith("text:")]:
             out += value("template", key, depth + 1)
         for key in [key for key in entry["keys"] if key.startswith("text:")]:
             out += value("text", key[len("text:"):], depth + 1)
+        out += entry["extra"]
     with open(path, "w", encoding="utf-8") as file:
         file.write("\n".join(out) + "\n")
 
@@ -367,7 +420,7 @@ def standard(tree):
 def main(arguments):
     if arguments[:1] == ["--keys"] and len(arguments) == 2:
         # what the compiler's jar holds: the code of each key
-        for code, state, _, _, key in read_registry(arguments[1]):
+        for code, state, _, _, key, _, _ in read_registry(arguments[1]):
             if key and state == "active":
                 print(f"{code}\t{key}")
         return
@@ -383,8 +436,8 @@ def main(arguments):
     keys = {row[4] for row in rows if row[4]}
     added = []
 
-    def add(code, state, name, origin="", key=""):
-        row = [code, state, name, origin, key]
+    def add(code, state, name, origin="", key="", symbol=""):
+        row = [code, state, name, origin, key, symbol, []]
         rows.append(row)
         codes.setdefault(code, row)
         added.append(row)
@@ -405,13 +458,14 @@ def main(arguments):
             last[int(numbers[0])] = max(last.get(int(numbers[0]), 0), int(numbers[1]))
 
     for tree in trees:
-        for code, state, name in standard(tree):
+        for code, state, upstream in standard(tree):
+            name = kebab(upstream)
             if code not in codes:
-                add(code, state, name)
-            elif codes[code][2] != name:
+                add(code, state, name, symbol="" if pascal(name) == upstream else upstream)
+            elif (codes[code][5] or pascal(codes[code][2])) != upstream:
                 # Upstream renamed it; a renamed message keeps its code, under the name
                 # the registry already has (give the newest tree first).
-                print(f"proscala-bolt: note: {code} is {codes[code][2]} in the registry, {name} in {tree}")
+                print(f"proscala-bolt: note: {code} is {codes[code][2]} in the registry, {upstream} in {tree}")
             elif state == "retired" and codes[code][1] != "retired":
                 codes[code][1] = "retired"
                 added.append(codes[code])
@@ -433,7 +487,7 @@ def main(arguments):
 
     if check:
         for row in added:
-            print("unassigned: " + "\t".join(row).rstrip("\t"))
+            print("unassigned: " + "\t".join(row[:5]).rstrip("\t"))
         if added:
             print(f"proscala-bolt: {len(added)} messages have no bolt code in {registry}; assign them with\n"
                   f"  bin/proscala-bolt mk/bolt-codes.tel <tree>   (from the Proscala checkout)", file=sys.stderr)

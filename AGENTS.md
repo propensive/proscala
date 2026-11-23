@@ -444,8 +444,11 @@ the build puts in the compiler's jar — gives each template its code.
 `bin/proscala-bolt <registry> <tree>...` (Python 3) reads the templates out of
 each tree and appends those the registry lacks, with the next free number of
 their subdivision; it never renumbers, and a code is never reused. Run it when a
-stream moves to a new upstream, newest tree first, and copy the result to
-`p.tel` in the `bolt` repository, of which `mk/bolt-codes.tel` is a copy.
+stream moves to a new upstream, newest tree first. `mk/bolt-codes.tel` is the
+record of Proscala's codes — the `bolt` repository's index names it, and holds
+no copy — in that repository's `bolt` schema: each subdivision and error has a
+name in kebab-case (`type-mismatch`, from upstream's `TypeMismatch`), and the
+tool keeps whatever documentation is written beneath a code.
 
 `make` runs the `--check` before it compiles the compiler, and **fails if any
 message in the tree has no code**: assign the new ones (the command above),
