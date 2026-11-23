@@ -408,8 +408,8 @@ COMPILER_CP  := $(call cpjoin,$(SCALA_LIB_JAR) $(INTERFACES_JAR) $(TASTY_JAR) \
   $(TREE_ASM_JARS) $(JARS)/compiler-interface-$(COMPILER_IFACE_VER).jar \
   $(JARS)/util-interface-$(UTIL_IFACE_VER).jar)
 
-# The bolt-code registry is mk/bolt-codes.tel, a copy of the `bolt` repository's
-# p.tel. The code of each of its keys goes in the jar beside
+# The bolt-code registry is mk/bolt-codes.tel, the record of Proscala's codes
+# which the `bolt` repository's index names. The code of each of its keys goes in the jar beside
 # reporting.BoltCodes, which reads it under -Zbolt-codes.
 # The compiler is not built while any of its messages lacks a code there: a
 # message new in this upstream must be assigned one first (bin/proscala-bolt).

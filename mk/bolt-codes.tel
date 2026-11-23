@@ -1,255 +1,258 @@
 tel 1.0 propensive.dev/bolt
 
-# Bolt codes of Proscala: `subdivision 1` / `error 7` is ↯/p.1.7.
-# Maintained by Proscala's bin/proscala-bolt.
+# Bolt codes of Proscala: `subdivision 1` / `error 7` is ↯/p.1.7, or, by the names of
+# each, ↯/proscala.standard.type-mismatch. This is the record of the letter `p` which the
+# index of bolt codes, `projects.tel` in propensive/bolt, names; its schema is `bolt.tel`
+# there. Maintained by bin/proscala-bolt, which assigns the numbers; a name, and the
+# documentation of a code, are written by hand.
 
 project p proscala
 
   subdivision 1 standard
-    error 1 EmptyCatchBlock
-    error 2 EmptyCatchAndFinallyBlock
-    error 3 DeprecatedWithOperator
-    error 4 CaseClassMissingParamList
-    error 5 DuplicateBind
-    error 6 MissingIdent
-    error 7 TypeMismatch
-    error 8 NotAMember
-    error 9 EarlyDefinitionsNotSupported
-    error 10 TopLevelImplicitClass retired
-    error 11 ImplicitCaseClass
-    error 12 ImplicitClassPrimaryConstructorArity
-    error 13 ObjectMayNotHaveSelfType
-    error 14 TupleTooLong retired
-    error 15 RepeatedModifier
-    error 16 InterpolatedStringError
-    error 17 UnboundPlaceholderParameter
-    error 18 IllegalStartSimpleExpr
-    error 19 MissingReturnType
-    error 20 YieldOrDoExpectedInForComprehension
-    error 21 ProperDefinitionNotFound
-    error 22 ByNameParameterNotSupported
-    error 23 WrongNumberOfTypeArgs
-    error 24 IllegalVariableInPatternAlternative
-    error 25 IdentifierExpected
-    error 26 AuxConstructorNeedsNonImplicitParameter
-    error 27 VarArgsParamMustComeLast
-    error 28 IllegalLiteral
-    error 29 PatternMatchExhaustivity
-    error 30 MatchCaseUnreachable
-    error 31 SeqWildcardPatternPos
-    error 32 IllegalStartOfSimplePattern
-    error 33 PkgDuplicateSymbol
-    error 34 ExistentialTypesNoLongerSupported
-    error 35 UnboundWildcardType
-    error 36 DanglingThisInPath retired
-    error 37 OverridesNothing
-    error 38 OverridesNothingButNameExists
-    error 39 ForwardReferenceExtendsOverDefinition
-    error 40 ExpectedTokenButFound
-    error 41 MixedLeftAndRightAssociativeOps
-    error 42 CantInstantiateAbstractClassOrTrait
-    error 43 UnreducibleApplication
-    error 44 OverloadedOrRecursiveMethodNeedsResultType
-    error 45 RecursiveValueNeedsResultType
-    error 46 CyclicReferenceInvolving
-    error 47 CyclicReferenceInvolvingImplicit
-    error 48 SuperQualMustBeParent
-    error 49 AmbiguousReference
-    error 50 AmbiguousOverload
-    error 51 ReassignmentToVal
-    error 52 TypeDoesNotTakeParameters
-    error 53 ParameterizedTypeLacksArguments retired
-    error 54 VarValParametersMayNotBeCallByName
-    error 55 MissingTypeParameterFor
-    error 56 DoesNotConformToBound
-    error 57 DoesNotConformToSelfType
-    error 58 DoesNotConformToSelfTypeCantBeInstantiated
-    error 59 AbstractMemberMayNotHaveModifier
-    error 60 TopLevelCantBeImplicit retired
-    error 61 TypesAndTraitsCantBeImplicit
-    error 62 OnlyClassesCanBeAbstract
-    error 63 AbstractOverrideOnlyInTraits
-    error 64 TraitsMayNotBeFinal
-    error 65 NativeMembersMayNotHaveImplementation
-    error 66 OnlyClassesCanHaveDeclaredButUndefinedMembers
-    error 67 CannotExtendAnyVal
-    error 68 CannotHaveSameNameAs
-    error 69 ValueClassesMayNotDefineInner
-    error 70 ValueClassesMayNotDefineNonParameterField
-    error 71 ValueClassesMayNotDefineASecondaryConstructor
-    error 72 ValueClassesMayNotContainInitalization
-    error 73 ValueClassesMayNotBeAbstract
-    error 74 ValueClassesMayNotBeContainted
-    error 75 ValueClassesMayNotWrapAnotherValueClass
-    error 76 ValueClassParameterMayNotBeAVar
-    error 77 ValueClassNeedsExactlyOneValParam
-    error 78 OnlyCaseClassOrCaseObjectAllowed retired
-    error 79 ExpectedTopLevelDef retired
-    error 80 AnonymousFunctionMissingParamType
-    error 81 SuperCallsNotAllowedInlineable
-    error 82 NotAPath
-    error 83 WildcardOnTypeArgumentNotAllowedOnNew
-    error 84 FunctionTypeNeedsNonEmptyParameterList retired
-    error 85 WrongNumberOfParameters
-    error 86 DuplicatePrivateProtectedQualifier
-    error 87 ExpectedStartOfTopLevelDefinition
-    error 88 MissingReturnTypeWithReturnStatement
-    error 89 NoReturnFromInlineable
-    error 90 ReturnOutsideMethodDefinition
-    error 91 UncheckedTypePattern
-    error 92 ExtendFinalClass
-    error 93 EnumCaseDefinitionInNonEnumOwner retired
-    error 94 ExpectedTypeBoundOrEquals
-    error 95 ClassAndCompanionNameClash
-    error 96 TailrecNotApplicable
-    error 97 FailureToEliminateExistential
-    error 98 OnlyFunctionsCanBeFollowedByUnderscore
-    error 99 MissingEmptyArgumentList
-    error 100 DuplicateNamedTypeParameter
-    error 101 UndefinedNamedTypeParameter
-    error 102 IllegalStartOfStatement
-    error 103 TraitIsExpected
-    error 104 TraitRedefinedFinalMethodFromAnyRef retired
-    error 105 PackageNameAlreadyDefined
-    error 106 UnapplyInvalidNumberOfArguments
-    error 107 UnapplyInvalidReturnType
-    error 108 StaticFieldsOnlyAllowedInObjects
-    error 109 CyclicInheritance
-    error 110 BadSymbolicReference
-    error 111 UnableToExtendSealedClass
-    error 112 SymbolHasUnparsableVersionNumber
-    error 113 SymbolChangedSemanticsInVersion
-    error 114 UnableToEmitSwitch
-    error 115 MissingCompanionForStatic
-    error 116 PolymorphicMethodMissingTypeInParent
-    error 117 ParamsNoInline
-    error 118 SymbolIsNotAValue
-    error 119 DoubleDefinition
-    error 120 MatchCaseOnlyNullWarning
-    error 121 ImportedTwice
-    error 122 TypeTestAlwaysDiverges
-    error 123 TermMemberNeedsNeedsResultTypeForImplicitSearch
-    error 124 ClassCannotExtendEnum
-    error 125 ValueClassParameterMayNotBeCallByName
-    error 126 NotAnExtractor
-    error 127 MemberWithSameNameAsStatic
-    error 128 PureExpressionInStatementPosition
-    error 129 TraitCompanionWithMutableStatic
-    error 130 LazyStaticField
-    error 131 StaticOverridingNonStaticMembers
-    error 132 OverloadInRefinement
-    error 133 NoMatchingOverload
-    error 134 StableIdentPattern
-    error 135 StaticFieldsShouldPrecedeNonStatic
-    error 136 IllegalSuperAccessor
-    error 137 TraitParameterUsedAsParentPrefix
-    error 138 UnknownNamedEnclosingClassOrObject
-    error 139 IllegalCyclicTypeReference
-    error 140 MissingTypeParameterInTypeApp
-    error 141 SkolemInInferred retired
-    error 142 ErasedTypesCanOnlyBeFunctionTypes
-    error 143 CaseClassMissingNonImplicitParamList
-    error 144 EnumerationsShouldNotBeEmpty
-    error 145 IllegalParameterInit
-    error 146 RedundantModifier
-    error 147 TypedCaseDoesNotExplicitlyExtendTypedEnum
-    error 148 IllegalRedefinitionOfStandardKind
-    error 149 NoExtensionMethodAllowed retired
-    error 150 ExtensionMethodCannotHaveTypeParams retired
-    error 151 ExtensionCanOnlyHaveDefs retired
-    error 152 UnexpectedPatternForSummonFrom
-    error 153 AnonymousInstanceCannotBeEmpty
-    error 154 TypeSpliceInValPattern retired
-    error 155 ModifierNotAllowedForDefinition
-    error 156 CannotExtendJavaEnum
-    error 157 InvalidReferenceInImplicitNotFoundAnnotation
-    error 158 TraitMayNotDefineNativeMethod
-    error 159 JavaEnumParentArgs
-    error 160 AlreadyDefined
-    error 161 CaseClassInInlinedCode
-    error 162 OverrideTypeMismatchError retired
-    error 163 OverrideError
-    error 164 MatchableWarning
-    error 165 CannotExtendFunction
-    error 166 LossyWideningConstantConversion
-    error 167 ImplicitSearchTooLarge
-    error 168 TargetNameOnTopLevelClass
-    error 169 NotClassType
-    error 170 MissingArgument
-    error 171 MissingImplicitArgument
-    error 172 CannotBeAccessed
-    error 173 InlineGivenShouldNotBeFunction
-    error 174 ValueDiscarding
-    error 175 UnusedNonUnitValue
-    error 176 ConstrProxyShadows
-    error 177 MissingArgumentList
-    error 178 MatchTypeScrutineeCannotBeHigherKinded
-    error 179 AmbiguousExtensionMethod
-    error 180 UnqualifiedCallToAnyRefMethod
-    error 181 NotConstant
-    error 182 ClosureCannotHaveInternalParameterDependencies
-    error 183 MatchTypeNoCases
-    error 184 UnimportedAndImported
-    error 185 ImplausiblePatternWarning
-    error 186 SynchronizedCallOnValueClass
-    error 187 VarArgsParamCannotBeGiven
-    error 188 ExtractorNotFound
-    error 189 PureUnitExpression
-    error 190 MatchTypeLegacyPattern
-    error 191 UnstableInlineAccessor
-    error 192 VolatileOnVal
-    error 193 ExtensionNullifiedByMember
-    error 194 PhantomSymbolNotValue
-    error 195 ContextBoundCompanionNotValue retired
-    error 196 InlinedAnonClassWarning
-    error 197 UnusedSymbol
-    error 198 TailrecNestedCall
-    error 199 FinalLocalDef
-    error 200 NonNamedArgumentInJavaAnnotation
-    error 201 QuotedTypeMissing
-    error 202 DeprecatedAssignmentSyntax
-    error 203 DeprecatedInfixNamedArgumentSyntax
-    error 204 GivenSearchPriority
-    error 205 EnumMayNotBeValueClasses
-    error 206 IllegalUnrollPlacement
-    error 207 ExtensionHasDefault
-    error 208 FormatInterpolationError
-    error 209 ValueClassCannotExtendAliasOfAnyVal
-    error 210 MatchIsNotPartialFunction
-    error 211 OnlyFullyDependentAppliedConstructorType
-    error 212 PointlessAppliedConstructorType
-    error 213 IllegalContextBounds
-    error 214 NamedPatternNotApplicable
-    error 215 ErasedNotPure
-    error 216 IllegalErasedDef
-    error 217 CannotInstantiateQuotedTypeVar
-    error 218 DefaultShadowsGiven
-    error 219 RecurseWithDefault
-    error 220 EncodedPackageName
-    error 221 CannotBeIncluded
-    error 222 OverrideClass
-    error 223 InferUnionWarning
-    error 224 TypeParameterShadowsType
-    error 225 PrivateShadowsType
-    error 226 AmbiguousTemplateName
-    error 227 IndentationWarning
-    error 228 IllegalIdentifier
-    error 229 ConcreteClassHasUnimplementedMethods
-    error 230 UseOfAnyMethodAsInterpolator
-    error 231 IllegalUseOfSpecialized
-    error 232 VarianceInSpecializedTraitsLimitation
-    error 233 UnreasonableCatch
-    error 234 BadErased
+    error 1 empty-catch-block
+    error 2 empty-catch-and-finally-block
+    error 3 deprecated-with-operator
+    error 4 case-class-missing-param-list
+    error 5 duplicate-bind
+    error 6 missing-ident
+    error 7 type-mismatch
+    error 8 not-a-member
+    error 9 early-definitions-not-supported
+    error 10 top-level-implicit-class retired
+    error 11 implicit-case-class
+    error 12 implicit-class-primary-constructor-arity
+    error 13 object-may-not-have-self-type
+    error 14 tuple-too-long retired
+    error 15 repeated-modifier
+    error 16 interpolated-string-error
+    error 17 unbound-placeholder-parameter
+    error 18 illegal-start-simple-expr
+    error 19 missing-return-type
+    error 20 yield-or-do-expected-in-for-comprehension
+    error 21 proper-definition-not-found
+    error 22 by-name-parameter-not-supported
+    error 23 wrong-number-of-type-args
+    error 24 illegal-variable-in-pattern-alternative
+    error 25 identifier-expected
+    error 26 aux-constructor-needs-non-implicit-parameter
+    error 27 var-args-param-must-come-last
+    error 28 illegal-literal
+    error 29 pattern-match-exhaustivity
+    error 30 match-case-unreachable
+    error 31 seq-wildcard-pattern-pos
+    error 32 illegal-start-of-simple-pattern
+    error 33 pkg-duplicate-symbol
+    error 34 existential-types-no-longer-supported
+    error 35 unbound-wildcard-type
+    error 36 dangling-this-in-path retired
+    error 37 overrides-nothing
+    error 38 overrides-nothing-but-name-exists
+    error 39 forward-reference-extends-over-definition
+    error 40 expected-token-but-found
+    error 41 mixed-left-and-right-associative-ops
+    error 42 cant-instantiate-abstract-class-or-trait
+    error 43 unreducible-application
+    error 44 overloaded-or-recursive-method-needs-result-type
+    error 45 recursive-value-needs-result-type
+    error 46 cyclic-reference-involving
+    error 47 cyclic-reference-involving-implicit
+    error 48 super-qual-must-be-parent
+    error 49 ambiguous-reference
+    error 50 ambiguous-overload
+    error 51 reassignment-to-val
+    error 52 type-does-not-take-parameters
+    error 53 parameterized-type-lacks-arguments retired
+    error 54 var-val-parameters-may-not-be-call-by-name
+    error 55 missing-type-parameter-for
+    error 56 does-not-conform-to-bound
+    error 57 does-not-conform-to-self-type
+    error 58 does-not-conform-to-self-type-cant-be-instantiated
+    error 59 abstract-member-may-not-have-modifier
+    error 60 top-level-cant-be-implicit retired
+    error 61 types-and-traits-cant-be-implicit
+    error 62 only-classes-can-be-abstract
+    error 63 abstract-override-only-in-traits
+    error 64 traits-may-not-be-final
+    error 65 native-members-may-not-have-implementation
+    error 66 only-classes-can-have-declared-but-undefined-members
+    error 67 cannot-extend-any-val
+    error 68 cannot-have-same-name-as
+    error 69 value-classes-may-not-define-inner
+    error 70 value-classes-may-not-define-non-parameter-field
+    error 71 value-classes-may-not-define-a-secondary-constructor
+    error 72 value-classes-may-not-contain-initalization
+    error 73 value-classes-may-not-be-abstract
+    error 74 value-classes-may-not-be-containted
+    error 75 value-classes-may-not-wrap-another-value-class
+    error 76 value-class-parameter-may-not-be-a-var
+    error 77 value-class-needs-exactly-one-val-param
+    error 78 only-case-class-or-case-object-allowed retired
+    error 79 expected-top-level-def retired
+    error 80 anonymous-function-missing-param-type
+    error 81 super-calls-not-allowed-inlineable
+    error 82 not-a-path
+    error 83 wildcard-on-type-argument-not-allowed-on-new
+    error 84 function-type-needs-non-empty-parameter-list retired
+    error 85 wrong-number-of-parameters
+    error 86 duplicate-private-protected-qualifier
+    error 87 expected-start-of-top-level-definition
+    error 88 missing-return-type-with-return-statement
+    error 89 no-return-from-inlineable
+    error 90 return-outside-method-definition
+    error 91 unchecked-type-pattern
+    error 92 extend-final-class
+    error 93 enum-case-definition-in-non-enum-owner retired
+    error 94 expected-type-bound-or-equals
+    error 95 class-and-companion-name-clash
+    error 96 tailrec-not-applicable
+    error 97 failure-to-eliminate-existential
+    error 98 only-functions-can-be-followed-by-underscore
+    error 99 missing-empty-argument-list
+    error 100 duplicate-named-type-parameter
+    error 101 undefined-named-type-parameter
+    error 102 illegal-start-of-statement
+    error 103 trait-is-expected
+    error 104 trait-redefined-final-method-from-any-ref retired
+    error 105 package-name-already-defined
+    error 106 unapply-invalid-number-of-arguments
+    error 107 unapply-invalid-return-type
+    error 108 static-fields-only-allowed-in-objects
+    error 109 cyclic-inheritance
+    error 110 bad-symbolic-reference
+    error 111 unable-to-extend-sealed-class
+    error 112 symbol-has-unparsable-version-number
+    error 113 symbol-changed-semantics-in-version
+    error 114 unable-to-emit-switch
+    error 115 missing-companion-for-static
+    error 116 polymorphic-method-missing-type-in-parent
+    error 117 params-no-inline
+    error 118 symbol-is-not-a-value
+    error 119 double-definition
+    error 120 match-case-only-null-warning
+    error 121 imported-twice
+    error 122 type-test-always-diverges
+    error 123 term-member-needs-needs-result-type-for-implicit-search
+    error 124 class-cannot-extend-enum
+    error 125 value-class-parameter-may-not-be-call-by-name
+    error 126 not-an-extractor
+    error 127 member-with-same-name-as-static
+    error 128 pure-expression-in-statement-position
+    error 129 trait-companion-with-mutable-static
+    error 130 lazy-static-field
+    error 131 static-overriding-non-static-members
+    error 132 overload-in-refinement
+    error 133 no-matching-overload
+    error 134 stable-ident-pattern
+    error 135 static-fields-should-precede-non-static
+    error 136 illegal-super-accessor
+    error 137 trait-parameter-used-as-parent-prefix
+    error 138 unknown-named-enclosing-class-or-object
+    error 139 illegal-cyclic-type-reference
+    error 140 missing-type-parameter-in-type-app
+    error 141 skolem-in-inferred retired
+    error 142 erased-types-can-only-be-function-types
+    error 143 case-class-missing-non-implicit-param-list
+    error 144 enumerations-should-not-be-empty
+    error 145 illegal-parameter-init
+    error 146 redundant-modifier
+    error 147 typed-case-does-not-explicitly-extend-typed-enum
+    error 148 illegal-redefinition-of-standard-kind
+    error 149 no-extension-method-allowed retired
+    error 150 extension-method-cannot-have-type-params retired
+    error 151 extension-can-only-have-defs retired
+    error 152 unexpected-pattern-for-summon-from
+    error 153 anonymous-instance-cannot-be-empty
+    error 154 type-splice-in-val-pattern retired
+    error 155 modifier-not-allowed-for-definition
+    error 156 cannot-extend-java-enum
+    error 157 invalid-reference-in-implicit-not-found-annotation
+    error 158 trait-may-not-define-native-method
+    error 159 java-enum-parent-args
+    error 160 already-defined
+    error 161 case-class-in-inlined-code
+    error 162 override-type-mismatch-error retired
+    error 163 override-error
+    error 164 matchable-warning
+    error 165 cannot-extend-function
+    error 166 lossy-widening-constant-conversion
+    error 167 implicit-search-too-large
+    error 168 target-name-on-top-level-class
+    error 169 not-class-type
+    error 170 missing-argument
+    error 171 missing-implicit-argument
+    error 172 cannot-be-accessed
+    error 173 inline-given-should-not-be-function
+    error 174 value-discarding
+    error 175 unused-non-unit-value
+    error 176 constr-proxy-shadows
+    error 177 missing-argument-list
+    error 178 match-type-scrutinee-cannot-be-higher-kinded
+    error 179 ambiguous-extension-method
+    error 180 unqualified-call-to-any-ref-method
+    error 181 not-constant
+    error 182 closure-cannot-have-internal-parameter-dependencies
+    error 183 match-type-no-cases
+    error 184 unimported-and-imported
+    error 185 implausible-pattern-warning
+    error 186 synchronized-call-on-value-class
+    error 187 var-args-param-cannot-be-given
+    error 188 extractor-not-found
+    error 189 pure-unit-expression
+    error 190 match-type-legacy-pattern
+    error 191 unstable-inline-accessor
+    error 192 volatile-on-val
+    error 193 extension-nullified-by-member
+    error 194 phantom-symbol-not-value
+    error 195 context-bound-companion-not-value retired
+    error 196 inlined-anon-class-warning
+    error 197 unused-symbol
+    error 198 tailrec-nested-call
+    error 199 final-local-def
+    error 200 non-named-argument-in-java-annotation
+    error 201 quoted-type-missing
+    error 202 deprecated-assignment-syntax
+    error 203 deprecated-infix-named-argument-syntax
+    error 204 given-search-priority
+    error 205 enum-may-not-be-value-classes
+    error 206 illegal-unroll-placement
+    error 207 extension-has-default
+    error 208 format-interpolation-error
+    error 209 value-class-cannot-extend-alias-of-any-val
+    error 210 match-is-not-partial-function
+    error 211 only-fully-dependent-applied-constructor-type
+    error 212 pointless-applied-constructor-type
+    error 213 illegal-context-bounds
+    error 214 named-pattern-not-applicable
+    error 215 erased-not-pure
+    error 216 illegal-erased-def
+    error 217 cannot-instantiate-quoted-type-var
+    error 218 default-shadows-given
+    error 219 recurse-with-default
+    error 220 encoded-package-name
+    error 221 cannot-be-included
+    error 222 override-class
+    error 223 infer-union-warning
+    error 224 type-parameter-shadows-type
+    error 225 private-shadows-type
+    error 226 ambiguous-template-name
+    error 227 indentation-warning
+    error 228 illegal-identifier
+    error 229 concrete-class-has-unimplemented-methods
+    error 230 use-of-any-method-as-interpolator
+    error 231 illegal-use-of-specialized
+    error 232 variance-in-specialized-traits-limitation
+    error 233 unreasonable-catch
+    error 234 bad-erased
 
   subdivision 2 general
-    description  messages with no subdivision of their own
-    error 1 Unassigned
-      description  a message with no bolt code of its own
-    error 2 Macro
-      description  a message reported by a macro; carries the macro's own bolt code, if it gave one
+    summary  messages with no subdivision of their own
+    error 1 unassigned
+      summary  a message with no bolt code of its own
+    error 2 macro
+      summary  a message reported by a macro; carries the macro's own bolt code, if it gave one
 
   subdivision 3 driver
-    description  command line, settings, classpath and everything not listed below
+    summary  command line, settings, classpath and everything not listed below
     error 1
       source dotc/CompilationUnit.scala
       template  expected file, received directory '{}'
@@ -366,7 +369,7 @@ project p proscala
       text  Internal error in extracting SemanticDB while compiling {}: {}
 
   subdivision 4 parsing
-    description  scanners and parsers
+    summary  scanners and parsers
     error 1
       source dotc/parsing/JavaParsers.scala
       template  {} expected but {} found.
@@ -763,7 +766,7 @@ project p proscala
       text  Reach capability is no longer supported
 
   subdivision 5 ast
-    description  trees and desugaring
+    summary  trees and desugaring
     error 1
       source dotc/ast/Desugar.scala
       template  no matching symbol for {} in {} / {}
@@ -859,7 +862,7 @@ project p proscala
       text  Quoted pattern variable names starting with $ are not supported anymore. Use lower cases type pattern name instead.
 
   subdivision 6 core
-    description  symbols, types, classfile and TASTy readers
+    summary  symbols, types, classfile and TASTy readers
     error 1
       source dotc/core/Comments.scala
       template  ${} reference does not refer to anything in comment for {}
@@ -1000,7 +1003,7 @@ project p proscala
       text  Found a TASTY attribute with a length different from 16 in {}. This is likely a bug in the compiler. Please report.
 
   subdivision 7 typer
-    description  naming, typing and checking
+    summary  naming, typing and checking
     error 1
       source dotc/typer/Applications.scala
       template  Overloaded reference to {} is not allowed in extractor
@@ -1765,7 +1768,7 @@ project p proscala
       text  Scala 2 macro cannot be used in Dotty, this call will crash at runtime. See https://docs.scala-lang.org/scala3/reference/dropped-features/macros.html
 
   subdivision 8 metaprogramming
-    description  inlining, quotes, splices and staging
+    summary  inlining, quotes, splices and staging
     error 1
       source dotc/inlines/InlineReducer.scala
       template  {} is unusable in {} because it refers to an erased expression |in the selector of an inline match that reduces to | |{}
@@ -1903,7 +1906,7 @@ project p proscala
       text  Cannot have a quote in an annotation
 
   subdivision 9 captures
-    description  capture checking
+    summary  capture checking
     error 1
       source dotc/cc/CaptureOps.scala
       template  Illegal capture reference: {}
@@ -2065,7 +2068,7 @@ project p proscala
       template  {} extends `caps.Classifier` but not `caps.Capability`, so it cannot be a classifier. |A classifier class is a class extending `caps.Capability` and directly extending `caps.Classifier`.
 
   subdivision 10 transform
-    description  the transformation phases
+    summary  the transformation phases
     error 1
       source dotc/transform/Bridges.scala
       template  bridge generated for member {} |which overrides {} |clashes with definition of the member itself; both have erased type {}."
@@ -2471,7 +2474,7 @@ project p proscala
       text  Skipping coverage instrumentation for large {} ({} tree nodes exceeds threshold {}); compilation will continue but no coverage data will be recorded for it.
 
   subdivision 11 backend
-    description  the JVM backend
+    summary  the JVM backend
     error 1
       source backend/jvm/BCodeBodyBuilder.scala
       template  too many arguments for array constructor: found {} but array has only {} dimension(s)
@@ -2555,7 +2558,7 @@ project p proscala
       text  Cannot suspend and output to a jar at the same time. See suspension with -Xprint-suspension.
 
   subdivision 12 scalajs
-    description  the Scala.js and WebAssembly phases and backends
+    summary  the Scala.js and WebAssembly phases and backends
     error 1
       source backend/sjs/JSCodeGen.scala
       template  found {} which is both a top-level export and a Java static

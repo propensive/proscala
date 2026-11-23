@@ -4,7 +4,7 @@ With `-Zbolt-codes`, every error and warning the compiler reports is labelled wi
 
 ## Context
 
-A [bolt code](https://github.com/propensive/bolt) names a diagnostic in one form across all of Propensive's projects: `↯`, then `/`, a letter for the project (`p` is Proscala, `s` Soundness), and after a `.` a group of numbers — a subdivision of the project, an error in it, and optionally a variant and a call site. The `bolt` repository records what each code means, and a code, once assigned, is never reused.
+A [bolt code](https://github.com/propensive/bolt) names a diagnostic in one form across all of Propensive's projects: `↯`, then `/`, a letter for the project (`p` is Proscala, `s` Soundness), and after a `.` a group of numbers — a subdivision of the project, an error in it, and optionally a variant and a call site. The `bolt` repository is the index of the projects' letters, each of which records what its own codes mean — Proscala's in `mk/bolt-codes.tel` — and a code, once assigned, is never reused.
 
 Upstream numbers some of its messages: a type mismatch is `E007`, from the `ErrorMessageID` enumeration. But most places that report an error do so with a plain interpolated string, which has no number at all:
 
@@ -69,7 +69,7 @@ subdivision 7 typer
 
 `bin/proscala-bolt <registry> <tree>...` reads the templates and texts out of a tree's source and appends the new ones to the registry, each with the next number of its subdivision; with `--check` it lists them and fails. It never renumbers.
 
-**The build runs that check.** Before compiling the compiler, `make` runs `bin/proscala-bolt --check` on the tree, and stops if any message lacks a code. So an upstream that adds a message cannot be built until the message is assigned one — which is one command and a commit of the registry — and no message reaches a release unnamed because nobody noticed it arrive. `make BOLT_CHECK=` builds regardless, for bisecting upstream or trying a nightly. When upstream rewords a message its template is a new error, and the `template` line may be moved to the old error by hand, since an error may have several. `mk/bolt-codes.tel` is a copy of `p.tel` in the `bolt` repository, and holds the templates of every upstream the patch has been applied to.
+**The build runs that check.** Before compiling the compiler, `make` runs `bin/proscala-bolt --check` on the tree, and stops if any message lacks a code. So an upstream that adds a message cannot be built until the message is assigned one — which is one command and a commit of the registry — and no message reaches a release unnamed because nobody noticed it arrive. `make BOLT_CHECK=` builds regardless, for bisecting upstream or trying a nightly. When upstream rewords a message its template is a new error, and the `template` line may be moved to the old error by hand, since an error may have several. `mk/bolt-codes.tel` is the record of Proscala's codes, which the index in the `bolt` repository names; each subdivision and numbered message in it has a name in kebab-case (`type-mismatch`, for upstream's `TypeMismatch`), by which a code may be written in its long form, `↯/proscala.standard.type-mismatch`. It holds the templates of every upstream the patch has been applied to.
 
 **A macro's message** goes through `BoltCodes.fromMacro`, which takes a leading bolt code — bracketed or not, coloured or not — out of the text and keeps it as the message's origin, to be shown after `/p.2.2` in the heading. A macro that gives no code is plain `↯/p.2.2`.
 
