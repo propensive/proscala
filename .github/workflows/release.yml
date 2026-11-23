@@ -55,6 +55,11 @@ jobs:
         # upstream commits, which a shallow checkout cannot see.
         with:
           fetch-depth: 0
+      # The patches are in an Orthant store (.orthant/), which the tools read with `orthant`.
+      - name: Install Orthant
+        run: |
+          curl -fsSL "https://github.com/propensive/orthant/releases/download/$(cat etc/orthant-version)/install.sh" | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       # Its own step, so that `release` is known even when verification fails:
       # `untag` must delete the tag of a failed Proscala release and nothing else.
@@ -115,6 +120,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      # The patches are in an Orthant store (.orthant/), which the tools read with `orthant`.
+      - name: Install Orthant
+        run: |
+          curl -fsSL "https://github.com/propensive/orthant/releases/download/$(cat etc/orthant-version)/install.sh" | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Set up JDK
         uses: actions/setup-java@v4

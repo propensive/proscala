@@ -1,0 +1,37 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 4 Aug 2026 17:12:46 +0200
+
+Recheck a block's result expression in its statements' context
+
+`Recheck.recheckStats` threads an `import` among a block's statements into the
+context used for the statements that follow it, but returned `Unit`, so that
+context was discarded. `recheckBlock` then rechecked the block's *result
+expression* in its own outer context, where the import is not in scope.
+
+Typer does not have this problem: `typedBlockStats` returns the context it ends
+with, and `typedBlock` types the result expression in it. This makes the recheck
+mirror that.
+
+Only capture-checked code reaches the recheck, so the visible symptom is that
+`import scala.language.unsafeNulls` stops applying part-way down a method:
+
+    def f(input: String, n: Int): Unit =
+      import scala.language.unsafeNulls
+      val direct: String = input.substring(0, 1)   // a statement: fine
+      var i = 0
+      while i < n do                               // the result expression:
+        val inLoop: String = input.substring(0, 1) // "Found: String | Null"
+        i += 1
+
+Every nullable value inside the trailing `while` was rejected, while the
+identical line above it compiled. Soundness's `stratiform` hits this four times,
+in `Tel.documentShowable` and `internal.matchAtomText`.
+
+The two other `recheckStats` callers, `recheckClassDef` and `recheckPackageDef`,
+have no trailing expression and ignore the returned context.
+
+tests/explicit-nulls/unsafe-common already runs with `-Yexplicit-nulls
+-Yno-flexible-types`, so the new test only has to switch capture checking on.
+
+Assisted-by: Claude Opus 5 (see LLM_POLICY.md)
+Proscala-Patch: blockimport

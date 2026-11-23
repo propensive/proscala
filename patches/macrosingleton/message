@@ -1,0 +1,18 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 13 Oct 2026 12:24:44 +0200
+
+Reveal an opaque type behind a singleton in the macro-expansion check
+
+The check that a transparent macro's expansion conforms to its expected type
+(#25756) compares the two with their opaque aliases revealed, since an opaque's
+alias may not be visible where the macro expands. A singleton whose type is an
+opaque alias was not revealed, though: an expansion `Unset` of a
+`val Unset: Unset` (an opaque `Unset = Null`) kept the type `Unset.type`,
+which does not conform to the revealed expectation `Null | String`, so every
+transparent macro returning such a value failed (Soundness's `vacuous.Unset`,
+from xenophile's WASI macros). Such singletons are widened, and their opaques
+revealed, on both sides.
+
+Developed with LLM assistance (Claude Code).
+
+Proscala-Patch: macrosingleton

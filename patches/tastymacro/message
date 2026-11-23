@@ -1,0 +1,25 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 14 Nov 2026 18:21:04 +0900
+
+Do not suspend a unit read from TASTy for a macro with bytecode beside it
+
+A unit which calls a macro defined in the same run is suspended and compiled
+in a second run, because the macro's bytecode does not exist until the first
+has finished. Whether a symbol is defined in the run is decided by whether its
+file is one of the run's, and under `-from-tasty` those are the TASTy files
+given: a macro among the inputs counted, and its callers were suspended,
+though its class file lies beside its TASTy file and the macro runs from it.
+
+The suspension is not only unnecessary there. A suspended unit read from
+TASTy is not read again: the second run starts from the tree the first had
+already transformed, so PostTyper adds the synthetic members of its case
+classes and enums a second time, and the run fails with "Conflicting
+definitions" as soon as another unit of the first run has referred to them.
+
+A symbol read from a TASTy file with a class file beside it no longer counts
+as awaiting its bytecode. One without is treated as before.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: tastymacro

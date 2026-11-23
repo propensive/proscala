@@ -1,0 +1,22 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 17 Jul 2026 15:22:52 +0200
+
+Give spliced type binders their spliced type as info
+
+When a pickled quote with type holes is unpickled, the hole binders'
+occurrences in the expansion are substituted by a TreeTypeMap, but a symbol
+whose ClassInfo is unchanged by the map — for example an anonymous class whose
+declarations, not parents, mention a binder — is not copied, and its members
+keep referring to the binder symbol. The binder's pickled placeholder info is
+`TypeAlias(Any)`, so such surviving references wrongly dealias to `Any` when a
+later phase consults the member: under capture checking's recheck, a summoned
+macro-built instance then fails refinement-member conformance
+(`type Self = <binder>` vs the expected concrete type) with a confusing
+"Object with Trait {...}^'sN does not conform" error, followed by "object
+creation impossible".
+
+Setting each binder's own info to its spliced type makes any surviving
+reference dealias correctly, independently of which phase reads it.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Proscala-Patch: splicealias

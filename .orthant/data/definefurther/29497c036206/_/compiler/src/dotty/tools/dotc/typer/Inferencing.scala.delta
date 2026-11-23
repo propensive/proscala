@@ -1,0 +1,10 @@
+orthant 2 patch
+
+@ 0 2 0 11bb26c1d9d031b1017d7bbf60e215b6
++     // A speculative step (it lets the adapter retry after instantiating more type
++     // variables): if instantiating one recurses without end, the answer is that the
++     // type cannot be defined further, not a fatal error.
++     try
++       isFullyDefined(tp, force = ForceDegree.failBottom)
++       && (ctx.typerState.constraint ne prevConstraint)
++     catch case _: RecursionOverflow => false

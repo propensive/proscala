@@ -1,0 +1,5 @@
+orthant 2 patch
+
+@ 1 0 0 1b5331def6c51a5f1282f5b4b0330433
++         else if config.Proscala.enabled(config.Proscala.SemanticDiagnostics) then
++           ictx.setReporter(new XmlReporter)

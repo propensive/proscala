@@ -1,0 +1,41 @@
+orthant 2 patch
+
+@ 0 1 0 002cfc12e4256728064390f2bcf32a26
++     private var refBindingMap = mutable.LinkedHashMap.empty[Symbol | TermRef, (Tree, Symbol)]
+
+@ 0 1 0 0e735d4b6d12ee7500b0c95769dae8c3
++             if isCapturedRef(tree) then
+
+@ 0 1 0 1a8522e3354e726310b2f950fc4fe55f
++           if isCapturedRef(lhs) then transformSplicedAssign(tree)
+
+@ 0 1 0 0474bde866f90d741458f0bb53f2af93
++             case _: RefTree if isCapturedRef(body) => capturedTerm(body)
+
+@ 0 1 0 0a8a7bd2cb18cb441391af16c5b04f57
++         case GenericApply(fn: RefTree, args) if isCapturedRef(fn) =>
+
+@ 3 0 0 1957b4b956a1f75c1f247edd51fbe270
++     /** If `tree` refers to a member that a class defined in the current quote inherits,
++      *  through the `this` of that class, its type; otherwise `NoType`. The member is not
++      *  itself defined in the quote, but the reference is as local to the quote as one to
++      *  a member the class defines: outside the quote there is no such `this`.
++      */
++     private def capturedThisRef(tree: Tree)(using Context): Type = tree.tpe match
++       case tpe @ TermRef(prefix: ThisType, _) if tree.isTerm && isCaptured(prefix.cls) => tpe
++       case _ => NoType
++
++     /** Does `tree` refer to a term defined in the current quote, or to a member inherited
++      *  by a class defined in it, through that class's `this`?
++      */
++     private def isCapturedRef(tree: Tree)(using Context): Boolean =
++       isCaptured(tree.symbol) || capturedThisRef(tree).exists
++
+
+@ 0 1 0 049af33ecaf42b7f1585de6343d3f4cf
++       // An inherited member is keyed by the reference, not by its symbol: two classes
++       // of the quote may inherit the same member.
++       val key: Symbol | TermRef = capturedThisRef(tree) match
++         case tpe: TermRef if !isCaptured(tree.symbol) => tpe
++         case _ => tree.symbol
++       val bindingSym = refBindingMap.getOrElseUpdate(key, (tree, newBinding))._2

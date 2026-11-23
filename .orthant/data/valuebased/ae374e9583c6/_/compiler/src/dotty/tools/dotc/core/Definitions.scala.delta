@@ -1,0 +1,6 @@
+orthant 2 patch
+
+@ 0 1 0 17b89edd659a96e41bb6ebfa6035ad21
++       // Permanent: `Definitions` outlives a run, and a symbol created here but entered
++       // nowhere is otherwise stale in the next run (compilation-suspension restarts, REPL).
++       val flags = JavaDefined | JavaAnnotation | PureInterfaceCreationFlags | Abstract | Permanent

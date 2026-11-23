@@ -1,0 +1,73 @@
+orthant 2 patch
+
+@ 2 0 0 08087fac65731b2d15b1edce3c4e9f69
++       /** Unify the capture set variables in the parameter types of `clazz`'s methods with
++        *  those in the parameter types of the methods they override, and solve them.
++        *
++        *  Overrides are checked with `frozen_<:<`, under which an unsolved capture set
++        *  variable is related to nothing but itself, and parameter types must be the same.
++        *  The variables in a member's signature are normally solved by then, being those of
++        *  its inferred result type. But a type argument inferred for an inline call is
++        *  `@inferred` wherever it occurs in the expansion, so each occurrence in a class
++        *  there gets a variable of its own: in a method's parameter type, and in the type
++        *  member or the parent's type argument from which the method it overrides takes its
++        *  parameter type. Nothing else relates or solves these.
++        *
++        *  Every pair is unified before any variable is solved, so that the result does not
++        *  depend on the order of the pairs. The variables can be solved here because
++        *  overrides are checked after everything that could add to them. Solving them is
++        *  what lets the frozen check succeed: each time a member's info is taken,
++        *  `asSeenFrom` maps an unsolved variable to a new one derived from it.
++        */
++       private def unifyParamVars(clazz: ClassSymbol, tree: Tree)(using Context): Unit =
++         val self = clazz.thisType
++         val unified = new mutable.ListBuffer[Type]
++
++         // An attempt: parameter types that differ in more than unsolved variables stay as
++         // they are, for the override check to report.
++         def sameWhenUnified(tp1: Type, tp2: Type): Boolean =
++           !TypeComparer.isSameTypeWhenFrozen(tp1, tp2)
++           && TypeComparer.atomicOp(TypeComparer.isSameType(tp1, tp2))
++
++         def unify(memberTp: Type, otherTp: Type): Unit = (memberTp, otherTp) match
++           case (memberTp: MethodType, otherTp: MethodType)
++           if memberTp.paramInfos.hasSameLengthAs(otherTp.paramInfos) =>
++             for (formal1, formal2) <- memberTp.paramInfos.lazyZip(otherTp.paramInfos) do
++               val formal2a = if otherTp.isParamDependent then formal2.subst(otherTp, memberTp) else formal2
++               if sameWhenUnified(formal1, formal2a) then unified += formal1 += formal2a
++             unifyResults(memberTp, otherTp)
++           case (memberTp: PolyType, otherTp: PolyType)
++           if memberTp.paramNames.hasSameLengthAs(otherTp.paramNames) =>
++             unifyResults(memberTp, otherTp)
++           case _ =>
++
++         def unifyResults(memberTp: LambdaType, otherTp: LambdaType): Unit =
++           val otherRes = otherTp.resType
++           unify(memberTp.resType, if otherTp.isResultDependent then otherRes.subst(otherTp, memberTp) else otherRes)
++
++         def solveVar(refs: CaptureSet): Unit = refs match
++           case refs: CaptureSet.DerivedVar => solveVar(refs.source)
++           case refs: CaptureSet.Var if !refs.isConst => refs.markSolved(provisional = false)
++           case _ =>
++
++         val solveVars = new TypeTraverser:
++           def traverse(t: Type) =
++             val t1 = t.dealiasKeepAnnots
++             if t1 ne t then traverse(t1)
++             else t match
++               case CapturingType(parent, refs) =>
++                 solveVar(refs)
++                 traverse(parent)
++               case _ =>
++                 traverseChildren(t)
++
++         val pairs = OverridingPairsCheckerCC(clazz, self, tree)
++         while pairs.hasNext do
++           val member = pairs.overriding
++           val other = pairs.overridden
++           if member.is(Method) && pairs.needsCheck(member, other) then
++             unify(self.memberInfo(member), self.memberInfo(other))
++           pairs.next()
++         unified.foreach(solveVars.traverse)
++       end unifyParamVars
++

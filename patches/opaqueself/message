@@ -1,0 +1,37 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 21 Nov 2026 00:14:35 +0900
+
+Keep the implied capture set out of an opaque alias seen in its scope
+
+Inside its scope an opaque alias is known by a refinement of the self type of
+the class that owns it, `{ type A[X] = Rhs }`. When Setup transforms that
+class's info, it gives a `Rhs` which derives from a capability its implied
+capture set, as it does for every such type it meets, so that the alias
+becomes `[X] =>> Rhs^{any.rd}` for an opaque alias of `Array` under separation
+checking. A type alias's own info drops that set (`type X = C`, not
+`type X = C^{any}`), because each use implies it anew; the refinement kept it,
+under a type lambda always, and directly unless something else stripped it.
+
+With the set in the alias, every `A[T]^cs` written in the scope acquires the
+root when it is dealiased. In particular `boxDeeply` dealiases the type
+arguments of an applied type, so a frozen `A[T]^{}` in an argument position,
+as in a result type `Box[A[T]^{}]`, was boxed as `Rhs^{any.rd}`: the alias was
+seen through and its empty set replaced by a fresh read-only capability.
+
+Whether that happened depended on the order of the run. A reference to the
+alias through `this` computes its denotation from the class's info, and the
+info it finds is the transformed one only if it is first asked for at the
+capture checking phase after the class has been transformed, which selecting
+any other member of the companion whose signature mentions the alias does. A
+denotation computed earlier keeps the alias as it was written. So the same
+signature, read from the same TASTy, was accepted in a run that happened to
+look at it first, and rejected in one that did not, such as an incremental
+recompilation of one file of a module whose clean build passes.
+
+The refinements of a class's self type are now stripped of the implied set,
+also under a type lambda, when the class info is mapped.
+
+Written with LLM assistance (Claude Code).
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: opaqueself

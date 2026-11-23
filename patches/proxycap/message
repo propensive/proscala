@@ -1,0 +1,37 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Mon, 12 Oct 2026 20:17:03 +0200
+
+Capture-check inline argument proxies within their parameters' bounds
+
+Since upstream #26989 an inline method's argument proxies have explicit
+types, which capture checking takes at face value, and an argument is checked
+only against its proxy. That closed a real hole (an inline call's arguments
+went unchecked), but the proxy's type is the argument's type from Typer, which
+says nothing about capture sets: every argument that captures anything was
+rejected, even where the call compiles without `inline`, and a capability type
+in an argument's type (an array) was declared as a fresh `any`.
+
+A proxy's capture sets are now inferred, and bounded by what its parameter
+declares:
+
+- A closure's parameter and result types stay declared, so a leak through its
+  result is still caught; its own capture set follows the parameter's
+  function type: inferred where that may capture anything (not a fresh `any`,
+  which separation checking would see as hiding what the closure captures),
+  the declared set where there is one, empty for a pure function. The same
+  applies to a function in its result.
+- Any other argument's type is inferred, intersected with a declared bound on
+  its top-level capture set: the parameter's explicit set, or empty for a
+  parameter of a pure type. A parameter that may capture anything (`^`, a
+  capability class, an array, an inferred type argument, a union with one)
+  bounds nothing. The parameter types are computed with the call's inferred
+  type arguments marked `@inferred`, as PostTyper marks them (a transparent
+  call is inlined before it does).
+
+Nested capture sets of non-closure arguments are inferred, as before #26989.
+Upstream's cc-inline1 still reports every leak, and the outcome of every
+other test in tests/{neg,pos}-custom-args/captures is unchanged.
+
+Developed with LLM assistance (Claude Code).
+
+Proscala-Patch: proxycap

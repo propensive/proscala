@@ -1,0 +1,8 @@
+orthant 2 patch
+
+@ 0 1 0 04fccb7e82a529ef1d609b66606da1ba
++               // `wildApprox` removes uninstantiated type parameters from the type itself,
++               // but one can still be reached through the info of a term reference in it
++               // (an inline `this`-proxy typed while an enclosing call's type variables are
++               // open, for instance); its declared bound stands for it here, as it does for
++               // an instantiated one.

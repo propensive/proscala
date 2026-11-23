@@ -1,0 +1,13 @@
+orthant 2 patch
+
+@ 1 0 0 0a5f6ee1027551a51cc550361df0f2ee
++               case tp: TypeRef if tp.typeSymbol.isAliasType =>
++                 val tp1 = tp.dealias
++                 if tp1 eq tp then tp else apply(tp1)
++               // A singleton whose type is (or contains) an opaque alias, such as a
++               // `val Unset: Unset` of an opaque `Unset`, is widened to it, so that the
++               // opaque is revealed on this side as it is on the other.
++               case tp: TermRef if tp.widen.existsPart(_.typeSymbol.isOpaqueAlias) =>
++                 apply(tp.widen)
+
+@ 0 3 0 0a68ab5e085376a3060a2764c6a8b16d

@@ -1,0 +1,19 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Mon, 12 Oct 2026 11:57:14 +0200
+
+Classify a frozen type as pure under capture checking
+
+Under `-Zfrozen-pure`, a stateful type with an explicit, constant, empty
+capture set -- a frozen `Array[T]^{}`, or an opaque alias over one -- derives
+from no capability class. Without this, an opaque alias over a frozen array
+dealiases to a capability inside its own scope and Setup stamps `^{any.rd}`
+on every field and result written with it, forcing every holder to extend
+`Capability`; Soundness backed twelve immutable-array opaques with the
+stdlib's `IArray` for this reason alone.
+
+Purity for classification is not permission to write: `Mutability.exclusivity`
+now classifies through the empty set, so an `update` through `Array[T]^{}`,
+through an in-scope alias over it, or through `C^{}` of a `Mutable` class is
+still rejected as read-only, and widening `^{}` to `^` is still refused.
+
+Proscala-Patch: frozenpure

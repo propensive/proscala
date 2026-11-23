@@ -1,0 +1,8 @@
+orthant 2 patch
+
+@ 1 0 0 13dcdc3a17100dc311c0a619e0dca6b0
++     // A run from TASTy checks no captures, and only has to give each unit the code
++     // it was compiled to, so it goes by whether the unit itself was capture-checked.
+
+@ 0 1 0 0fee5fb9f3dac08c0c76813c5506f665
++         && !(if ctx.settings.fromTasty.value then Feature.ccEnabled else Feature.ccEnabledSomewhere) then

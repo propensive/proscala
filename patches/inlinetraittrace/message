@@ -1,0 +1,28 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 14 Nov 2026 18:16:01 +0900
+
+Give the inline calls expanded in an inline trait's child their call traces
+
+A class which extends an inline trait is given copies of the trait's
+definitions, with the inline calls in them expanded, after PostTyper and
+before pickling. PostTyper is where an `Inlined` node made during typing has
+its call replaced by a call trace, a reference to the top-level class of the
+method; the nodes made for the child class kept the calls they were expanded
+from.
+
+Such a call holds its arguments as they were. An argument which is itself the
+expansion of an inline call holds the definitions of that expansion, and so
+does the binding the outer node makes for the argument. The pickler therefore
+wrote the same definitions twice, under two owners, sharing the trees beneath
+them, and the unpickler stopped with "owner discrepancy" when it met a
+definition it had already read under another owner: a class extending an
+inline trait could not be read back from its own TASTy whenever a method of
+the trait made an inline call on the result of another.
+
+The definitions inlined from the trait now have the calls of their `Inlined`
+nodes replaced by call traces, as PostTyper would have left them.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: inlinetraittrace

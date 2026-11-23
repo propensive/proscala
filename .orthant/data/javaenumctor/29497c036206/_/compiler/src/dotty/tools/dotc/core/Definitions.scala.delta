@@ -1,0 +1,21 @@
+orthant 2 patch
+
+@ 1 0 0 0b6b4fea117cfae3059c2a906e2dbfb7
++     // The class file is loaded for the class and its companion together, by whichever
++     // is completed first, so the module class must be given the new loader as well:
++     // a reference to a static member such as `jl.Enum.valueOf` completes it first.
+
+@ 0 3 0 14ba923f4c277a3605f94e93f405b713
++         val loader = new ClassfileLoader(completer.classfile) {
++           override def doComplete(root: SymDenotation)(using Context): Unit = {
++             super.doComplete(root)
+
+@ 2 0 0 163931922c78d4180ca38caf4f42a768
++         cls.info = loader
++         val moduleClass = cls.scalacLinkedClass
++         moduleClass.infoOrCompleter match
++           case moduleCompleter: SymbolLoader =>
++             moduleClass.info = loader.proxy
++               .withDecls(moduleCompleter.decls)
++               .withSourceModule(moduleCompleter.sourceModule)
++           case _ =>

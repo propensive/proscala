@@ -1,0 +1,35 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sun, 15 Nov 2026 15:44:57 +0900
+
+Strip capture sets when normalizing the atoms of a singleton
+
+Under capture checking a singleton did not conform to a union containing it,
+when the singleton was a member of an object nested anywhere but in a package:
+
+    object P:
+      val k1 = Kind()
+      val k2 = Kind()
+      val e: k1.type = k1
+      val f: k1.type | k2.type = e
+
+    Found:    (P.e : (P.k1 : Kind^{}))
+    Required: (P.k1 : Kind^{}) | (P.k2 : Kind^{})
+
+A subtype test against a union of singletons is first decided by the
+singletons' atoms, which normalize a prefix `this` of an object to the object
+itself, by following its underlying type while it is a singleton. A union
+caches its atoms for the run, so those of `k1.type | k2.type` were found
+while typing, where `this` of `P` is `P.type`. While capture checking, Setup
+has given `P`'s class a self type with a capture variable, `P.type^{'s}`,
+which is not a singleton, so normalization stopped there, and the atom of
+`e` kept the prefix `this`. The atoms differed, and the comparison answered
+false outright, without trying the members of the union.
+
+A capture set does not change which value a singleton is, so it is now
+stripped from the underlying type while normalizing. An object in a package
+was unaffected because its prefix is the package.
+
+Written with LLM assistance (Claude Code).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Proscala-Patch: unionatoms

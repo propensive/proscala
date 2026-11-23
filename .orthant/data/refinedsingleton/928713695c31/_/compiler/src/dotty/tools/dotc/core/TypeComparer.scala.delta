@@ -1,0 +1,21 @@
+orthant 2 patch
+
+@ 1 0 0 1aa1129737582b680e6c442ad89deaa7
++                 // A refinement of `parent2` may mention the singleton `tp1` itself, as in
++                 // `x: C^ <: C { type T = x.T }^{x}`. Its widened type no longer says which
++                 // value it is, and `tp1` as it stands is not a subtype of the pure class
++                 // under the refinement, since its capture set, already accounted for by
++                 // `refs2`, is not empty. So compare the widened type with what is under
++                 // the refinements, and each refinement with the member of `tp1` itself.
++                 def refinedOK(tp1: SingletonType, parent2: Type): Boolean = parent2 match
++                   case parent2: RefinedType if !defn.isRefinedFunction(parent2) =>
++                     refinedOK(tp1, parent2.parent)
++                     && hasMatchingMember(parent2.refinedName, tp1, parent2)
++                   case _ =>
++                     recur(tp1.widen.stripCapturing, parent2)
++                 def singletonRefinedOK = tp1 match
++                   case tp1: SingletonType => parent2.isInstanceOf[RefinedType] && refinedOK(tp1, parent2)
++                   case _ => false
+
+@ 1 0 0 14a80b14175c859913dbe386aa953d45
++                       || singletonRefinedOK

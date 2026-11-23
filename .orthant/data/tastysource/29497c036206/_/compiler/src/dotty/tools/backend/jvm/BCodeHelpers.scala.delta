@@ -1,0 +1,7 @@
+orthant 2 patch
+
+@ 0 1 0 09d55b6d386905a515e88110105f2280
++         case registry => registry.serialize(ctx.compilationUnit.treeSource.name, usedLines)
+
+@ 0 1 0 1e019241dacb574d01420c7c94fd0d7e
++         mirrorClass.visitSource("" + ctx.compilationUnit.treeSource.file.name, null)

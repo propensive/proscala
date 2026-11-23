@@ -1,0 +1,27 @@
+orthant 2 patch
+
+@ 2 0 0 0b5d239c7b97f8dd06f17ad120aa67fe
++     // Types that map to themselves (`eq`) contain nothing for Setup to transform under any
++     // traversal state, so they never need re-walking. Without this, deeply-nested alias
++     // unions (e.g. HTML content-category types: hundreds of shared singleton labels behind
++     // several alias layers) are re-expanded once per path through `mapFollowingAliases`,
++     // which is exponential in the alias nesting depth.
++     private val inertTypes = new java.util.IdentityHashMap[Type, Type]()
++
+
+@ 0 10 0 135f172dba36acf205e6166c2778431d
++       if inertTypes.containsKey(tp) then tp
++       else
++         val saved = isTopLevel
++         if variance < 0 then isTopLevel = false
++         try
++           val tp1 = tp match
++             case defn.RefinedFunctionOf(rinfo: MethodType) =>
++               val rinfo1 = apply(rinfo)
++               if rinfo1 ne rinfo then rinfo1.toFunctionType(alwaysDependent = true)
++               else tp
++             case _ =>
++               innerApply(tp)
++           if tp1 eq tp then inertTypes.put(tp, tp)
++           tp1
++         finally isTopLevel = saved

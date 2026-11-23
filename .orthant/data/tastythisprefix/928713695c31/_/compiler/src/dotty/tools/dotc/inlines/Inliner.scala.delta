@@ -1,0 +1,14 @@
+orthant 2 patch
+
+@ 0 1 0 145e73549480e6ea019ff94ead08614c
++     isCallPrefix(tpe) && ctx.owner.isContainedIn(tpe.cls)
+
+@ 2 0 0 1f288fecd3440ba919e1afc1b267e729
++   /** Is `tpe` the type of the call's prefix? Two `this` types of one class are the same
++    *  prefix though they are not equal, as they are not when one was read from TASTy,
++    *  which need not name the class by the type reference `cls.thisType` holds.
++    */
++   private def isCallPrefix(tpe: ThisType): Boolean = inlineCallPrefix.tpe match
++     case pre: ThisType => pre.sameThis(tpe)
++     case pre => pre == tpe
++

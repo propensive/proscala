@@ -1,0 +1,10 @@
+orthant 2 patch
+
+@ 1 0 0 12fb5bfc1a9e211f16e475ab2799af71
++         case vdef: ValDef if vdef.hasAttachment(inlines.Inliner.ProxyCaptures) && !ctx.erasedTypes =>
++           // An inline argument proxy's capture-checking type (see Inliner.ProxyCaptures)
++           // is mapped as the definition's own types are
++           val res = super.transform(vdef)
++           val (proxyType, inferred) = vdef.attachment(inlines.Inliner.ProxyCaptures)
++           res.putAttachment(inlines.Inliner.ProxyCaptures, (mapType(proxyType), inferred))
++           res

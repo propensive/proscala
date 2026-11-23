@@ -1,0 +1,25 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 14 Nov 2026 18:18:57 +0900
+
+Make an inline trait's members deferred whichever unit asks first
+
+After pickling, `PruneInlineTraits` empties the definitions of an inline
+trait, whose code its children hold, and its symbol transformer makes the
+members deferred and the trait one without an initializer. The transformer did
+so only if the unit being compiled had specializations; `transformTemplate`
+goes by the unit of the trait.
+
+A denotation is transformed once, when it is first asked for at the phase. If
+that happened while a unit which only uses the trait was current, one which
+neither declares nor extends an inline trait, the members stayed concrete for
+the rest of the run, and the backend then met them with their definitions
+emptied: "Concrete method has no definition". Whether two files compiled
+together depended on their order.
+
+The transformer now goes by the symbol alone. No symbol is an inline trait, or
+a member of one, unless inline traits are in use.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: inlinetraitprune

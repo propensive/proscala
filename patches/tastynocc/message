@@ -1,0 +1,27 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 14 Nov 2026 18:27:07 +0900
+
+Do not check captures in a run which reads its units from TASTy
+
+A unit compiled with separation checking did not recompile from its TASTy
+with the same options. The checker gives an inferred type the capture sets it
+finds for it, and takes a type that was written to say all there is to say.
+TASTy does not record which types were inferred, so in an unpickled tree
+every type reads as written: `val boxed = new Array[AnyRef](n)` declares a
+read-only array, which cannot be updated, and the synthesized members of an
+enum are held to types they were never meant to be checked against. The
+checker rejected what it had accepted as source.
+
+Leaving the options out is no remedy, since other phases go by them, and
+`-Yskip:cc` crashed: the setup phase stayed, as a phase and as a symbol
+transformer, and asked the missing checker for its state.
+
+The setup phase, its symbol transformer and the checker are now inactive in a
+run which reads its units from TASTy, where the units were checked when they
+were compiled, and in a run without the checker's phase. The options are
+otherwise as they were, so the phases which go by them emit the same code.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: tastynocc

@@ -1,0 +1,18 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 8 Aug 2026 12:28:58 +0200
+
+Keep given aliases cached when capture checking is enabled
+
+UncacheGivenAliases demotes a stable `lazy given val` alias to a def, giving
+it an ExprType underlying. Under capture checking the val is a stable,
+trackable reference that may already be named in capture sets; after the
+demotion those @retains elements refer to a method, which is not a legal
+capability, and cc Setup crashes with IllegalCaptureRef when a later
+dependent-summon cast forces the set. Reproduced deterministically from
+3.9.0-RC5 (whose new dependent-summon casts force such sets); the demotion is
+only an optimization, so it is skipped when cc is enabled anywhere.
+
+Developed with LLM assistance (Claude); 10-line reproduction in the feature
+documentation.
+
+Proscala-Patch: givencache

@@ -1,0 +1,11 @@
+orthant 2 patch
+
+@ 1 0 0 08a9b13e4ec7283206f0b906fc29415a
++                   // A unit compiled with capture checking or pure functions, enabled by an
++                   // option rather than by an import in its tree, says so only in its
++                   // attributes. The phases after them go by these settings, so without them
++                   // the unit would be compiled to other code than it was from source.
++                   if attributes.captureChecked then
++                     unit.needsCaptureChecking = true
++                     ctx.run.nn.ccEnabledSomewhere = true
++                   if attributes.withPureFuns then unit.knowsPureFuns = true

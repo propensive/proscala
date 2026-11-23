@@ -1,0 +1,12 @@
+orthant 2 patch
+
+@ 0 1 0 159ced1da7f96f3b03ac8cbdbfe06ab1
++     !isVerbose(s) && !isWarning(s) && !isAdvanced(s) && !isPrivate(s) && !isProscala(s) || s.name == "-Werror" || s.name == "-Wconf"
+
+@ 1 0 0 17e79cca05f4124f0150a16b52f9179b
++   protected def isProscala(s: Setting[?])(using settings: ConcreteSettings)(using SettingsState): Boolean =
++     s.name.startsWith("-Z") && s.name != "-Z"
+
+@ 1 0 0 04a5f2be0bd1ed570e4ecc879af944b3
++   protected def zusageMessage(using settings: ConcreteSettings)(using SettingsState) =
++     createUsageMsg("Possible Proscala", shouldExplain = true, isProscala)

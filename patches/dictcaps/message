@@ -1,0 +1,20 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 17 Jul 2026 15:22:48 +0200
+
+Infer the capture set of recursive-implicit dictionary instances
+
+A memoized recursive/by-name implicit is emitted as a synthetic dictionary
+class with `val $_inst = new <dictionary>`. Under capture checking, if a
+memoized entry is capability-typed, `new <dictionary>` captures those
+capabilities, but the val was typed with the bare dictionary class type and so
+rejected the capturing constructor with `Found: <dict>^{...} Required: <dict>`.
+
+Type the instance val's tree as inferred (`inferred = true`) so capture
+checking solves its capture set from the constructor rather than forcing the
+pure class type. Pure dictionaries infer an empty set and are unchanged; only
+the capability-carrying case, which previously did not type-check, is affected.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Proscala-Patch: dictcaps

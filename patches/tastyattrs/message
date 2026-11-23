@@ -1,0 +1,26 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sun, 15 Nov 2026 19:49:07 +0900
+
+Compile a unit read from TASTy with the language settings it was compiled with
+
+A unit compiled with capture checking, or with pure functions, enabled by a
+command-line option rather than by a language import, carries no trace of it
+in its trees, and a run which recompiled it from TASTy went by the options it
+was given itself. The phases after capture checking go by the setting
+(`UncacheGivenAliases`, the pattern matcher, the inliner), so without the
+option repeated the unit was compiled to other code than from source: a given
+alias that was cached became a plain method. A run over a classpath mixing
+units compiled with and without the option could not be given one set of
+options that suited both.
+
+The unit's TASTy attributes record both settings. `ReadTasty` now restores
+them on the unit, and marks capture checking as enabled somewhere in the run,
+as the option would. `UncacheGivenAliases` keeps a given alias cached when
+capture checking is on anywhere in a run from source, since a checked unit can
+name the alias of another; a run from TASTy checks no captures, so there it
+goes by the unit itself, and each unit of a mixed run gets the code it had.
+
+Written with LLM assistance (Claude Code).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Proscala-Patch: tastyattrs

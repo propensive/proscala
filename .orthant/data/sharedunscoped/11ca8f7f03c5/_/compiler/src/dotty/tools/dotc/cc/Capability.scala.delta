@@ -1,0 +1,27 @@
+orthant 2 patch
+
+@ 0 22 0 1167622d4d6e10a20e50f11b304aaddc
++       ref.core match
++         case ResultCap(_) => false
++         // A parameter of one of the context-function layers of this capability's
++         // owner's result type: erasure flattens those layers' parameters into the
++         // owner's own parameter list, so they are at its level, exactly as the
++         // closures implementing those layers are (see CCState.contextResultClosures).
++         case p: ParamRef => isContextResultParam(p, ccOwner)
++         case _ =>
++           !ccConfig.useLocalCapLevels
++           || CCState.collapseLocalCaps
++           || {
++             // A reference bound inside a closure that implements a method's
++             // context-function result chain is at the method's level: erasure
++             // flattens those closures' parameters into the method's parameter list.
++             // See CCState.contextResultClosures.
++             val refLevel = ref.levelOwner
++             val adjustedLevel = ccState.contextResultClosures.lookup(refLevel) match
++               case meth: Symbol => meth
++               case null => refLevel
++             ccOwner.isContainedIn(adjustedLevel.widenOwner(skipModules = true))
++           }
++           || classifier.isUnscopedClassifier
+
+% 0 1 0 1569ef5796db4343112ba9eae9b90511

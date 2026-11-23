@@ -1,0 +1,30 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 4 Aug 2026 14:12:28 +0200
+
+Give an inline accessor for a module the module's TermRef
+
+A module val's info is a TypeRef to its module class. An inline accessor
+carrying that info is not a legal path, so any type selected through it —
+`Positional.Profile`, where `Positional` is a qualified-private object used
+from an inline method — is rejected by PostTyper's realizability check as
+soon as the accessor cannot be final, which is the case whenever it lands in
+a trait.
+
+Remapping the accessor's info to the module's TermRef makes it stable again.
+This restores the fix for scala/scala3#22593, which 5321891783 ("Don't infer
+implicits from non-accessible companion", #25367) removed after its own
+tests stopped needing it: that PR made the inaccessible-companion cases fail
+earlier, for an unrelated reason, and dropped the remap along with them. The
+type-selection case it also covered was left broken.
+
+tests/pos/i22593c is that case: a type reached through an accessor for a
+qualified-private module, expanded outside the defining package, with the
+accessor hosted in a trait so it cannot be final. Soundness's `stratiform`
+hits it in `Tel2.DecodableDerivation.conjunction`.
+
+The tests touched by 5321891783 (tests/pos/i22593a, tests/pos/i22593b,
+tests/pos/i25347, tests/neg/i22593a, tests/neg/i22593b, tests/neg/i25347,
+tests/neg/i25347b) all still behave as marked under this patch.
+
+Assisted-by: Claude Opus 5 (see LLM_POLICY.md)
+Proscala-Patch: modulepath

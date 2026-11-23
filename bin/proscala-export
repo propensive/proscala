@@ -1,34 +1,36 @@
 #!/usr/bin/env bash
 #
-# proscala-export — write a tree's patches back to patches/.
+# proscala-export — write a tree's patches back to the Orthant store.
 #
 # Usage:
 #   bin/proscala-export [<dir>|<target>] [--adapt | --revise] [--obsolete <patch>]... [--remove <patch>]...
 #
 # Reads the commits above the tree's upstream base (one per patch, each with a
-# `Proscala-Patch: <name>` trailer) in <dir>, or in worktrees/<target>, and
-# records every patch whose commit differs from the version that was applied, as
-# a version anchored at the tree's base. What that means depends on the change:
+# `Proscala-Patch: <name>` trailer) in <dir>, or in worktrees/<target>, and checks
+# in every patch whose commit no longer changes what it did when the tree was
+# built, at the tree's base. What that means depends on the change:
 #
 #   only context      (the patch's own +/- lines are unchanged: the tree was
-#                      rebased, or a three-way merge placed it): recorded at once
-#   a new patch       recorded at once, and added to patches/series
+#                      rebased, or a stale patch was looked at and left): at once
+#   a new patch       at once; it joins the chain of patches where the tree has it
 #   anything else     you must say which it is:
-#     --adapt         this upstream needed the patch done differently; other
-#                     versions stay as they are
-#     --revise        the patch itself changed (a fix, a feature): the new
-#                     version gets the next revision, and every older version
-#                     is brought up to it by a three-way merge where that
-#                     succeeds; those it cannot update are listed, and stay in
-#                     use (behind) until someone updates them
+#     --adapt         this upstream needed the patch done differently: it is checked
+#                     in at the base, for that commit and every later one
+#     --revise        the patch itself changed (a fix, a feature): it is checked in
+#                     at the earliest commit, among those the base descends from,
+#                     at which the store has the patch and the change still fits,
+#                     so that every commit after that one gets it. Other lines of
+#                     history (a branch which forked before it) are listed: they
+#                     still carry the old change, until it is made there too
 #
 #   --obsolete <p>    the tree no longer carries <p> because upstream has made it
 #                     unnecessary: <p> gets `obsolete-from <base>`
-#   --remove <p>      delete <p> and all its versions
+#   --remove <p>      delete <p> altogether
 #
 # A patch the target should carry but the tree lacks is an error unless named in
-# --obsolete or --remove. Before writing anything, the result is proved: choosing
-# patches for the base anew must rebuild the tree exactly. Nothing is committed.
+# --obsolete or --remove. Before the store is written, the result is proved:
+# deriving the patches at the base anew must rebuild the tree exactly. Nothing is
+# committed.
 
 set -euo pipefail
 PROSCALA_PROG=proscala-export
@@ -65,63 +67,62 @@ if is_stream "$profile" && [ "$(upstream_sha "$profile")" != "$t" ]; then
   warn "the tree is the $profile stream, but mk/$profile.mk pins $(upstream_sha "$profile" | cut -c1-10), not $(g rev-parse --short "$t"): update UPSTREAM_SHA too"
 fi
 
+need_orthant
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/proscala-export.XXXXXX")"
-trap 'rm -rf "$tmp"; if [ -n "${SELECT_INDEX:-}" ]; then rm -f "$SELECT_INDEX"; fi' EXIT
+# a bound added for --obsolete is taken back if the export does not go through
+finished=0
+cleanup() {
+  local p
+  if [ "$finished" = 0 ]; then
+    for p in ${obsolete[@]+"${obsolete[@]}"}; do
+      if [ -f "$tmp/meta.$p" ]; then cp "$tmp/meta.$p" "$P/$p/meta"; elif [ -e "$tmp/nometa.$p" ]; then rm -f "$P/$p/meta"; fi
+    done
+  fi
+  rm -rf "$tmp"; store_drop
+}
+trap cleanup EXIT
 
 # --- read the tree -------------------------------------------------------------
 names=() commits=()
-declare -A seen=() dropping=()
-for p in ${obsolete[@]+"${obsolete[@]}"} ${remove[@]+"${remove[@]}"}; do dropping[$p]=1; done
+declare -A seen=() dropping=() commit_of=()
+for p in ${obsolete[@]+"${obsolete[@]}"} ${remove[@]+"${remove[@]}"}; do
+  in_series "$p" || die "'$p' is not a patch of the store"
+  dropping[$p]=1
+done
 while IFS= read -r c; do
   short="$(git -C "$dir" rev-parse --short "$c")"
   [ "$(git -C "$dir" rev-list --parents -n1 "$c" | wc -w)" -eq 2 ] \
     || die "commit $short is a merge; a patch must be a single ordinary commit"
   p="$(commit_patch_name "$dir" "$c")"
   [[ "$p" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] || die "commit $short: '$p' is not a valid patch name (lower-case letters and digits, hyphen-separated)"
-  [ "$p" != series ] || die "commit $short: 'series' is a reserved name"
+  [ "$p" != "$(store_root_patch)" ] || die "commit $short: '$p' is a reserved name"
   [ -z "${seen[$p]:-}" ] || die "two commits are both patch '$p' ($short and ${seen[$p]}); squash them into one"
   [ -z "${dropping[$p]:-}" ] || die "the tree still has a commit for '$p', which you asked to drop"
-  [ "$(git -C "$dir" log -1 --format=%B "$c" | grep -cx -- '---')" -eq 0 ] \
-    || die "commit $short ($p): its message has a line that is just '---', which 'git am' would cut the message at"
-  seen[$p]="$short"
+  seen[$p]="$short"; commit_of[$p]="$c"
   names+=("$p"); commits+=("$c")
 done < <(git -C "$dir" rev-list --reverse "$t..HEAD")
 [ "${#names[@]}" -gt 0 ] || die "$dir has no patch commits above $t"
 
-# The tree's order must agree with patches/series; new patches slot in where they are.
+# The tree's order must agree with the store's; new patches slot in where they are.
 known=() ; for p in "${names[@]}"; do if in_series "$p"; then known+=("$p"); fi; done
 want="$(for p in $(series); do if [ -n "${seen[$p]:-}" ]; then echo "$p"; fi; done)"
 [ "$want" = "$(printf '%s\n' ${known[@]+"${known[@]}"})" ] \
-  || die "the tree applies patches in a different order from patches/series; reorder patches/series by hand (it is shared by every target) or the tree"
-declare -A removing=()
-for p in ${remove[@]+"${remove[@]}"}; do removing[$p]=1; done
-# newafter <p> — the tree's new patches that follow <p>, up to the next known one
-newafter() {
-  local i started=0
-  for i in "${!names[@]}"; do
-    if [ "$started" = 1 ]; then
-      if in_series "${names[$i]}"; then break; fi
-      echo "${names[$i]}"
-    elif [ "${names[$i]}" = "$1" ]; then started=1; fi
-  done
-  return 0
-}
-{
-  awk 'NR == 1, /^$/' "$P/series"          # the header comment
-  for p in $(series); do
-    if [ -n "${removing[$p]:-}" ]; then continue; fi
-    echo "$p"
-    newafter "$p"
-  done
-} > "$tmp/series"
-for p in "${names[@]}"; do grep -qx -- "$p" "$tmp/series" || die "cannot place new patch '$p' in the series (put a known patch before it in the tree)"; done
+  || die "the tree has the patches in a different order from the store (bin/proscala-tree <target> --plan lists it); the order is shared by every target, so reorder the tree"
+declare -A after=()
+prev="$(store_root_patch)"
+for p in "${names[@]}"; do
+  if in_series "$p"; then prev="$p"; else after[$p]="$prev"; prev="$p"; fi
+done
 
 # --- what the target should carry ------------------------------------------------
-select_plan "$t" "$tmp/expect"; rm -f "$SELECT_INDEX"; SELECT_INDEX=""
-while IFS=$'\t' read -r p st _ detail; do
+store_plan "$t" "$tmp/expect"
+v="${VIEW_NAME[$t]}"
+declare -A was_pre=() was_post=() was_st=()
+while IFS=$'\t' read -r p st detail; do
+  was_st[$p]="$st"; was_pre[$p]="${STORE_PRE[$p]}"; was_post[$p]="${STORE_POST[$p]}"
   case "$st" in
-    plain|3way|missing)
-      [ -n "${seen[$p]:-}" ] || [ -n "${dropping[$p]:-}" ] \
+    plain|stale|missing)
+      [ -n "${seen[$p]:-}" ] || [ -n "${dropping[$p]:-}" ] || [ "$st" = missing ] \
         || die "the target should carry '$p' but the tree has no commit for it (--obsolete $p if upstream made it unnecessary, --remove $p to delete it)" ;;
     out)
       [ -z "${seen[$p]:-}" ] || die "the tree carries '$p', but its bounds exclude this target ($detail); change patches/$p/meta first" ;;
@@ -129,22 +130,21 @@ while IFS=$'\t' read -r p st _ detail; do
 done < "$tmp/expect"
 
 # --- decide ----------------------------------------------------------------------
-declare -A dest=() kind=() srcfile=()
+declare -A kind=()
 stale=() unmarked=()
 for i in "${!names[@]}"; do
-  p="${names[$i]}"; f="$tmp/$p.patch"
-  export_commit "$dir" "${commits[$i]}" > "$f"
-  nid="$(patch_id "$f")"
+  p="${names[$i]}"; c="${commits[$i]}"
+  nid="$(diff_id "$c^" "$c")"
   mid="$(manifest_field "$dir" "$p" 2)"
-  mfile="$(manifest_field "$dir" "$p" 3)"; [ -z "$mfile" ] || mfile="$PROSCALA_ROOT/$mfile"
-  srcfile[$p]="$mfile"
+  if ! in_series "$p"; then kind[$p]=new; continue; fi
+  sid=""; if [ "${was_st[$p]}" != missing ]; then sid="$(diff_id "${was_pre[$p]}" "${was_post[$p]}")"; fi
+  if [ "$nid" = "$sid" ]; then kind[$p]=keep; continue; fi
   if [ -n "$mid" ] && [ "$nid" = "$mid" ]; then
-    kind[$p]=keep
-    if [ -n "$mfile" ] && { [ ! -f "$mfile" ] || [ "$(patch_id "$mfile")" != "$mid" ]; }; then stale+=("$p"); fi
-    continue
+    # untouched since the tree was built, yet not what the store has now
+    if [ "$recorded" = "$t" ]; then stale+=("$p"); fi
+    kind[$p]=context; continue
   fi
-  if ! in_series "$p"; then kind[$p]=new
-  elif [ -n "$mfile" ] && [ -f "$mfile" ] && [ "$(payload_id "$f")" = "$(payload_id "$mfile")" ]; then kind[$p]=context
+  if [ -n "$(manifest_field "$dir" "$p" 3)" ] && [ "$(payload_id "$c^" "$c")" = "$(manifest_field "$dir" "$p" 3)" ]; then kind[$p]=context
   else
     case "$mode" in
       adapt|revise) kind[$p]="$mode" ;;
@@ -153,117 +153,131 @@ for i in "${!names[@]}"; do
   fi
 done
 if [ "${#stale[@]}" -gt 0 ]; then
-  die "$dir is out of date: ${stale[*]} changed in patches/ since it was built, and exporting it would undo that. Rebuild it (bin/proscala-tree <target> --reset refuses if it holds unexported work)."
+  die "$dir is out of date: ${stale[*]} changed in the store since it was built, and exporting it would undo that. Rebuild it (bin/proscala-tree <target> --reset refuses if it holds unexported work)."
 fi
 if [ "${#unmarked[@]}" -gt 0 ]; then
   die "the change to ${unmarked[*]} is more than context. Export again with --adapt (this upstream needs the patch done differently) or --revise (the patch itself changed)."
 fi
 
-# where each changed patch goes: an identical existing version gains this anchor;
-# otherwise the version anchored here is (re)written
-vname="$(variant_name "$t")"
-for p in "${names[@]}"; do
-  case "${kind[$p]}" in keep) continue ;; esac
-  dest[$p]="$P/$p/$vname"
-  for v in "$P/$p"/*.patch; do
-    if [ -f "$v" ] && cmp -s "$v" "$tmp/$p.patch"; then dest[$p]="$v"; break; fi
-  done
+# --- check in, in the view ---------------------------------------------------------------
+for p in ${remove[@]+"${remove[@]}"}; do store_remove_patch "$p"; done
+for p in ${obsolete[@]+"${obsolete[@]}"}; do
+  if [ -f "$P/$p/meta" ]; then cp "$P/$p/meta" "$tmp/meta.$p"; else : > "$tmp/nometa.$p"; fi
+  add_bound "$p" obsolete-from "$t" "dropped at $(g rev-parse --short "$t") by proscala-export: upstream made it unnecessary"
+done
+
+# content <commit> <dir> — every document the store knows, or the tree's commits
+# change, as the commit has it
+git -C "$dir" diff --name-only --no-renames "$t" HEAD > "$tmp/touched"
+content() {
+  rm -rf "$2"; mkdir -p "$2"
+  { store_documents "$VIEW"; cat "$tmp/touched"; } | sort -u > "$tmp/paths"
+  git -C "$dir" ls-tree -r --name-only "$1" | sort | comm -12 - "$tmp/paths" > "$tmp/there"
+  PUT_ABSENT="$(comm -23 "$tmp/paths" "$tmp/there")"
+  [ -s "$tmp/there" ] || return 0
+  # shellcheck disable=SC2046
+  git -C "$dir" archive "$1" $(cat "$tmp/there") | tar -x -C "$2"
+}
+# newline <commit> — a file the commit changes must end with a line feed: the store keeps lines
+newline() {
+  local f
+  while IFS= read -r f; do
+    [ -z "$(git -C "$dir" cat-file blob "$1:$f" | tail -c1)" ] \
+      || die "$f, as commit $(git -C "$dir" rev-parse --short "$1") has it, does not end with a line feed, which the store cannot keep; end its last line"
+  done < <(git -C "$dir" diff --name-only --no-renames --diff-filter=AM "$1^" "$1")
+}
+# since <p> — the values the base descends from at which the store has <p>, earliest first
+since() {
+  local vn vp vc
+  while read -r vn vp vc; do
+    [ "$vc" != "$t" ] && is_anc "$vc" "$t" && [ -d "$VIEW/.orthant/data/$1/$vn" ] || continue
+    echo "$(g rev-list --count "$vc..$t") $vn"
+  done < <(store_values "$VIEW/.orthant/config.tel") | sort -rn | awk '{ print $2 }'
+}
+
+wrote=0 dirty=0
+[ "${#remove[@]}" -eq 0 ] && [ "${#obsolete[@]}" -eq 0 ] || dirty=1
+for i in "${!names[@]}"; do
+  p="${names[$i]}"; c="${commits[$i]}"
+  if [ "${kind[$p]}" = keep ] && [ "$dirty" = 0 ]; then continue; fi
+  if [ "${kind[$p]}" = new ]; then store_add_patch "$p" "${after[$p]}"; fi
+  newline "$c"
+  content "$c" "$tmp/want"
+  where="$v"
+  if [ "${kind[$p]}" = revise ]; then
+    stored=0
+    for a in $(since "$p"); do
+      if store_put "$p" "$v" "$tmp/want" --since "$a"; then stored=1; where="$a"; break; fi
+    done
+    if [ "$stored" = 0 ]; then
+      store_put_or_die "$p" "$v" "$tmp/want"
+      [ -z "$(since "$p")" ] || warn "$p: the change fits no earlier commit, so it is checked in at $(g rev-parse --short "$t") alone"
+    fi
+    # lines of history which have the patch, and which the check-in did not reach
+    wc="$(store_values "$VIEW/.orthant/config.tel" | awk -v n="$where" '$1 == n { print $3 }')"
+    behind=()
+    while read -r vn vp vc; do
+      [ -d "$VIEW/.orthant/data/$p/$vn" ] && ! is_anc "$wc" "$vc" && ! is_anc "$vc" "$wc" || continue
+      behind+=("$(g rev-parse --short "$vc")")
+    done < <(store_values "$VIEW/.orthant/config.tel")
+    if [ "${#behind[@]}" -gt 0 ]; then
+      warn "$p: the patch as it is at ${behind[*]} is on another line of history, and still carries the old change; make it there too (bin/proscala-tree <commit>, then export --revise)"
+    fi
+  else
+    store_put_or_die "$p" "$v" "$tmp/want"
+  fi
+  if [ "$PUT_COUNT" -gt 0 ]; then
+    dirty=1
+    if [ "${kind[$p]}" != keep ]; then
+      note "$p: ${kind[$p]} — checked in at $(g rev-parse --short "$(store_values "$VIEW/.orthant/config.tel" | awk -v n="$where" '$1 == n { print $3 }')")"
+      wrote=$((wrote + 1))
+    fi
+  fi
 done
 
 # --- prove it ------------------------------------------------------------------------
-force=()
-for p in "${names[@]}"; do
-  if [ "${kind[$p]}" != keep ]; then force+=("$p=$tmp/$p.patch"); fi
-done
-PROSCALA_SERIES="$tmp/series" select_plan "$t" "$tmp/proof" ${force[@]+"${force[@]}"}
-got="$(GIT_INDEX_FILE="$SELECT_INDEX" g write-tree)"; rm -f "$SELECT_INDEX"; SELECT_INDEX=""
-if [ "$got" != "$(git -C "$dir" rev-parse 'HEAD^{tree}')" ]; then
-  awk -F'\t' '$2 != "out" { print "   " $1 "\t" $2 }' "$tmp/proof" >&2
-  die "choosing patches for $(g rev-parse --short "$t") anew would not rebuild the tree exactly (an unchanged patch now selects a different version?); nothing written"
+store_derive "$t" "$tmp/proof"
+# A patch which is as its commit has it, yet stale, has been seen to: the commit
+# says what it should be here. It is confirmed, and is stale no longer.
+confirmed=0
+while IFS=$'\t' read -r p st _; do
+  [ "$st" = stale ] && [ -n "${seen[$p]:-}" ] || continue
+  [ "${STORE_POST[$p]}" = "$(git -C "$dir" rev-parse "${commit_of[$p]}^{tree}")" ] || continue
+  store_confirm "$p" "$v"
+  note "$p: confirmed as it stands at $(g rev-parse --short "$t")"
+  confirmed=$((confirmed + 1)); dirty=1
+done < "$tmp/proof"
+if [ "$confirmed" -gt 0 ]; then store_derive "$t" "$tmp/proof"; fi
+still="$(awk -F'\t' '$2 == "stale" { print $1 }' "$tmp/proof" | tr '\n' ' ')"
+[ -z "$still" ] || warn "still stale at $(g rev-parse --short "$t") after the export: $still"
+if [ "$STORE_TREE" != "$(git -C "$dir" rev-parse 'HEAD^{tree}')" ]; then
+  g diff --stat "$(git -C "$dir" rev-parse 'HEAD^{tree}')" "$STORE_TREE" | sed 's/^/   /' | head -20 >&2
+  die "deriving the patches at $(g rev-parse --short "$t") anew would not rebuild the tree exactly; nothing written"
 fi
-
-# --- write -----------------------------------------------------------------------------
-wrote=0
-cp "$tmp/series" "$P/series"
 for i in "${!names[@]}"; do
   p="${names[$i]}"
-  case "${kind[$p]}" in keep) continue ;; esac
-  src="${srcfile[$p]}"
-  srcrev="$(if [ -n "$src" ]; then variant_line "$p" "$(basename "$src")" | awk '{ print $2 }'; fi)"
-  case "${kind[$p]}" in
-    new)      rev=1 ;;
-    context)  rev="${srcrev:-1}" ;;
-    adapt)    rev="${srcrev:-$(max_revision "$p")}" ;;
-    revise)   rev="$(( $(max_revision "$p") + 1 ))" ;;
-  esac
-  [ "$rev" -ge 1 ] 2>/dev/null || rev=1
-  d="${dest[$p]}"; dn="$(basename "$d")"
-  mkdir -p "$P/$p"
-  if [ -f "$d" ] && cmp -s "$d" "$tmp/$p.patch"; then
-    # an identical version exists: it now also applies here
-    line="$(variant_line "$p" "$dn")"
-    set_variant "$p" "$dn" "$(echo "$line" | awk '{ print $2 }')" $(echo "$line" | cut -d' ' -f3-) "$t"
-    note "$p: the existing version $dn also applies at $(g rev-parse --short "$t")"
-  else
-    # Rewriting a version anchored elsewhere too: it keeps each other anchor where
-    # the new content still applies; where it does not, the old content stays, as
-    # a version of its own.
-    keep=() orphan=()
-    if [ -f "$d" ]; then
-      oldline="$(variant_line "$p" "$dn")"
-      for a in $(echo "$oldline" | cut -d' ' -f3-); do
-        [ "$a" = "$t" ] && continue
-        select_plan "$a" "$tmp/other" "$p=$tmp/$p.patch"; rm -f "$SELECT_INDEX"; SELECT_INDEX=""
-        if [ "$(awk -F'\t' -v p="$p" '$1 == p { print $2 }' "$tmp/other")" = plain ]; then keep+=("$a"); else orphan+=("$a"); fi
-      done
-      if [ "${#orphan[@]}" -gt 0 ]; then
-        on="$(variant_name "${orphan[0]}")"
-        [ "$on" != "$dn" ] && [ ! -e "$P/$p/$on" ] || die "$p: cannot keep the old version for ${orphan[*]}: $on is taken"
-        cp "$d" "$P/$p/$on"
-        set_variant "$p" "$on" "$(echo "$oldline" | awk '{ print $2 }')" "${orphan[@]}"
-        note "$p: the old content stays as $on for $(for a in "${orphan[@]}"; do g rev-parse --short "$a"; done | tr '\n' ' ')"
-      fi
-    fi
-    cp "$tmp/$p.patch" "$d"
-    set_variant "$p" "$dn" "$rev" "$t" ${keep[@]+"${keep[@]}"}
-    note "$p: ${kind[$p]} — wrote ${d#"$PROSCALA_ROOT"/} (revision $rev)"
+  [ "${STORE_POST[$p]}" = "$(git -C "$dir" rev-parse "${commits[$i]}^{tree}")" ] \
+    || die "the store would not have $p as the tree's commit ${seen[$p]} has it; nothing written"
+done
+
+# --- write -----------------------------------------------------------------------------
+if [ "$dirty" = 1 ]; then store_save; fi
+for i in "${!names[@]}"; do
+  p="${names[$i]}"; c="${commits[$i]}"
+  cp "$P/$p/message" "$tmp/message" 2>/dev/null || : > "$tmp/message"
+  write_message "$p" "$dir" "$c"
+  if ! cmp -s "$tmp/message" "$P/$p/message"; then
+    note "$p: wrote patches/$p/message"
+    [ "${kind[$p]}" != keep ] || wrote=$((wrote + 1))
   fi
-  manifest_set "$dir" "$p" "$(patch_id "$d")" "$d"
-  wrote=$((wrote + 1))
+  manifest_set "$dir" "$p" "$(diff_id "$c^" "$c")" "$(payload_id "$c^" "$c")"
 done
-for p in ${obsolete[@]+"${obsolete[@]}"}; do
-  add_bound "$p" obsolete-from "$t" "dropped at $(g rev-parse --short "$t") by proscala-export: upstream made it unnecessary"
-  note "$p: obsolete from $(g rev-parse --short "$t") on"
-done
+for p in ${obsolete[@]+"${obsolete[@]}"}; do note "$p: obsolete from $(g rev-parse --short "$t") on"; done
 for p in ${remove[@]+"${remove[@]}"}; do
-  [[ "$p" =~ ^[a-z0-9-]+$ ]] || die "bad patch name '$p'"
-  g rm -rq --ignore-unmatch -- "patches/$p"
+  rm -rf "${P:?}/$p"
   note "$p: removed"
 done
+printf '%s\n' "$t" > "$(gitdir_of "$dir")/proscala-target"
+finished=1
 
-# --- carry a revision to the other versions ------------------------------------------------
-for p in "${names[@]}"; do
-  [ "${kind[$p]}" = revise ] || continue
-  newrev="$(max_revision "$p")"; newfile="${dest[$p]}"
-  behind=()
-  while read -r vf vrev vanchors; do
-    [ "$vrev" -lt "$newrev" ] || continue
-    a="${vanchors%% *}"
-    SELECT_TREES=1 SELECT_3WAY=1 select_plan "$a" "$tmp/carry" "$p=$newfile"
-    rm -f "$SELECT_INDEX"; SELECT_INDEX=""
-    st="$(awk -F'\t' -v p="$p" '$1 == p { print $2 }' "$tmp/carry")"
-    if [ "$st" = plain ] || [ "$st" = 3way ]; then
-      c="$(commit_from_trees "${SELECT_PRE[$p]}" "${SELECT_POST[$p]}" "$newfile")"
-      export_commit "$PROSCALA_ROOT" "$c" > "$P/$p/$vf"
-      set_variant "$p" "$vf" "$newrev" "$a"
-      note "$p: brought $vf (at $(g rev-parse --short "$a")) up to revision $newrev"
-    else
-      behind+=("$vf@$(g rev-parse --short "$a")")
-    fi
-  done < <(variants "$p")
-  if [ "${#behind[@]}" -gt 0 ]; then
-    warn "$p: ${behind[*]} could not be brought up to revision $newrev mechanically, and still carry the old change; update them by hand (bin/proscala-tree <anchor>, then export --revise)"
-  fi
-done
-
-note "$wrote patch file$([ "$wrote" = 1 ] || echo s) written for scala/scala3 $(g rev-parse --short "$t"); review with git diff, then commit"
+note "$wrote patch$([ "$wrote" = 1 ] || echo es) written for scala/scala3 $(g rev-parse --short "$t"); review with git diff, then commit"

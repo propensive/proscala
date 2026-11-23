@@ -1,0 +1,31 @@
+orthant 2 patch
+
+@ 0 1 0 085cb3c34c92b7341f963ecb49f4dbbc
++             tree.getAttachment(inlines.Inliner.ProxyCaptures) match
++               case Some((proxyType, inferred)) =>
++                 // An inline argument proxy is checked at the type the Inliner chose for it
++                 val tpt1 = TypeTree(proxyType, inferred).withSpan(tpt.span)
++                 transformResultType(tpt1, sym)
++                 // A proxy bounded by its parameter is `T^{inferred} & Any^{bound}`. The bound
++                 // has to reach the inferred set itself, as an intersection of the two sets:
++                 // an inferred type is not checked against, only added to. (`normalizeCaptures`
++                 // no longer does this for intersections in general, since intersecting two
++                 // sets that are both known only later can come out too small; here one side
++                 // is a variable, so nothing is decided before cc.)
++                 val nuType = tpt1.nuType match
++                   case AndType(tp1 @ CapturingType(parent1, refs1), tp2 @ CapturingType(parent2, refs2))
++                   if inferred && tp1.isBoxed == tp2.isBoxed =>
++                     CapturingType(AndType(parent1, parent2), refs1 ** refs2, tp1.isBoxed)
++                   case nuType => nuType
++                 tpt.setNuType(nuType)
++               case None =>
++                 transformResultType(tpt, sym)
+
+@ 1 0 0 102eb7c0c2d4e8580484e1a594b46060
++       // Read by the ValDef case and postProcess; not needed past Setup
++       if tree.isInstanceOf[ValDef] then tree.removeAttachment(inlines.Inliner.ProxyCaptures)
+
+@ 0 1 0 11047202c6a15aa3157f859b34427040
++               val inferredTpt = tree.tpt.isInstanceOf[InferredTypeTree]
++                 || tree.getAttachment(inlines.Inliner.ProxyCaptures).exists(_._2)
++               if inferredTpt

@@ -1,0 +1,10 @@
+orthant 2 patch
+
+@ 2 0 0 12386e86f719e1b0191b1539a9b41ef0
++   /** The context this error was raised in. A handler that catches the error after the run it
++    *  was raised in has ended (as `Driver.doCompile` does) cannot render it in its own context:
++    *  a denotation created in that run is invalid in any earlier one, and `toMessage` would fail
++    *  an assertion in `bringForward` rather than show the message.
++    */
++   def creationCtx: Context = creationContext
++

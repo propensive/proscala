@@ -1,0 +1,10 @@
+orthant 2 patch
+
+@ 0 1 0 109cdeb7c74ff1ff1e697b2dea329b3f
++      *  LhsProto, or a singleton type, or a path selection with a stable value.
++      *  The actual type may itself already be adapted to a boxed `x.type^{x}`: an
++      *  `Inlined` node, as a macro splice leaves around an argument, is adapted after the
++      *  expression inside it, and takes its type from it.
+
+@ 0 1 0 1937af95c6d3ec9d07456ac71d708d9f
++       actual.stripCapturing.isSingleton

@@ -1,0 +1,43 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 25 Aug 2026 06:26:35 +0200
+
+Preserve an @internal.diagnostic candidate's errors as the search-failure message
+
+Squashed from 3 commits, oldest first:
+
+* Preserve diagnostics from `@internal.diagnostic` implicit candidates
+
+A given marked `@scala.annotation.internal.diagnostic` whose macro aborts
+while tried as an implicit candidate now fails the search normally, but its
+reported errors become the authoritative message if the overall search
+fails, bypassing `@implicitNotFound`. This lets a diagnostic catch-all
+(Frontier) abort with a rendered search tree without corrupting `NotGiven`,
+`summonFrom` or default `using` arguments.
+
+Enabled by `-Z:diagnostic-givens`; without it, upstream's code runs at every site this
+patch touches.
+
+* Ship diagnostic in the supplementary proscala-library jar
+
+The standard library additions of the fork live under library-proscala/src and
+are built into their own jar (proscala-library, plus a Scala.js variant), so the
+scala-library and scalajs-scalalib jars are byte-identical to what upstream
+builds from the same tree. The compiler looks the class up by name and runs
+without it.
+
+* Do not invert a diagnostic candidate's failure under NotGiven
+
+`NotGiven[X]` is resolved by inverting each candidate's result, and an
+`@internal.diagnostic` catch-all is itself a candidate for `NotGiven[X]`.
+Its failure said nothing about `X`, yet it was inverted into a success
+before `NotGiven`'s own instances were reached, so `NotGiven[X]` held for
+every `X` (propensive/soundness#2123). A failing candidate that carries
+the annotation is now left as a failure. The failure's type is not the
+test: when `X` is absent, the nested diagnostic failure propagates into
+`amb1`'s failure, which must still invert.
+
+Written with Claude Code; the change and tests were reviewed and run
+locally by the author.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: searchdiag

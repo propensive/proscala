@@ -1,0 +1,13 @@
+orthant 2 patch
+
+@ 0 1 0 1444e96e6c2dbca906d0896354e10328
++      *  unsafeDiscardUses, unsafeAssumeSeparate, and freeze.
+
+@ 1 0 0 0701b831558c1a2607d6cc3832cdde58
++       else if meth == defn.Caps_unsafeAssumeSeparate then
++         // `unsafeAssumeSeparate(op): op.type` returns its operand as it is, and only lifts
++         // separation checking (see SepCheck): its result is the operand's own type. As an
++         // ordinary call, the operand is passed for a parameter of type `Any`, which makes
++         // an exclusive capability read-only, so the result could no longer be used as one.
++         val arg :: Nil = tree.args: @unchecked
++         super.recheckFinish(recheck(arg, pt), tree, pt)

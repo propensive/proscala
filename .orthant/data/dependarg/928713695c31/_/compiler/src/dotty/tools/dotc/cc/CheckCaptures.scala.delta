@@ -1,0 +1,12 @@
+orthant 2 patch
+
+@ 1 0 0 1e80efc00b141674137488f800a8da97
++             case (nuType @ CapturingType(_, _), _) => nuType
++             case (nuType, arg: Tree)
++             // Rechecking widened a stable argument to a plain non-capturing type
++             // (e.g. box adaptation dealiasing a doubly-nested refining alias): keep
++             // the path, or a dependent result selecting a member through this
++             // parameter becomes a projection the call result no longer matches.
++             // No captures can be lost: the rechecked type has no capture set.
++             if !nuType.isSingleton && arg.tpe.isStable
++               => arg.tpe

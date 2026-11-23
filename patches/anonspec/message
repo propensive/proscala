@@ -1,0 +1,29 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Wed, 19 Aug 2026 11:46:25 +0200
+
+Treat non-specialized anonymous-class parents as such, not as a crash
+
+Specialization.anonymousClassIsSpecialized matches any parent call with two
+argument lists (Apply(Apply(t, args), ev)) and then unconditionally does
+Specialization.unapply(...).get — but that shape also arises for an ordinary
+parent whose constructor takes a second (e.g. using) argument list, where the
+parent type is no AppliedType and the unapply returns None, so the compiler
+crashes with NoSuchElementException in FirstTransform. Seven-line flagless
+reproduction:
+
+    class Base(x: Int)(using s: String)
+    given String = "ctx"
+    inline def make(): Base = new Base(1) {}
+    @main def crash() = println(make())
+
+None simply means the parent is not a specialized trait; answer false.
+Introduced upstream by #26156 (Inline Traits & Specialized Traits). Upstream
+#26842 has since removed the .get, but its `.map(_.hasSpecializedParams).nonEmpty`
+is just `isDefined`: any specialization candidate counts, whether or not it has
+specialized params. This patch keeps the original predicate,
+`exists(_.hasSpecializedParams)`; upstream candidate.
+
+Developed with LLM assistance (Claude).
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Proscala-Patch: anonspec

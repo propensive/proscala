@@ -1,0 +1,23 @@
+orthant 2 patch
+
+@ 1 0 0 0c148e1a512020ec1d1aca3bf5493205
++ import scala.scalajs.LinkingInfo
++ import scala.scalajs.LinkingInfo.linkTimeIf
+
+@ 0 1 0 0a99f24c042a094c155f09d36dace060
++ object Buffer extends SeqFactory.Delegate[Buffer](
++   linkTimeIf[SeqFactory[Buffer]](LinkingInfo.isWebAssembly) {
++     ArrayBuffer
++   } {
++     js.WrappedArray
++   }
++ )
+
+@ 0 1 0 07ec9798b1fb376004a4ac04aee3c6df
++ object IndexedBuffer extends SeqFactory.Delegate[IndexedBuffer](
++   linkTimeIf[SeqFactory[IndexedBuffer]](LinkingInfo.isWebAssembly) {
++     ArrayBuffer
++   } {
++     js.WrappedArray
++   }
++ )

@@ -1,0 +1,7 @@
+orthant 2 patch
+
+@ 1 0 0 0e52aa43adc0963a02aaaa4baf4ff3d9
++ import scala.scalajs.LinkingInfo.linkTimeIf
+
+@ 0 2 0 1ac43fc386a733271d7dc5ee1e32d184
++     linkTimeIf(LinkingInfo.isWebAssembly) { makeForWasm } { makeForJS }

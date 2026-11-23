@@ -1,0 +1,15 @@
+orthant 2 patch
+
+@ 1 0 0 1af0d1961f7879eb0d8c2fa844838e8b
++           // Ordinary aliases are stripped first (`tp.dealias`): an opaque hidden
++           // behind a plain alias (`type Date = Timestamp {...}` over an opaque
++           // `Timestamp`) must be revealed the same way on both sides, or the
++           // conformance check below compares an opaque-revealed expected type
++           // against an unrevealed actual type and fails on well-typed expansions.
+
+@ 0 1 0 1747ba365066a82818f1e3cd5e678f32
++             def apply(tp: Type): Type = tp.dealias match
+
+@ 0 2 0 1e1528993d3c98cb0461bb845ffa2eac
++               case dealiased =>
++                 mapOver(dealiased)

@@ -1,0 +1,207 @@
+orthant 2 patch
+
+@ 1 0 0 0c6a0fb480f7314e1230cc2205bf27de
++   /** Under capture checking, the type an inline argument proxy is to be checked at, and
++    *  whether it is inferred: read by cc Setup in place of the binding's own type tree.
++    */
++   private[dotc] val ProxyCaptures = new util.Property.StickyKey[(Type, Boolean)]
++
+
+@ 0 1 0 04d130a32f7fdadc0b437e6b12462e75
++                               buf: DefBuffer, skolem: Option[SkolemType] = None,
++                               boundingFormal: Type = NoType)(using Context): ValOrDefDef = {
+
+@ 1 0 0 0e507a50883968a9125a5ace7ba0fb53
++     // Under capture checking, upstream (#26989) gives a proxy the argument's type from
++     // Typer as an explicit type, which cc takes at face value, and the argument is
++     // checked only against it. But that type says nothing about capture sets, so every
++     // argument that captures anything was rejected, even where the call would compile
++     // without `inline`. Instead, a proxy's capture sets are inferred, and bounded by what
++     // its parameter declares:
++     //  - A closure's parameter and result types stay declared (`@declared`), so a result
++     //    that leaks a capability is still caught; its own capture set follows the
++     //    parameter's function type: inferred where that may capture anything (`=>`,
++     //    `?=>`; not a fresh `any`, which separation checking would see as hiding what the
++     //    closure captures), the declared set where there is one, empty for a pure
++     //    function. The same goes for a function in the closure's result.
++     //  - Any other argument's type is inferred, intersected with a declared bound on its
++     //    top-level capture set: the parameter's explicit set (`^{io}`, `^{}`), or empty
++     //    for a parameter of a pure type. A parameter that may capture anything (`^`, a
++     //    capability class, an inferred type argument) bounds nothing.
++     var proxyInferred = false
++     def proxyType(tp: Type): Type =
++       import cc.{isRetainsLike, isCapsAnyRef, retainedElementsRaw, derivesFromCapability, isArrayUnderStrictMut}
++       def declared(t: Type) = AnnotatedType(t, Annotations.Annotation(defn.DeclaredAnnot, arg.span))
++       def inferred(t: Type) = AnnotatedType(t, Annotations.Annotation(defn.InferredAnnot, arg.span))
++       def mayCaptureAny(ann: Annotations.Annotation) =
++         ann.symbol == defn.RetainsCapAnnot
++         || cc.RetainingAnnotation.fromAnnotation(ann).retainedType.retainedElementsRaw
++             .exists(_.isCapsAnyRef)
++
++       // Does `t`, as written, say anything about captures?
++       def mentionsCaptures(t: Type): Boolean =
++         new TypeAccumulator[Boolean]:
++           def apply(found: Boolean, t: Type) = found || (t match
++             case AnnotatedType(_, ann) if ann.symbol.isRetainsLike => true
++             case AnnotatedType(_, ann) if ann.symbol == defn.InferredAnnot => false
++             case t: TypeRef if t.symbol.isClass => t.derivesFromCapability
++             // An alias says what its expansion says: a parameter of type `lender.Result`
++             // where `type Result = Handle^` declares a capability, which must stay declared
++             // so that a closure over the parameter is tracked
++             case t: TypeRef => t.info match
++               case TypeAlias(alias) => apply(apply(false, t.prefix), alias)
++               case _ => apply(false, t.prefix)
++             case t: AppliedType if t.tycon.typeSymbol.isClass && t.derivesFromCapability => true
++             case _ => foldOver(false, t))
++         .apply(false, t)
++
++       // The parameter and result types of `f`, a function type (dealiased, with any
++       // capture set dropped), if it is one: what the closure's parameter declares for them
++       def formalParts(f: Type): Option[(List[Type], Type)] = f.dealiasKeepAnnots match
++         case AnnotatedType(parent, ann) if ann.symbol.isRetainsLike => formalParts(parent)
++         case f @ AppliedType(_, args) if defn.isFunctionType(f) => Some((args.init, args.last))
++         case f @ RefinedType(_, nme.apply, mt: MethodType)
++         if defn.isFunctionType(f) && !mt.isParamDependent && !mt.isResultDependent =>
++           Some((mt.paramInfos, mt.resType))
++         case _ => None
++
++       // `t`, a function type, with its own capture set inferred and its parts declared:
++       // its parameters as `f`, the parameter's function type, declares them (with the
++       // call's inferred type arguments marked inferred), where the two line up
++       def inferredFunction(t: Type, f: Type): Type =
++         val (fparams, fres) = formalParts(f).getOrElse((Nil, NoType))
++         // A parameter is declared where its type says something about captures (`T^`, a
++         // capability class): that is what catches a closure leaking its parameter. One
++         // that says nothing (a type member, an inferred type argument) is inferred, rather
++         // than declared from a capture-free Typer type that would give an array a root.
++         def params(ps: List[Type]) =
++           (if fparams.length == ps.length then fparams else ps).map: p =>
++             if mentionsCaptures(p) then declared(p) else p
++         t match
++           case t @ RefinedType(parent, nme.apply, mt: MethodType) if defn.isFunctionType(t) =>
++             val ps = if mt.isParamDependent then mt.paramInfos.map(declared) else params(mt.paramInfos)
++             inferred(t.derivedRefinedType(parent, nme.apply,
++               mt.derivedLambdaType(mt.paramNames, ps, part(mt.resType, fres))))
++           case t @ AppliedType(tycon, args) if defn.isFunctionType(t) =>
++             inferred(t.derivedAppliedType(tycon, params(args.init) :+ part(args.last, fres)))
++           case _ => NoType
++
++       def part(t: Type, f: Type): Type = t.dealiasKeepAnnots match
++         case AnnotatedType(parent, ann) if ann.symbol.isRetainsLike && mayCaptureAny(ann) =>
++           inferredFunction(parent.dealias, f).orElse(declared(t))
++         case _ => declared(t)
++
++       // A declared bound on the top-level capture set of an argument for `formal`
++       def topBound(formal: Type): Type = formal.dealiasKeepAnnots match
++         case AnnotatedType(_, ann) if ann.symbol == defn.InferredAnnot => NoType
++         case AnnotatedType(parent, ann) if ann.symbol.isRetainsLike =>
++           if mayCaptureAny(ann) then NoType else AnnotatedType(defn.AnyType, ann)
++         case AnnotatedType(parent, _) => topBound(parent)
++         case OrType(t1, t2) =>
++           // a union bounds an argument only as far as both sides do
++           val b1 = topBound(t1)
++           val b2 = topBound(t2)
++           if !b1.exists || !b2.exists then NoType
++           else if b1 =:= b2 then b1
++           else NoType
++         case AndType(t1, t2) => topBound(t1).orElse(topBound(t2))
++         case t if t.derivesFromCapability || t.isArrayUnderStrictMut => NoType
++         case t: TypeParamRef => NoType
++         case t: TypeRef if !t.symbol.isClass => topBound(t.superType)
++         case _ => AnnotatedType(defn.AnyType, cc.RetainingAnnotation(defn.RetainsAnnot, defn.NothingType))
++
++       // The parameter type a proxy is bounded by: with the call's inferred type
++       // arguments marked inferred (see `inlined`), where computed
++       val formal1 = boundingFormal.orElse(formal)
++       if !Feature.ccEnabled || argIsBottom then tp
++       else arg match
++         case closureDef(_) =>
++           formal1.widenExpr.dealiasKeepAnnots match
++             case AnnotatedType(_, ann) if ann.symbol.isRetainsLike && mayCaptureAny(ann) =>
++               inferredFunction(tp, formal1.widenExpr) match
++                 case NoType => tp
++                 case tp1 => proxyInferred = true; tp1
++             case AnnotatedType(parent, ann)
++             if ann.symbol.isRetainsLike && defn.isFunctionType(parent.dealias) =>
++               AnnotatedType(tp, ann)
++             case _ => tp
++         case _ if !formal.widenExpr.hasAnnotation(defn.InlineParamAnnot) =>
++           proxyInferred = true
++           topBound(formal1.widenExpr) match
++             case NoType => tp
++             case bound => AndType(tp, declared(bound))
++         case _ => tp
++
+
+@ 2 0 0 08b9626dd843b0260a06308fdcb5eba8
++     // The proxy's type for capture checking; the binding itself keeps the argument's own
++     // type, which is all that typing the expansion (and any re-typing of it) needs
++     val proxyTpt =
++       if argIsBottom || isByName then NoType else proxyType(argtpe.widen)
++
+
+@ 1 0 0 022ce308886a223b00d6b0628e68cf45
++     // The proxy's type for capture checking goes in an attachment that only cc Setup
++     // reads (see `ProxyCaptures`), so that typing the expansion sees upstream's binding
++     if proxyTpt.exists && ((proxyTpt ne bindingType) || proxyInferred) then
++       binding.putAttachment(ProxyCaptures, (proxyTpt, proxyInferred))
+
+@ 0 1 0 193bc5c6d1ef9fa30e3f2d0358ce9c75
++       argss: List[List[Tree]], formalss: List[List[Type]], boundingFormalss: List[List[Type]],
+
+@ 0 1 0 06d7e62a8500a4a4035a6e5be61a5b31
++         computeParamBindings(tp.resultType, targs.drop(tp.paramNames.length), argss, formalss, boundingFormalss, skolemss, buf)
+
+@ 0 2 0 11e3236f241cd72a0d6fc1a60fafd954
++           val boundingFormals = boundingFormalss.headOption match
++             case Some(bounding) if bounding.length == formalss.head.length => bounding
++             case _ => formalss.head
++           tp.paramNames.lazyZip(formalss.head.zip(boundingFormals)).lazyZip(argss.head).lazyZip(skolems).foreach {
++             case (name, (formal, boundingFormal), arg, skolem) =>
+
+@ 0 1 0 1f02d8814f1f7ca317c623e90ef91ba5
++                 paramBindingDef(name, formal, arg, buf, skolem, boundingFormal).symbol.termRef
+
+@ 0 1 0 0b49e93968ed90e60c1b610e6e337810
++           computeParamBindings(tp.resultType, targs, argss.tail, formalss.tail,
++             boundingFormalss.drop(1), skolemss.tail, buf)
+
+@ 0 1 0 0cfb0138b19056f6098f6fa348f9ed33
++     // Under capture checking, the type of `fn` with the call's inferred type arguments
++     // marked `@inferred`, as PostTyper marks them for an inline call (which a transparent
++     // call, inlined during typing, has not yet met): a proxy's type is bounded by its
++     // parameter's, and Setup must infer, not declare, what the call left to inference.
++     def markedType(fn: Tree): Type =
++       // An inferred capture-set argument (`refs^`) bounds nothing: inference chooses it to
++       // fit the argument. It cannot be marked inferred inside a capture set, so it bounds
++       // the parameter with `any`; the proxy's inferred half is still exact.
++       // (PostTyper has already marked those of a call it has seen; others are still
++       // InferredTypeTrees.)
++       def marked(targ: Tree) =
++         val (inferred, tp) = targ.tpe match
++           case AnnotatedType(tp, ann) if ann.symbol == defn.InferredAnnot => (true, tp)
++           case tp => (targ.isInstanceOf[InferredTypeTree], tp)
++         if !inferred then targ.tpe
++         else if tp.typeSymbol == defn.Caps_CapSet then
++           AnnotatedType(defn.Caps_CapSet.typeRef, cc.RetainingAnnotation(defn.RetainsCapAnnot))
++         else AnnotatedType(tp, Annotations.Annotation(defn.InferredAnnot, targ.span))
++       fn match
++         case TypeApply(fn1, targs) => markedType(fn1) match
++           case pt: PolyType => pt.instantiate(targs.map(marked))
++           case _ => fn.tpe.widen
++         case Apply(fn1, args) => markedType(fn1) match
++           case mt: MethodType => mt.instantiate(args.tpes)
++           case _ => fn.tpe.widen
++         case _ => fn.tpe.widen
++
++     def paramTypess(call: Tree, acc: List[List[Type]], marked: Boolean = false): List[List[Type]] = call match
+
+@ 0 2 0 0e98f5eb090f45f604c593468e71e755
++         (if marked then markedType(fn) else fn.tpe.widen).match
++           case mt: MethodType => paramTypess(fn, mt.instantiateParamInfos(args.tpes) :: acc, marked)
+
+@ 0 1 0 125d6b25a0f4a93404554870fcbe7bc5
++       case TypeApply(fn, _) => paramTypess(fn, acc, marked)
+
+@ 1 0 0 0db0a1bb6aae18961dead036eac40758
++           if Feature.ccEnabled then paramTypess(call, Nil, marked = true) else Nil,

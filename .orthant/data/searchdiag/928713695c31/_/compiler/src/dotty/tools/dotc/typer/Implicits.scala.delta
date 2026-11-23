@@ -1,0 +1,72 @@
+orthant 2 patch
+
+@ 2 0 0 0304b991e1bc2ef7115720a514478f22
++
++   /** A `MacroErrorsFailure` from a candidate marked `@internal.diagnostic`: preferred
++    *  over other failures, and rendered verbatim as the missing-implicit message. */
++   class DiagnosticFailure(errors: List[Diagnostic.Error], expectedType: Type, argument: Tree)
++     extends MacroErrorsFailure(errors, expectedType, argument)
+
+@ 2 0 0 02c40ace12786e3301f088c23b8645bc
++       // An `@internal.diagnostic` candidate diagnoses by being expanded while it is
++       // tried, so that its macro can fail the candidate with an account of the search.
++       // Where no expansion can happen at all -- lexically inside an inline method's
++       // body, or at a staging level above zero -- the unexpanded call would be accepted
++       // as the result, shadowing the instances in implicit scope whose absence it exists
++       // to explain, and leaving the call site's type variables unconstrained; its macro
++       // would then run only when the enclosing method is inlined, long after the
++       // search. Such a candidate fails here, so that the search goes on as if it were
++       // absent.
++       def unexpandedDiagnostic: Boolean =
++         config.Proscala.enabled(config.Proscala.DiagnosticGivens)
++         && cand.ref.symbol.hasAnnotation(defn.DiagnosticAnnot)
++         && !adapted.existsSubTree:
++           case Inlined(call, _, _) => call.symbol == cand.ref.symbol
++           case _ => false
+
+@ 1 0 0 1c9568571404b9e915c02dc31cd62bbe
++          || unexpandedDiagnostic
+
+@ 1 0 0 1068a9d5335d8421024dc29ba2f2d816
++           case _ if !ctx.reporter.hasErrors && unexpandedDiagnostic => NoMatchingImplicitsFailure
+
+@ 1 0 0 1d4c4fe8101df70e07ee0f7261a2a2da
++           case _ if ctx.reporter.hasErrors
++                     && config.Proscala.enabled(config.Proscala.DiagnosticGivens)
++                     && cand.ref.symbol.hasAnnotation(defn.DiagnosticAnnot) =>
++             // An `@internal.diagnostic` candidate errored (typically an aborted macro
++             // expansion): keep its reported errors as the authoritative failure message.
++             // This case must precede the `PreviousErrorType` one, which would discard
++             // the buffered errors in favour of a generic "macro expansion was stopped".
++             SearchFailure(adapted.withType(new DiagnosticFailure(ctx.reporter.allErrors.reverse, pt, argument)))
+
+@ 0 1 0 0d54d540d92e0c27087338f85c4975a7
++             negateIfNot(cand, tryImplicit(cand, contextual)) match {
+
+@ 0 1 0 05df1b346a2acfde1adfcb90a4cefc30
++             else found.recoverWith: _ =>
++               // A DiagnosticFailure carries a candidate's own account of why the search
++               // failed; prefer it (first in try order) over the largest failure tree.
++               val ordered = rfailures.reverse
++               ordered.find(_.reason.isInstanceOf[DiagnosticFailure])
++                 .getOrElse(ordered.maxBy(_.tree.treeSize))
+
+@ 0 1 0 1794bfaaddafcccf07d7aae39ce01f6b
++       def negateIfNot(cand: Candidate, result: SearchResult) =
+
+@ 1 0 0 0cc0dcc70192f7121a3a0dcb099e57bb
++             case fail: SearchFailure
++             if config.Proscala.enabled(config.Proscala.DiagnosticGivens)
++                && cand.ref.symbol.hasAnnotation(defn.DiagnosticAnnot) =>
++               // The failure of an `@internal.diagnostic` candidate for `NotGiven[X]` is
++               // not evidence that `X` is absent, so it is not inverted into a success;
++               // `NotGiven`'s own instances decide. (The failure *type* cannot be the
++               // test: a nested diagnostic failure propagates into `amb1`'s failure when
++               // `X` is genuinely absent, and that one must still invert.)
++               fail
+
+@ 0 1 0 1b20831e48cdcf050635dead966b1b99
++                             case _ =>
++                               if failure.reason.isInstanceOf[DiagnosticFailure] then failure
++                               else if failure2.reason.isInstanceOf[DiagnosticFailure] then failure2
++                               else List(failure, failure2).maxBy(_.tree.treeSize)

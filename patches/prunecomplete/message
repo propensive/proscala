@@ -1,0 +1,30 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Wed, 19 Aug 2026 09:53:28 +0200
+
+Do not force completion when filtering prunable inline methods
+
+PruneInlinedMethods is an InfoTransformer with no feature gate: its
+transformInfo filters the declarations of every class denotation brought
+forward past it, and the filter predicate began with symbol-flag tests, so
+every declaration of every such class was completed — and merely reading
+`sym.denot` replays the intervening info transforms — at whatever point the
+denotation happened to advance. In the second run of a compilation-suspension
+restart (a macro dependency on a -sourcepath-loaded symbol suspends the unit;
+Driver.finish recompiles it in a fresh run), that reaches completers which
+resolve symbols created in the first run, and compilation crashes with
+StaleSymbolException. Building the Scala.js scalalib overlay
+(library-js-aux with -sourcepath library/src) crashed on
+scala.annotation.compileTimeOnly exactly this way; the step compiles cleanly
+under -Yskip:pruneInlinedMethods,pruneInlineTraits.
+
+isDeletable now pre-filters on the last known denotation without advancing
+it: an uncompleted symbol, or one whose flags do not spell an inline method,
+cannot be a specialized inline method awaiting pruning, since those are
+created and completed earlier in the same run. Only genuine candidates reach
+Specialization.isSpecializedMethod. Introduced upstream by #26156 (Inline
+Traits & Specialized Traits); upstream candidate.
+
+Developed with LLM assistance (Claude).
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Proscala-Patch: prunecomplete

@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
 #
-# proscala-fill — close coverage gaps mechanically, where a three-way merge can.
+# proscala-fill — close coverage gaps mechanically, where that is safe.
 #
 # Usage:
 #   bin/proscala-fill [--accept-changed] <target>...
 #
-# For each target, chooses patches as bin/proscala-tree would, but lets a patch
-# that no version applies to plainly apply with a three-way merge (which needs
-# the patch's preimage blobs, i.e. scala/scala3 history). Each such patch is
-# recorded as a new version anchored at the target, with the revision of the
-# version it was merged from.
+# For each target, derives the patches as bin/proscala-tree would. A patch which is
+# stale there — upstream has changed lines it changes, or sits beside, since the
+# commit it was checked in at — is shown with its own lines, as a three-way merge
+# would have left them. That can still change what the patch does. So a stale patch
+# is confirmed (checked in at the target as it stands, for that commit and every
+# later one) only if its +/- lines there are exactly those it has at the commit it
+# came from; others are listed for review. --accept-changed confirms them too (read
+# their diffs first: bin/proscala-tree <target> --allow-stale).
 #
-# A clean merge can still change what a patch does, if upstream touched the
-# lines around it. So by default a result is kept only if its +/- lines are
-# exactly those of the version it came from; others are listed for review.
-# --accept-changed keeps them too (read their diffs before committing).
+# A patch whose bounds exclude the target, but which the store still has there
+# (upstream moved beneath what takes it out), is taken out at the target.
 # Nothing is committed.
 
 set -euo pipefail
@@ -33,30 +34,50 @@ while [ $# -gt 0 ]; do
 done
 [ "${#targets[@]}" -gt 0 ] || die "which targets? (bin/proscala-coverage lists the gaps)"
 
+need_orthant
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/proscala-fill.XXXXXX")"
-trap 'rm -rf "$tmp"; if [ -n "${SELECT_INDEX:-}" ]; then rm -f "$SELECT_INDEX"; fi' EXIT
+trap 'rm -rf "$tmp"; store_drop' EXIT
 added=0
 for spec in "${targets[@]}"; do
   t="$(resolve_target "$spec")"
-  SELECT_TREES=1 SELECT_3WAY=1 select_plan "$t" "$tmp/plan"; rm -f "$SELECT_INDEX"; SELECT_INDEX=""
-  while IFS=$'\t' read -r p st f _; do
-    case "$st" in
-      missing) warn "$spec: no version of $p applies, even three-way: a person must make one"; continue ;;
-      3way) ;;
-      *) continue ;;
-    esac
-    c="$(commit_from_trees "${SELECT_PRE[$p]}" "${SELECT_POST[$p]}" "$f")"
-    export_commit "$PROSCALA_ROOT" "$c" > "$tmp/new.patch"
-    if [ "$(payload_id "$tmp/new.patch")" != "$(payload_id "$f")" ] && [ "$accept" = 0 ]; then
-      warn "$spec: $p merges, but its +/- lines differ from ${f#"$PROSCALA_ROOT"/}; not recorded (review with --accept-changed)"
-      continue
-    fi
-    rev="$(variant_line "$p" "$(basename "$f")" | awk '{ print $2 }')"
-    vn="$(variant_name "$t")"
-    cp "$tmp/new.patch" "$P/$p/$vn"
-    set_variant "$p" "$vn" "$rev" "$t"
-    note "$spec: $p — recorded patches/$p/$vn (merged from $(basename "$f"), revision $rev)"
-    added=$((added + 1))
+  store_plan "$t" "$tmp/plan"
+  v="${VIEW_NAME[$t]}"; built="$STORE_TREE"
+  # what each patch changes at the commit this one is beneath
+  pv="$(store_values "$VIEW/.orthant/config.tel" | awk -v n="$v" '$1 == n { print $2 }')"
+  pc="$(store_values "$VIEW/.orthant/config.tel" | awk -v n="$pv" '$1 == n { print $3 }')"
+  declare -A here=() from=()
+  while IFS=$'\t' read -r p st _; do
+    [ "$st" = stale ] && here[$p]="$(payload_id "${STORE_PRE[$p]}" "${STORE_POST[$p]}")"
   done < "$tmp/plan"
+  dirty=0
+  [ "$(awk -F'\t' '$2 == "out" && $3 ~ /put right/' "$tmp/plan" | wc -l)" -eq 0 ] || dirty=1
+  awk -F'\t' '$2 == "out" && $3 ~ /put right/ { print $1 }' "$tmp/plan" | while read -r p; do note "$spec: $p — taken out, as its bounds say"; done
+  if [ "${#here[@]}" -gt 0 ]; then
+    cp "$tmp/plan" "$tmp/plan.here"
+    VIEW_NAME[$pc]="$pv"
+    store_derive "$pc" "$tmp/plan.from"
+    for p in "${!here[@]}"; do from[$p]="$(payload_id "${STORE_PRE[$p]}" "${STORE_POST[$p]}")"; done
+    while IFS=$'\t' read -r p st _; do
+      [ "$st" = stale ] || continue
+      if [ "${here[$p]}" != "${from[$p]}" ] && [ "$accept" = 0 ]; then
+        warn "$spec: $p is stale, and its +/- lines differ from those it has at $(g rev-parse --short "$pc"); not confirmed (review, then --accept-changed)"
+        continue
+      fi
+      store_confirm "$p" "$v"
+      note "$spec: $p — confirmed as it stands"
+      added=$((added + 1)); dirty=1
+    done < "$tmp/plan.here"
+  fi
+  while IFS=$'\t' read -r p st _; do
+    [ "$st" = missing ] && warn "$spec: the store has nothing for $p here: a person must make it"
+  done < "$tmp/plan"
+  if [ "$dirty" = 1 ]; then
+    # nothing confirmed may have changed what the target builds
+    store_derive "$t" "$tmp/after"
+    [ "$STORE_TREE" = "$built" ] || die "$spec: confirming changed what the patches build there; nothing written"
+    store_save
+  fi
+  store_drop
+  unset here from
 done
-note "$added version$([ "$added" = 1 ] || echo s) recorded; check with bin/proscala-check, review with git diff, then commit"
+note "$added patch$([ "$added" = 1 ] || echo es) confirmed; check with bin/proscala-check, review with git diff, then commit"

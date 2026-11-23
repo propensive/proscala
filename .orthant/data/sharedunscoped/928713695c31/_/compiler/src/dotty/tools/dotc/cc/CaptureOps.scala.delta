@@ -1,0 +1,10 @@
+orthant 2 patch
+
+@ 2 0 0 1563e7b673783cc00cd60c2b9e5aeb53
++   /** Does `sym`, a classifier, exempt the capabilities it classifies from level checking?
++    *  True for `Unscoped` and for its shared counterpart `SharedUnscoped`.
++    */
++   def isUnscopedClassifier(using Context): Boolean =
++     sym.derivesFrom(defn.Caps_Unscoped)
++     || defn.Caps_SharedUnscoped.exists && sym.derivesFrom(defn.Caps_SharedUnscoped)
++

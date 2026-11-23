@@ -1,0 +1,6 @@
+orthant 2 patch
+
+@ 1 0 0 1a8fe29da6e7f97b15b662f301b2a62b
++       else if sym.isOpaqueAlias && !(sym eq defn.IArrayAlias)
++           && config.Proscala.enabled(config.Proscala.OpaqueMutability)
++       then tp.translucentSuperType.derivesFromCapTrait(cls)

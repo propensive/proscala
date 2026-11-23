@@ -1,8 +1,8 @@
 # The philosophy of Proscala
 
 Proscala is not a new language. It is Scala, built from the upstream compiler
-sources with a bounded, published set of patches — each one recorded in
-[patches/series](../patches/series),
+sources with a bounded, published set of patches — each one described under
+[patches/](../patches),
 documented under [doc/](README.md), and reproducible on its own. Full support
 for the existing language is an invariant, not a goal: every change carried
 here must leave every existing Scala program compiling, with unchanged

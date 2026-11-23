@@ -1,0 +1,360 @@
+format 2
+tree worktrees/.orthant
+axis
+  name patch
+  kind custom
+  prefer own
+  value
+    name none
+  value
+    name zflags
+    parent none
+  value
+    name aliascap
+    parent zflags
+  value
+    name anonspec
+    parent aliascap
+  value
+    name anykindcap
+    parent anonspec
+  value
+    name blockimport
+    parent anykindcap
+  value
+    name castbox
+    parent blockimport
+  value
+    name boolunapply
+    parent castbox
+  value
+    name ctxresult
+    parent boolunapply
+  value
+    name dependarg
+    parent ctxresult
+  value
+    name depset
+    parent dependarg
+  value
+    name dictcaps
+    parent depset
+  value
+    name givencache
+    parent dictcaps
+  value
+    name givenprefix
+    parent givencache
+  value
+    name iarraypure
+    parent givenprefix
+  value
+    name inertcache
+    parent iarraypure
+  value
+    name inlineupdate
+    parent inertcache
+  value
+    name integratemap
+    parent inlineupdate
+  value
+    name lazycycle
+    parent integratemap
+  value
+    name literate
+    parent lazycycle
+  value
+    name nullreceiver
+    parent literate
+  value
+    name permitlazy
+    parent nullreceiver
+  value
+    name macroalias
+    parent permitlazy
+  value
+    name modulepath
+    parent macroalias
+  value
+    name proxyskolem
+    parent modulepath
+  value
+    name prunecomplete
+    parent proxyskolem
+  value
+    name retainbounds
+    parent prunecomplete
+  value
+    name returnavoid
+    parent retainbounds
+  value
+    name sambox
+    parent returnavoid
+  value
+    name samstateful
+    parent sambox
+  value
+    name searchdiag
+    parent samstateful
+  value
+    name semdiag
+    parent searchdiag
+  value
+    name skolemcap
+    parent semdiag
+  value
+    name smap
+    parent skolemcap
+  value
+    name splicealias
+    parent smap
+  value
+    name spreadable
+    parent splicealias
+  value
+    name staleread
+    parent spreadable
+  value
+    name unboxedpure
+    parent staleread
+  value
+    name virtualdir
+    parent unboxedpure
+  value
+    name unioncaps
+    parent virtualdir
+  value
+    name wasm
+    parent unioncaps
+  value
+    name iarraypure-mutalias
+    parent wasm
+  value
+    name wasm-witcall
+    parent iarraypure-mutalias
+  value
+    name rootclassify
+    parent wasm-witcall
+  value
+    name sharedunscoped
+    parent rootclassify
+  value
+    name classifiermeet
+    parent sharedunscoped
+  value
+    name frozenpure
+    parent classifiermeet
+  value
+    name proxycap
+    parent frozenpure
+  value
+    name assumeseparate
+    parent proxycap
+  value
+    name exportuses
+    parent assumeseparate
+  value
+    name refinealias
+    parent exportuses
+  value
+    name macrosingleton
+    parent refinealias
+  value
+    name implicitparts
+    parent macrosingleton
+  value
+    name definefurther
+    parent implicitparts
+  value
+    name closurerecheck
+    parent definefurther
+  value
+    name anonascribe
+    parent closurerecheck
+  value
+    name inlinedclosures
+    parent anonascribe
+  value
+    name boxcycle
+    parent inlinedclosures
+  value
+    name cyclicctx
+    parent boxcycle
+  value
+    name movestatics
+    parent cyclicctx
+  value
+    name valuebased
+    parent movestatics
+  value
+    name macroloader
+    parent valuebased
+  value
+    name gatherable
+    parent macroloader
+  value
+    name matchopaque
+    parent gatherable
+  value
+    name readonlyadapt
+    parent matchopaque
+  value
+    name parenarrow
+    parent readonlyadapt
+  value
+    name blocktypeapply
+    parent parenarrow
+  value
+    name fuelslots
+    parent blocktypeapply
+  value
+    name boltcodes
+    parent fuelslots
+  value
+    name tastybackquote
+    parent boltcodes
+  value
+    name inlinetraittrace
+    parent tastybackquote
+  value
+    name tastyspecialize
+    parent inlinetraittrace
+  value
+    name inlinetraitprune
+    parent tastyspecialize
+  value
+    name tastymacro
+    parent inlinetraitprune
+  value
+    name tastythisprefix
+    parent tastymacro
+  value
+    name tastysource
+    parent tastythisprefix
+  value
+    name tastynocc
+    parent tastysource
+  value
+    name refinedsingleton
+    parent tastynocc
+  value
+    name inlinetraitimport
+    parent refinedsingleton
+  value
+    name overridevars
+    parent inlinetraitimport
+  value
+    name unionatoms
+    parent overridevars
+  value
+    name splicesingleton
+    parent unionatoms
+  value
+    name tastyattrs
+    parent splicesingleton
+  value
+    name javaenumctor
+    parent tastyattrs
+  value
+    name opaqueself
+    parent javaenumctor
+  value
+    name quotedthis
+    parent opaqueself
+axis
+  name upstream
+  kind git
+  prefer own
+  value
+    name 074fab21755a
+    parent 89ff5128b6e7
+    commit 074fab21755a73dc1b7b0be9c90d6a4b97556089
+  value
+    name 12959dbf8aa8
+    parent 50c07d7d13c1
+    commit 12959dbf8aa86ccae040dfa77a7077397dc2d498
+  value
+    name 78ea9c662e8f
+    parent 1874054a76ec
+    commit 78ea9c662e8f4b0680a962944404e0c7b540d5aa
+  value
+    name 90f3daf0a479
+    parent 89ff5128b6e7
+    commit 90f3daf0a4795308d9c0e1b8f2265aeaecae8aa2
+  value
+    name 89ff5128b6e7
+    parent a6d308066747
+    commit 89ff5128b6e75e29ed6bd83a252e6496fcaf9373
+  value
+    name a6d308066747
+    parent 5c92a843ffe5
+    commit a6d308066747aa3015972a0d974c1028cb9ff3c5
+  value
+    name 5c92a843ffe5
+    parent e950e5c1bf2a
+    commit 5c92a843ffe53f87c4dec7982b9549e55d0435fe
+  value
+    name e950e5c1bf2a
+    parent ae374e9583c6
+    commit e950e5c1bf2aa0fbf6e68868df09b9047042387e
+  value
+    name ae374e9583c6
+    parent 403f2f663af8
+    commit ae374e9583c6e34732b786f2bcae57b84b4ee14f
+  value
+    name 403f2f663af8
+    parent c6cae540e444
+    commit 403f2f663af8ad947e36a8f80f9680a9b71f7cf2
+  value
+    name 60c03047d604
+    parent c6cae540e444
+    commit 60c03047d60434742fd75f65d8350973bb63ab2a
+  value
+    name c6cae540e444
+    parent 190abc348060
+    commit c6cae540e4445180790e602406ee11243415dcde
+  value
+    name 3781fb35b0db
+    parent 12959dbf8aa8
+    commit 3781fb35b0dbe90c736322aa07c09d012f4176aa
+  value
+    name 190abc348060
+    parent 3864660d0e33
+    commit 190abc348060a547db89181f4bcef0559520ab95
+  value
+    name 50c07d7d13c1
+    parent 3864660d0e33
+    commit 50c07d7d13c1c7cc878778c83af1400c3db5932c
+  value
+    name 3864660d0e33
+    parent 11ca8f7f03c5
+    commit 3864660d0e33e09fa8ab99a83658bc08554ff8b7
+  value
+    name 11ca8f7f03c5
+    parent 466fa592b8f2
+    commit 11ca8f7f03c5d3c5ab0edfa232649b716cd35832
+  value
+    name 0bc121c5fd74
+    parent 78ea9c662e8f
+    commit 0bc121c5fd74a0340dc56e0739ebab40de3333a2
+  value
+    name 466fa592b8f2
+    parent 29497c036206
+    commit 466fa592b8f26b26f22715f0646b580c1e4499e4
+  value
+    name 1874054a76ec
+    parent 928713695c31
+    commit 1874054a76ec7b9706ae2cbd5f9ed41c80a8ffcf
+  value
+    name 928713695c31
+    parent 14894625e690
+    commit 928713695c317c18f2f54aa191ca4b48385c393d
+  value
+    name 29497c036206
+    parent 14894625e690
+    commit 29497c036206d8cf4882b9b8374b2375c031adbc
+  value
+    name 14894625e690
+    commit 14894625e690d5fb94c9d605bbebc7d2190b96b2
+  source
+    repository .

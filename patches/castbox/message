@@ -1,0 +1,16 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 17 Jul 2026 15:22:48 +0200
+
+Box opaque-external type arguments in cast type applications
+
+The type arguments of a type test or cast (e.g. the `asInstanceOf` an
+opaque type's companion `apply` performs) skipped the argument-boxing
+that every other spelling of an undealiasable type application receives
+in `transformTT`/`normalizeCaptures`. The cast therefore minted an
+unboxed spelling of a type whose canonical, declaration-side spelling
+has boxed arguments, and the two failed to compare ('is boxed but ...
+is not'), surfacing as inliner-proxy/aka-Tagged mismatches over
+capturing singleton instances.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Proscala-Patch: castbox

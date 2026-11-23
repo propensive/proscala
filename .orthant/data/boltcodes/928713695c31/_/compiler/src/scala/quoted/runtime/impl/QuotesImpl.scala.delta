@@ -1,0 +1,19 @@
+orthant 2 patch
+
+@ 0 1 0 1ba20e1a008c58700f920350f09158d5
++         dotc.report.error(dotc.reporting.BoltCodes.fromMacro(msg), Position.ofMacroExpansion)
+
+@ 0 1 0 0db39952845c713b13791fdacb4de2e9
++         dotc.report.error(dotc.reporting.BoltCodes.fromMacro(msg), asTerm(expr).pos)
+
+@ 0 1 0 0e67d8d20d283ea01b0eb878dc037fcd
++         dotc.report.error(dotc.reporting.BoltCodes.fromMacro(msg), pos)
+
+@ 0 1 0 0da7df70c6a0b7ce120d8a1168bf13cb
++         dotc.report.warning(dotc.reporting.BoltCodes.fromMacro(msg), Position.ofMacroExpansion)
+
+@ 0 1 0 098e5fdbfed1467d01f8520ac8ab458a
++         dotc.report.warning(dotc.reporting.BoltCodes.fromMacro(msg), asTerm(expr).pos)
+
+@ 0 1 0 14f6aba2383a88b50b5913d9d6128b2b
++         dotc.report.warning(dotc.reporting.BoltCodes.fromMacro(msg), pos)

@@ -1,0 +1,5 @@
+orthant 2 patch
+
+@ 1 0 0 0382a81695fbac901cf7478d39802536
++     if BoltCodes.enabled && BoltCodes.applies(dia.level, msg) then
++       sb.append(attr("boltCode", BoltCodes.code(msg)))

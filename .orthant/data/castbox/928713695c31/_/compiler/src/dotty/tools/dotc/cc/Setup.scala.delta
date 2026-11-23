@@ -1,0 +1,17 @@
+orthant 2 patch
+
+@ 1 0 0 04bd1074f41c677205252a5463750217
++               // Box the arguments of an undealiasable (e.g. opaque-external) type application
++               // in a cast's type argument, exactly as `normalizeCaptures` does for the same
++               // application elsewhere. Otherwise a cast — such as the one an opaque type's
++               // companion `apply` performs — produces an unboxed spelling of a type whose
++               // canonical (declaration-side) spelling has boxed arguments, and the two fail
++               // to compare ("is boxed but ... is not").
++               val boxedArgs = arg.tpe match
++                 case tp @ AppliedType(tycon, args0)
++                 if !defn.isFunctionClass(tp.dealias.typeSymbol) && (tp.dealias eq tp) =>
++                   tp.derivedAppliedType(tycon, args0.mapConserve(_.boxDeeply))
++                 case tp => tp
+
+@ 0 1 0 1425bf74530cab781c26a1901ddd04aa
++                 globalCapToLocal(boxedArgs, Origin.TypeArg(arg.tpe)))

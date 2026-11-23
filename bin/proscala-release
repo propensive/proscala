@@ -94,16 +94,17 @@ fi
 note "checking"
 bin/proscala-check >/dev/null || { bin/proscala-check | tail -20; die "bin/proscala-check fails; fix that first"; }
 
-plan="$(mktemp)"; trap 'rm -f "$plan"; if [ -n "${SELECT_INDEX:-}" ]; then rm -f "$SELECT_INDEX"; fi' EXIT
+plan="$(mktemp)"; trap 'rm -f "$plan"; store_drop' EXIT
 gaps=0
 note "Proscala $version, for:"
 while read -r spec sha av; do
-  select_plan "$sha" "$plan"; rm -f "$SELECT_INDEX"; SELECT_INDEX=""
+  store_plan "$sha" "$plan"; store_drop
   miss="$(plan_names "$plan" missing)"
-  printf '   %-8s %s  %-40s %s\n' "$spec" "$(git rev-parse --short "$sha")" "$av" "${miss:+MISSING: $miss}"
-  [ -z "$miss" ] || gaps=1
+  stales="$(plan_names "$plan" stale)"
+  printf '   %-8s %s  %-40s %s%s\n' "$spec" "$(git rev-parse --short "$sha")" "$av" "${miss:+MISSING: $miss}" "${stales:+ STALE: $stales}"
+  [ -z "$miss$stales" ] || gaps=1
 done <<< "$targets"
-[ "$gaps" = 0 ] || die "some targets lack a version of a patch; cover them first (AGENTS.md, 'Covering a new target')"
+[ "$gaps" = 0 ] || die "some targets do not have every patch cleanly; cover them first (AGENTS.md, 'Covering a new target')"
 
 case "$mode" in
   verify)

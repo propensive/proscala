@@ -1,0 +1,6 @@
+orthant 2 patch
+
+@ 0 1 0 18abb7b2e1765368031dc9579480918f
++       if targs.isEmpty then tree else tree match
++         case Block(stmts, expr) if stmts.nonEmpty => Block(stmts, TypeApply(expr, targs))
++         case _ => TypeApply(tree, targs)

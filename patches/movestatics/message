@@ -1,0 +1,22 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Mon, 19 Oct 2026 10:59:05 +0200
+
+Test a symbol's owner before its annotations in MoveStatics
+
+`MoveStatics.transformSym` asked `hasAnnotation(ScalaStaticAnnot)` of every
+denotation brought forward through it, before checking that the symbol is a
+member of a module with a companion — the only symbols it can move.
+`hasAnnotation` matches each annotation's class by `derivesFrom`, which needs
+that class's base classes. In a run where a class's base classes are first
+computed at a late phase (a suspended-units run, asked by a backend such as
+Scala Native's `genNIR`), computing them brings its parent forward through the
+transformers, and `MoveStatics` then matched the parent's own `@SourceFile`
+annotation against `@static` — re-entering the locked computation of
+`SourceFile`'s base classes: "Cyclic reference involving class SourceFile",
+escaping the run and failing the compilation. The owner checks now come
+first, so a class symbol is never made to look at its annotations here.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: movestatics

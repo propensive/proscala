@@ -1,0 +1,17 @@
+orthant 2 patch
+
+@ 2 0 0 012342535fbe360b0390cf44beaaa1f1
++       case fail: DiagnosticFailure =>
++         // The errors reported by an `@internal.diagnostic` candidate are the
++         // authoritative account of the failure; render them verbatim, bypassing
++         // any `@implicitNotFound` message on the expected type.
++         fail.explanation
+
+@ 2 0 0 06d2c8474877b6dc1946bffd50dfa13c
++       case _: DiagnosticFailure =>
++         ""  // the diagnostic candidate's message is complete; no addenda
+
+@ 0 2 0 1131dd73228db27a0537423affce772f
++   def explain(using Context) =
++     if arg.tpe.isInstanceOf[DiagnosticFailure] then ""
++     else userDefinedImplicitNotFoundMessage(explain = true).getOrElse("")

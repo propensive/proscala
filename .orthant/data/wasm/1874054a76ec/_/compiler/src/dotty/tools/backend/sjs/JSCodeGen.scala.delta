@@ -1,0 +1,116 @@
+orthant 2 patch
+
+@ 1 0 0 11826efba839e862194623c55176e46e
++   private val witCodeGen = new WitCodeGen(this)
+
+@ 0 1 0 145c405f828b34911dae194a1fdd60e8
++           val tree = if (sym.hasAnnotation(jsdefn.WitResourceImportAnnot)) {
++             // WIT resource class (trait annotated with @WitResourceImport)
++             withNewLocalNameScope {
++               witCodeGen.genWasmComponentResourceClassData(td)
++             }
++           } else if (sym.isJSType) {
+
+@ 1 0 0 1a1104b4250516a70c023300b8b3f19f
++     val witNativeMembersBuilder = List.newBuilder[js.WitNativeMemberDef]
++     val witExportDefsBuilder = List.newBuilder[js.WitExportDef]
++     val witExportMethods = mutable.Map.empty[Symbol, DefDef] // Methods to export via WIT
+
+@ 1 0 0 030a4a1a023779290cf83fb1dbf6ee9c
++           else if sym.hasAnnotation(jsdefn.WitImportAnnot) then
++             // WIT import - generate WitNativeMemberDef
++             for {
++               annot <- sym.getAnnotation(jsdefn.WitImportAnnot)
++               moduleName <- annot.argumentConstantString(0)
++               functionName <- annot.argumentConstantString(1)
++             } {
++               // These `witCodeGen` entry points materialize the implicit
++               // `LocalNameGenerator` (`localNames`), which is only bound while a
++               // method body is generated; here we are at class scope, so
++               // establish a fresh local-name scope.
++               withNewLocalNameScope {
++                 val flags = js.MemberFlags.empty.withNamespace(js.MemberNamespace.PublicStatic)
++                 val name = js.WitFunctionName.Function(functionName)
++                 witNativeMembersBuilder += witCodeGen.genWitNativeMemberDef(flags, dd, moduleName, name)
++               }
++             }
++           else if sym.isWitResourceStaticMethod then
++             withNewLocalNameScope {
++               witCodeGen.genWitResourceStaticMethodDef(dd).foreach(witNativeMembersBuilder += _)
++             }
++           else if sym.isWitResourceConstructor then
++             withNewLocalNameScope {
++               witCodeGen.genWitResourceConstructor(dd).foreach(witNativeMembersBuilder += _)
++             }
++           else if sym.hasAnnotation(jsdefn.WitExportAnnot) ||
++               sym.allOverriddenSymbols.exists(_.hasAnnotation(jsdefn.WitExportAnnot)) then
++             // WIT export - record for later, after method generation
++             witExportMethods(sym) = dd
++             methodsBuilder ++= genMethod(dd) // Also generate the method itself
+
+@ 2 0 0 1dc0eba238641bbb1295071e8a8105a1
++     // Generate WIT export definitions
++     for ((sym, dd) <- witExportMethods) {
++       val witExportAnnotOpt = sym.getAnnotation(jsdefn.WitExportAnnot)
++         .orElse(sym.allOverriddenSymbols.flatMap(_.getAnnotation(jsdefn.WitExportAnnot)).nextOption())
++       for {
++         annot <- witExportAnnotOpt
++         moduleName <- annot.argumentConstantString(0)
++         functionName <- annot.argumentConstantString(1)
++       } {
++         // `witFunctionTypeOf` / `genWitExportDef` materialize the implicit
++         // `LocalNameGenerator` (`localNames`), which is only bound while a
++         // method body is being generated. This loop runs at class scope, after
++         // per-method generation, so establish a fresh local-name scope here.
++         withNewLocalNameScope {
++           val funcType = witCodeGen.witFunctionTypeOf(sym)
++           val exportInfo = WitExportInfo(moduleName, functionName, funcType)(dd.sourcePos)
++
++           // Find the generated method def
++           val methodIdent = encodeMethodSym(sym)
++           generatedMethods.find(_.name.name == methodIdent.name).foreach { methodDef =>
++             witExportDefsBuilder += witCodeGen.genWitExportDef(exportInfo, methodDef)
++           }
++         }
++       }
++     }
++     val witNativeMembers = witNativeMembersBuilder.result()
++
+
+@ 0 2 0 1ede63d75ade74860733a261c85978b0
++     // Generate top-level export definitions (including WIT exports)
++     val jsTopLevelExportDefs = jsExportsGen.genTopLevelExports(sym)
++     val topLevelExportDefs = jsTopLevelExportDefs ::: witExportDefsBuilder.result()
+
+@ 1 0 0 078fd3a403a98a4504ff4be8f8846e7f
++                 witNativeMembers = Nil,
+
+@ 1 0 0 1fd959bbdad4576c16690f99630337ea
++         witNativeMembers,
+
+@ 1 0 0 0b23f8d49b3f205e072cc4acd7f5605f
++         witNativeMembers = Nil,
+
+@ 3 1 0 1c575d43bcb3216d0cc2e8d10ccbc2ea
++         jsNativeMembers = Nil,
++         witNativeMembers = Nil,
+
+@ 3 1 0 116d3830f52e63271fcc4ff8d34e0217
++         jsNativeMembers = Nil,
++         witNativeMembers = Nil,
+
+@ 0 1 0 1275a947130738741321d80ca67461d4
++   private[sjs] def genExpr(tree: Tree): js.Tree = {
+
+@ 0 1 0 1e4265adec297a4002318782a92cd883
++           jsMethodProps = Nil, jsNativeMembers = Nil, witNativeMembers = Nil,
++           topLevelExportDefs = Nil)(
+
+@ 1 0 0 15ebfc25bdc9d07e12b66ad97eb8dd31
++     } else if (sym.hasAnnotation(jsdefn.WitResourceMethodAnnot) ||
++         sym.hasAnnotation(jsdefn.WitResourceDropAnnot)) {
++       // WIT resource instance methods and drop - pass receiver
++       witCodeGen.genWitNativeMemberCall(sym, tree, Some(receiver), isStat)(using this, implicitLocalNames)
++     } else if (witCodeGen.hasWitNativeAnnotation(sym)) {
++       // WIT imports, resource constructors, and static methods - no receiver
++       witCodeGen.genWitNativeMemberCall(sym, tree, None, isStat)(using this, implicitLocalNames)

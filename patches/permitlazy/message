@@ -1,0 +1,17 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 17 Jul 2026 15:22:50 +0200
+
+Resolve permitted subclasses lazily when parsing classfiles
+
+Parsing a PermittedSubclasses attribute resolved each permitted class
+eagerly during the enclosing symbol's completion. A sealed Java
+interface may permit an implementation class whose signature leads back
+to other sealed interfaces in the same library, forming a completion
+cycle: the JDK 25 java.lang.classfile API fails with 'Cyclic reference
+involving class BufferedMethodBuilder' (scala/scala3#25451). Moving the
+resolution inside the deferred annotation tree breaks the cycle; the
+child is resolved when the annotation is first forced (e.g. by
+exhaustivity checking), after all completions have settled.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Proscala-Patch: permitlazy

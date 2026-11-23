@@ -1,0 +1,25 @@
+orthant 2 patch
+
+@ 1 0 0 0f25de103736339e17e5f5bf9ad175d5
++   // Proscala settings, a category for the fork's optional behaviours, each enabled by its own -Z<name> flag
++   case ProscalaSetting extends ScalaSettingCategories("Z")
+
+@ 1 0 0 1a31d90908f45e94173b070019ab89d7
++   val proscalaSettings: List[Setting[?]] = settingsByCategory(ProscalaSetting).sortBy(_.name)
+
+@ 0 1 0 084885d8a49046e60d1cca2d131ca364
++ trait AllScalaSettings extends CommonScalaSettings, PluginSettings, VerboseSettings, OptimizerSettings, WarningSettings, XSettings, YSettings, ZSettings:
+
+@ 2 0 0 07686c3fa1f8de3900431fcdee5d2038
++ /** -Z: Proscala's optional behaviours, each a patch on upstream Scala that is
++  *  enabled by its own flag, `-Z<name>` (see `Proscala.Feature`); `-Z` alone
++  *  prints the synopsis, as `-X` and `-Y` do.
++  */
++ private sealed trait ZSettings:
++   self: SettingGroup =>
++
++   val Zhelp: Setting[Boolean] = BooleanSetting(ProscalaSetting, "Z", "Print a synopsis of Proscala's optional features.")
++   val Zfeature: Map[Proscala.Feature, Setting[Boolean]] =
++     Proscala.features.map(f => f -> BooleanSetting(ProscalaSetting, "Z" + f.name, s"${f.help} (patch ${f.patch})")).toMap
++
++ end ZSettings

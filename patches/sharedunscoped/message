@@ -1,0 +1,37 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Wed, 7 Oct 2026 17:06:48 +0200
+
+A shared, level-exempt classifier: caps.SharedUnscoped
+
+Squashed from 2 commits, oldest first:
+
+* Add caps.SharedUnscoped, a shared and level-exempt classifier
+
+`Unscoped` exempts a capability from the level check — a value minted at a
+deeper level may flow into a result capture set minted further out — but it
+extends `ExclusiveCapability`, so no shared capability can carry it. An
+ambient effect strategy that is aliased freely (a `SharedCapability`, so that
+a codec capturing it and a call taking it as evidence are not a separation
+overlap) and minted by a polymorphic given at its use site needs both.
+
+`SharedUnscoped extends SharedCapability, Classifier` is that point in the
+lattice. The compiler's five consultations of `Unscoped` go through one
+predicate, `isUnscopedClassifier`, which recognises either; exclusivity is
+untouched, so separation checking treats a `SharedUnscoped` capability as any
+shared one.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+* Ship SharedUnscoped in proscala-library, looked up leniently
+
+The trait moves from `scala/caps/package.scala`, which must stay
+byte-identical to upstream's `scala-library`, into the supplementary
+`proscala-library` jar beside `Spreadable` and `Literate`. The compiler
+resolves it with `getClassIfDefined`, as it does those two, so a
+classpath without the jar simply has no capability classified this way
+and nothing fails to load.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: sharedunscoped

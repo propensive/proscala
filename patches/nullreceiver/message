@@ -1,0 +1,14 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 17 Jul 2026 15:22:50 +0200
+
+Widen bottom-typed call receivers to Object in the backend
+
+A method call can reach genCallMethod with a receiver class of Null (or
+Nothing), e.g. a member call on a value flow-typed to Null under
+explicit nulls combined with capture checking. Bottom classes have no
+runtime class ('Cannot create ClassBType for special class symbol
+Null'), and the only members dispatchable on them are Object's, so the
+invocation descriptor's receiver is widened to Object.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Proscala-Patch: nullreceiver

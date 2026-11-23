@@ -1,0 +1,11 @@
+orthant 2 patch
+
+@ 0 2 0 034b888403d09e411ced4e39a1fca4ef
++             if !elem.tryClassifyAs(ac.hiddenSet.classifier) then
++               // The root is already classified incompatibly with `elem` (e.g. an Unscoped
++               // root and a SharedCapability element): `elem` cannot be hidden here and
++               // gets a root of its own below. This used to be an assertion, which made a
++               // capture set mixing differently-classified fresh capabilities a crash.
++               capt.println(i"classifier mismatch when subsuming in a LocalCap, cannot add $elem to $ac / $fail")
++               false
++             else if isRefining then

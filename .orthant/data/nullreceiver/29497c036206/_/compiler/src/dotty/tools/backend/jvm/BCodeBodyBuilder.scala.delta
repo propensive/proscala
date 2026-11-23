@@ -1,0 +1,13 @@
+orthant 2 patch
+
+@ 0 1 0 1da0b4b7fb32f7a1080f03cb007682b9
++       // A call can reach the backend with a bottom-typed receiver (e.g. a member call on a
++       // value flow-typed to `Null` under explicit nulls with capture checking); `Nothing`
++       // and `Null` have no runtime class, and the only members dispatchable on them are
++       // Object's, so widen the descriptor's receiver to Object.
++       val receiverClass1 =
++         if defn.isBottomClassAfterErasure(receiverClass) then defn.ObjectClass else receiverClass
++       val receiverName = bTypeLoader.classBTypeFromSymbol(receiverClass1).internalName
+
+@ 0 1 0 04a4d7307f00c2be0e26eda40fb4070a
++       val isInterface = isEmittedInterface(receiverClass1)

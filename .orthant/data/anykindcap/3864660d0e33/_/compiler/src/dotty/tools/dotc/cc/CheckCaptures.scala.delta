@@ -1,0 +1,12 @@
+orthant 2 patch
+
+@ 1 0 0 14ac23759957be2b09cb3cfbbb764820
++      *   - the bound is AnyKind, which is the top of the kind lattice and so says
++      *     nothing about captures, exactly as Any says nothing, or
+
+@ 0 3 0 1abc05acf3742cf31990a1659354e0b7
++       // Is `hiBound` exactly `Any`, `AnyKind`, or `FromJavaObject` (Java's `Object`
++       // bound)? These are capture polymorphic top types, so they do not constrain
++       // arguments.
++       val isPolymorphicTop =
++         hiBound.isExactlyAny || hiBound.isRef(defn.AnyKindClass) || hiBound.isFromJavaObject

@@ -1,0 +1,16 @@
+orthant 2 patch
+
+@ 0 2 0 09f4c5105c6ee26f128d87b74fa4a5cf
++   /** Tests whether the type derives from capability class `cls`.
++    *  `IArray` derives from none: although it dealiases to (mutable, and under
++    *  strict mutability capability-classified) `Array`, its interface exposes no
++    *  mutation, so a fresh `IArray` is immutable from birth — construction is
++    *  semantically `caps.freeze`. Without this, every stdlib `IArray` factory
++    *  result is spuriously `^{fresh}` through the opaque alias.
++    */
++   def derivesFromCapTrait(cls: ClassSymbol)(using Context): Boolean =
++     (tp.typeSymbol != defn.IArrayAlias || !config.Proscala.enabled(config.Proscala.PureIArrays))
++     && derivesFromCapTraitDealiased(cls)
++
++   private def derivesFromCapTraitDealiased(cls: ClassSymbol)(using Context): Boolean =
++     tp.dealiasKeepAnnots match

@@ -1,0 +1,18 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 13 Oct 2026 11:27:32 +0200
+
+Treat an endless instantiation as no further definition in canDefineFurther
+
+`canDefineFurther` is a speculative step: when adapting a tree to its expected
+type fails, the adapter asks whether instantiating more of its type variables
+would help, and retries if so. Instantiating one can recurse without end (here
+through constraint adjustment, while the first `read[X in Protobuf]` of a unit
+resolves a given). Since 3.10's fuel-based recursion limit (#25937), that
+surfaces as "Recursion limit exceeded", a hard error, where 3.9 compiled the
+same code. The answer such a step should give is that the type cannot be
+defined further; the adapter then reports its ordinary failure, if any, and an
+implicit search goes on to its other candidates.
+
+Developed with LLM assistance (Claude Code).
+
+Proscala-Patch: definefurther

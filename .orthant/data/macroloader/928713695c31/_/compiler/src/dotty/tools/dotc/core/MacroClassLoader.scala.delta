@@ -1,0 +1,32 @@
+orthant 2 patch
+
+@ 1 0 0 13b973bdd800214b1a7578bf25e3700c
++ import dotty.tools.dotc.config.Proscala
+
+@ 0 1 0 1dc52feb2195f220139eadaf46d64ab2
++     val parent =
++       if Proscala.enabled(Proscala.IsolatedMacros) then IsolatingLoader(getClass.getClassLoader)
++       else getClass.getClassLoader
++     new java.net.URLClassLoader((urls ++ out.toList).toArray, parent)
+
+@ 1 0 0 198a6ee6c6d76ce702d2e920fb535def
++
++   /** Shares with the compiler's own class loader only what a macro must share with it — the
++    *  standard library and quotes API (`scala.`) and the compiler itself (`dotty.`) — and sends
++    *  every other name to the platform class loader, so that a macro's dependencies are found on
++    *  the compilation classpath (through the child loader) even when the host embedding the
++    *  compiler carries other versions of them.
++    */
++   private class IsolatingLoader(compiler: ClassLoader) extends ClassLoader(ClassLoader.getPlatformClassLoader) {
++     private def shared(name: String, sep: Char): Boolean =
++       name.startsWith(s"scala$sep") || name.startsWith(s"dotty$sep")
++
++     override def loadClass(name: String, resolve: Boolean): Class[?] =
++       if shared(name, '.') then compiler.loadClass(name) else super.loadClass(name, resolve)
++
++     override def getResource(name: String): java.net.URL | Null =
++       if shared(name, '/') then compiler.getResource(name) else super.getResource(name)
++
++     override def getResources(name: String): java.util.Enumeration[java.net.URL] =
++       if shared(name, '/') then compiler.getResources(name) else super.getResources(name)
++   }

@@ -1,0 +1,10 @@
+orthant 2 patch
+
+@ 0 1 0 1a4124ddb82d68c913424ddb653c4594
++         || classifier.isUnscopedClassifier
+
+@ 0 1 0 0d2ec8c715c8cf31158cf34535bcd5ee
++           case NoPrefix if mapUnscoped && classifier.isUnscopedClassifier =>
+
+@ 0 1 0 1d33b7d327fb30d3155d923fa85689c9
++           if sym.isAnonymousFunction && c.classifier.isUnscopedClassifier then

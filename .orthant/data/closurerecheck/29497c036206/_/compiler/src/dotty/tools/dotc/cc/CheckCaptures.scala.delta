@@ -1,0 +1,7 @@
+orthant 2 patch
+
+@ 1 1 0 0162c98fecae911116b6c3904814c2fc
++         else if !skipRecheck(anonfun) then
++           // A definition already rechecked by its completer, on an earlier reference to it,
++           // is not rechecked again: its nested closures would be checked against result
++           // types holding the first check's fresh capabilities.

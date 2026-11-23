@@ -1,0 +1,20 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 14 Nov 2026 20:42:48 +0900
+
+Leave an inline trait's imports out of the classes which extend it
+
+The statements of an inline trait are copied into each class which extends
+it. A definition is given a new symbol and its body inlined; any other
+statement is copied as it is, wrapped in an `Inlined` node. An import in the
+trait's body is such a statement, and the node made for it has the type of
+the import, which is not a type of a value: Erasure crashed on it, with
+"MatchError: ImportType(Ident(Ordinals))", whenever the trait and a class
+extending it were compiled in the same run.
+
+The trait's body is typed before it is copied, so its imports have nothing
+left to do, and they are now left out.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: inlinetraitimport

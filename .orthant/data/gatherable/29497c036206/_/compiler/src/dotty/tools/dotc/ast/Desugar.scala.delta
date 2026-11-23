@@ -1,0 +1,59 @@
+orthant 2 patch
+
+@ 0 1 0 1fc81d5c582ff6f70eb96ef008556bca
++     addDefaultGetters(elimContextBounds(gatherVarargs(meth), isPrimaryConstructor).asInstanceOf[DefDef])
+
+@ 2 0 0 09c6fcc2b5fd09e800e628e81a1b1a35
++   /** Under `-Zgatherable-varargs`, give the body of a method its repeated
++    *  parameters through the `scala.Gatherable` instance in scope:
++    *
++    *      def f(xs: T*) = body
++    *  ==>
++    *      def f(xs: T*) =
++    *        val xs$1 = xs
++    *        { val xs = scala.Gatherable.gather(xs$1); body }
++    *
++    *  The signature is untouched, so callers are unaffected; only the body sees
++    *  `xs` as the instance's `Out`. The two blocks keep the parameter reachable
++    *  for the conversion while the gathered value shadows it in the body. The
++    *  implicit search for the instance is the typer's, at the parameter's
++    *  position, and fails there if no instance is in scope.
++    *
++    *  Left as upstream has them: constructors (a class parameter is a member,
++    *  which a block cannot shadow), compiler-generated methods, macros (whose
++    *  right-hand side must be the splice itself), `inline` parameters (which a
++    *  macro inspects as written) and by-name repeated parameters (which the
++    *  conversion would force).
++    */
++   private def gatherVarargs(meth: DefDef)(using Context): DefDef =
++     def gathered(param: ValDef): Boolean =
++       !param.mods.is(Inline) && (unsplice(param.tpt) match
++         case PostfixOp(_, Ident(tpnme.raw.STAR)) => true
++         case _ => false)
++     def isMacro(rhs: Tree): Boolean = rhs match
++       case _: Splice | _: MacroTree => true
++       case _ => false
++     if !config.Proscala.enabled(config.Proscala.GatherableVarargs)
++        || meth.name.isConstructorName || meth.rhs.isEmpty || meth.mods.is(Synthetic)
++        || isMacro(meth.rhs)
++     then meth
++     else
++       val params = meth.paramss.flatMap(_.collect { case param: ValDef if gathered(param) => param })
++       if params.isEmpty then meth
++       else if !defn.GatherableModule.exists then
++         report.error(
++           em"-Zgatherable-varargs needs scala.Gatherable, from proscala-library, on the classpath",
++           params.head.srcPos)
++         meth
++       else
++         val seqNames = params.map(param => UniqueName.fresh(param.name))
++         val seqs = params.lazyZip(seqNames).map: (param, seqName) =>
++           ValDef(seqName, TypeTree(), Ident(param.name).withSpan(param.span))
++             .withMods(Modifiers(Synthetic)).withSpan(param.span)
++         val gathers = params.lazyZip(seqNames).map: (param, seqName) =>
++           val gather = Select(ref(defn.GatherableModule.termRef), nme.gather).withSpan(param.span)
++           ValDef(param.name, TypeTree(), Apply(gather, Ident(seqName) :: Nil).withSpan(param.span))
++             .withMods(Modifiers(Synthetic)).withSpan(param.span)
++         val body = Block(gathers, meth.rhs).withSpan(meth.rhs.span)
++         cpy.DefDef(meth)(rhs = Block(seqs, body).withSpan(meth.rhs.span))
++

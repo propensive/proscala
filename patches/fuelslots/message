@@ -1,0 +1,20 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 13 Nov 2026 17:53:56 +0900
+
+Give an uninitialized ContextBase the default fuel for recursive operations
+
+The operations `handleRecursive` tracks are kept in an array on the context
+base whose length is the limit on their depth. `ContextBase.initialize` sizes
+it from `-Xmax-fuel` (550 by default), but until then it had ten slots, "so a
+few calls to handleRecursive work for trivial things before the compiler has
+really started". A base that is never initialized, such as one made only to
+parse source and traverse the trees, therefore threw RecursionOverflow at the
+eleventh nested tree: folding over `1 + 2 + … + 12` was enough.
+
+The array now starts at the setting's default, so such a base has the room for
+recursion that a compiler run with no `-Xmax-fuel` has.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: fuelslots

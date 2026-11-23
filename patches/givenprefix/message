@@ -1,0 +1,24 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 18 Aug 2026 09:18:16 +0200
+
+Seal package-object prefixes on implicit candidate references
+
+An extension method or conversion provided by a top-level given, found via
+implicit search, is referenced with a bare-package prefix. asSeenFrom then
+leaves the defining package object's ThisType in the method's result type,
+and a ThisType prefix is exactly what makes a top-level opaque alias
+transparent, so the underlying type's members leak wherever the result
+flows: proscenium's chained cons on its opaque List resolved the outer ::
+to the underlying sci.List member (soundness#1809). Upstream #21527 fixed
+this family for identifiers by sealing prefixes in findRef; typedImplicit
+now does the same for search candidates. Present in stock Scala 3.7.4 and
+3.8.3; upstream candidate.
+
+Developed with LLM assistance (Claude); two-polarity reproduction in the
+feature documentation.
+
+Enabled by `-Z:given-prefixes`; without it, upstream's code runs at every site this
+patch touches.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: givenprefix

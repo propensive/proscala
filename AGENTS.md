@@ -22,9 +22,12 @@ upstream `scala/scala3`. We care about maintainability. "The tests pass" is not
 enough to justify that a change is good.
 
 The patches can be applied to **any** `scala/scala3` commit from the 3.9 era on —
-a release, a release candidate, a nightly, the head of a branch. Each patch is kept in as many **versions** as upstream's
-changes have made necessary, and records **where it applies**; the tools pick, for
-any target, the right patches in the right versions, mechanically. That makes it
+a release, a release candidate, a nightly, the head of a branch. The patches are
+kept in an [Orthant](https://github.com/propensive/orthant) store, which holds what
+each patch does **at each upstream commit where that differs**, and carries it onto
+every later commit; each patch also records **where it applies**. So the tools
+derive, for any target, the right patches as they should be there, mechanically.
+That makes it
 possible to build the fork on the exact upstream a bug report names, to bisect
 upstream for the commit that makes a patch unnecessary, and to try a nightly
 before moving a release line onto it.
@@ -41,12 +44,11 @@ support and a release are each an ordinary commit (or tag) on `main`.
 
 ## Repository layout
 
-- **`patches/series`** — every patch, one name per line, **in the one order
-  patches are applied in**, everywhere. The first is always `zflags`, the stream
-  base (below).
-- **`patches/<patch>/meta`** — where the patch applies, and its versions (below).
-- **`patches/<patch>/<anchor>.patch`** — one version of the patch, named after
-  the first 12 hex digits of the upstream commit it was made on.
+- **`.orthant/`** — the patches, as an Orthant store (below): what each patch
+  does at each `scala/scala3` commit, and **the one order patches are applied
+  in**, everywhere. The first is always `zflags`, the stream base (below).
+- **`patches/<patch>/message`** — the patch's author, date and commit message.
+- **`patches/<patch>/meta`** — where the patch applies, if not everywhere (below).
 - **`mk/<stream>.mk`** — a **stream**: a named upstream commit we develop
   against, with its hand-tested build config. `UPSTREAM_SHA` is the `scala/scala3` commit
   and `UPSTREAM_REF` the branch it is taken from.
@@ -54,16 +56,17 @@ support and a release are each an ordinary commit (or tag) on `main`.
   no patch list of its own: it carries whatever the patches' bounds say applies
   at its commit.
 - **`worktrees/<target>`** — git-ignored; generated source trees, made by
-  `bin/proscala-tree`. Each is a git worktree of this repository, detached at an
-  upstream commit, with one commit per patch on top.
+  `bin/proscala-tree`. Each is a git worktree of this repository, with one commit
+  per patch on top of an upstream commit. (`worktrees/.orthant` is the store's
+  own working tree, which Orthant requires and the tools do not use.)
 - **`doc/`** — per-patch documentation (below); **`bin/`** — the tooling;
   **`mk/scalajs-ir/`**, **`library-js-aux/`**,
   **`project/ScalaLibraryFilesToCopy.scala`** — build inputs overlaid into a tree.
 
 Which patches apply to a target is decided by **ancestry** between upstream
 commits, so the tools need upstream history: from `PROSCALA_SINCE` (2026-05-01,
-set in `bin/proscala-lib.sh`) on, the supported window, inside which every anchor
-and bound must lie. They fetch what is missing on demand, from a remote named
+set in `bin/proscala-lib.sh`) on, the supported window, inside which every commit
+of the store and every bound must lie. They fetch what is missing on demand, from a remote named
 `upstream` if you have one, else straight from GitHub. This repository holds
 none of that history itself: a full clone fetches upstream's whole history the
 first time it is needed (as the workflows, which check out full history, do),
@@ -75,45 +78,90 @@ branch for safe keeping, but nothing depends on such branches.
 
 The repository used to hold each patch as a branch per stream
 (`feature/<stream>/<patch>`, merged into `trunk/<stream>`, published through
-`release/<stream>`), and then as one file per stream. The branches were retired
-in October 2026, and the repository was recreated from `main` alone, without the
-`scala/scala3` fork history it had carried until then.
+`release/<stream>`), then as one file per stream, and then as `git format-patch`
+files, one for each version of a patch that upstream's changes had made necessary
+(`patches/<patch>/<anchor>.patch`, chosen between by `patches/series` and each
+patch's `meta`). The branches were retired in October 2026, and the repository
+was recreated from `main` alone, without the `scala/scala3` fork history it had
+carried until then; the patch files gave way to the store in November 2026.
 
-### Versions
+### The store
 
-A patch's `meta` lists its versions:
+`.orthant/` is an [Orthant](https://github.com/propensive/orthant) store: a store
+for documents which exist in many versions along independent axes, each version
+kept as the lines by which it differs from the one it derives from. Ours has two
+axes (`.orthant/config.tel`):
 
-    variant 403f2f663af8.patch 1 403f2f663af8ad947e36a8f80f9680a9b71f7cf2 0bc121c5fd74a0340dc56e0739ebab40de3333a2
+- **`patch`** — a chain: `none`, then every patch, each the child of the one
+  before it. The chain is the order the patches are applied in.
+- **`upstream`** — *sourced*: its values are `scala/scala3` commits, and the
+  content at a commit is that commit's tree, read from this repository's git
+  objects. Each value is beneath the nearest earlier commit which is a value.
 
-— the file, its **revision**, and its **anchors**: the upstream commits it is
-known to apply to, plainly, after the patches before it. Different versions of a
-patch exist because upstream changed the code around it; they make the same
-change, adapted. `bin/proscala-check` proves every version at every anchor.
+A document is a source file, by its path. Its content at `(patch, commit)` is the
+upstream file at that commit with every patch up to that one applied. What a
+patch does there is kept in `.orthant/data/<patch>/<commit>/_/<path>.delta`, as
+hunks against the content the patch before it has — or as the whole file, without
+the `.delta`, where the patch adds it. A hunk checked in at one commit is carried
+onto every commit descended from it: Orthant finds the lines the hunk was written
+against in the file as upstream has it there. So **nothing is stored at a commit
+where a patch does what it did at the nearest earlier value**, and a patch is
+checked in again only where upstream changed the code around it, or the patch
+itself changed.
 
-A version file is `git format-patch` output for **exactly one commit**: its
-author, date, message and diff. The message ends with a trailer naming the patch,
+A hunk which no longer finds its lines as they were — upstream changed lines the
+patch changes, or sits beside — is **stale**: the patch's own lines are still
+used, as a three-way merge would have used them, but a person must look. Checking
+the patch in at that commit, as it should be there, makes it fresh from there on.
+
+Things to know about the store:
+
+- **A commit inherits only from its ancestors.** What is checked in on `main`
+  after `lts-3.9` forked from it does not reach `lts-3.9`: a patch for both lines
+  is checked in on each, or at a commit they share.
+- **The stored files are not for reading.** A hunk holds an imprint (a hash) of
+  the lines it replaces, not the lines. Review a change to a patch as the diff of
+  its commit in a tree (`bin/proscala-tree <target>`, then `git show`), or with
+  `orthant cat <path> <patch> <commit>`.
+- **Files end with a line feed.** Orthant holds lines, so a file a patch touches
+  is written with its last line ended, even where upstream's is not; and the
+  tools refuse to export a file whose last line is not.
+- **Text only.** A patch cannot change a binary file or a file's mode, and a
+  rename is a file removed and a file added.
+- **The tools run `orthant` in a scratch copy of the store** (a *view*), in which
+  the commits they ask about are values, and write back only what is checked in:
+  an export is proved there before the store is touched, and a patch its bounds
+  exclude is taken out there without being recorded. So use `bin/proscala-*`, not
+  `orthant checkin`, to change the store. Reading it directly is fine, at any
+  commit: `orthant cat <path> <patch> <commit>`, `orthant export <dir> <commit>
+  --along patch` (every patch at once), `orthant check`. The version of Orthant
+  the tools are tested with is in `etc/orthant-version`.
+- **The store names its source**: `repository .` under `source` in
+  `.orthant/config.tel` says that upstream's commits are read from this
+  repository. Without that line `orthant` reads no upstream content, and shows
+  only the files which patches add.
+- **Orthant runs as a background process**, which the first call starts. Deriving
+  every patch at a target takes a few seconds, the first call after it starts
+  rather longer, while it reads upstream's history. `orthant todo` has been seen
+  not to finish on this store (0.7.0), and to hold up every later call: if the
+  tools hang, stop the `orthant` Java process, and the next call starts another.
+- **Where upstream deletes a file a patch changes**, the store still holds the
+  patch's lines for it at later commits, with nowhere to put them; `orthant status`
+  says so there. A patch whose bounds exclude those commits (as `prunecomplete`'s
+  do) is unaffected: the tools take it for out of range and never ask.
+
+A patch's **message** — `patches/<patch>/message` — is two header lines, `Author:`
+and `Date:`, an empty line, and the commit message, which ends with a trailer
+naming the patch,
 
     Proscala-Patch: aliascap
 
-which is how `bin/proscala-export` maps a tree's commits back to patches. Since
-`git am` cuts a message at a line consisting of `---`, a patch's message must not
-contain one. Version files are written only by the tools, with every git setting
-that would change their bytes pinned, so the same commit always produces the same
-file. They are meant to be read: review a change to a patch as the diff of its
-files.
-
-**Revisions** keep a fix to a patch from being lost in its older versions. When
-the patch itself changes — a bug fixed in it, a feature added — its new version
-gets the next revision, and `bin/proscala-export --revise` brings every older
-version up to it by a three-way merge where it can. A version it cannot update
-stays usable but is reported as **behind** by `bin/proscala-check`, because it
-still carries the old change; it is preferred only where no current version
-applies.
+which is how `bin/proscala-export` maps a tree's commits back to patches.
 
 ### Bounds: where a patch applies
 
-A patch applies to every target unless its `meta` says otherwise, with lines
-of three kinds. Each names an upstream commit and applies to that commit and
+A patch applies to every target unless it has a `meta` file which says otherwise,
+with lines of three kinds. Each names an upstream commit and applies to that commit and
 everything descended from it; a patch may have several of each, one per line of
 history (a fix landing on `main` and, separately, as a backport on a release
 branch):
@@ -128,20 +176,31 @@ Each line ends with a `#` comment giving the reason. Bounds cannot be worked out
 mechanically — a patch failing to apply looks the same whether the code it fixes
 does not exist yet, was fixed upstream, or merely changed — so they are written
 by hand, from what is known about the problem; where the exact commit is not
-known, the comment says so. For example, `nullreceiver` is `obsolete-from` both
+known, the comment says so. The store agrees with them at each of its
+commits: a patch has nothing checked in outside its range, and at the commits
+of the store which an `obsolete-from` or `absent-from` excludes it has the
+content of the patch before it checked in, which cancels what it inherits.
+(`bin/proscala-check` verifies this. At any other commit the bounds decide: a
+patch which is out of range there, yet inherits something, is taken out by the
+tools in their view, and `bin/proscala-fill <target>` records that.) For example, `nullreceiver` is `obsolete-from` both
 upstream's fix on `main` and its backport to `release-3.10.0`.
 
-### Choosing patches for a target
+### Deriving the patches for a target
 
-For a target commit, every patch in `patches/series` whose bounds include it is
-applied, in order. For each, the versions are tried best first — highest
-revision, then those anchored at an ancestor of the target, then the nearest
-anchor (fewest commits between) — and the first that applies plainly is used.
-If none does, the patch is **missing** at that target: `bin/proscala-tree`
-refuses to build it (unless told `--allow-missing`), and `bin/proscala-coverage`
-lists it as a gap to fill. A version that only applies by a three-way merge is
-used only when asked (`--3way`), and `bin/proscala-fill` records such merges as
-new versions once their changes are confirmed identical.
+For a target commit, the tools derive every patch in the chain, in order, and
+give each one of four answers:
+
+| Status | Meaning |
+| ------ | ------- |
+| `plain`   | the patch is there, every hunk of it finding its lines as they were |
+| `stale`   | it is there, but upstream changed lines it changes or sits beside |
+| `out`     | its bounds exclude the target; it changes nothing there |
+| `missing` | in range, but the store has nothing for it on this line of history |
+
+`bin/proscala-tree` refuses to build a tree with a stale or missing patch unless
+told `--allow-stale` or `--allow-missing`, and `bin/proscala-coverage` lists both
+as gaps to fill. `bin/proscala-fill` confirms the stale patches whose changes are
+unaltered; the rest are put right in a tree and exported.
 
 ### Patch rules
 
@@ -196,8 +255,9 @@ copies are checked against it**:
 
 | Fact | Source of truth |
 | ---- | --------------- |
-| the patches, in order | `patches/series` |
-| where a patch applies, and its versions | `patches/<patch>/meta` |
+| the patches, in order | the `patch` axis of `.orthant/config.tel` |
+| what a patch does, at each upstream commit | `.orthant/data/` |
+| where a patch applies | `patches/<patch>/meta` |
 | which patches a stream carries | the bounds, at the stream's `UPSTREAM_SHA` |
 | which `scala/scala3` commit a stream is built on | `UPSTREAM_SHA` in `mk/<stream>.mk` |
 | which `scala/scala3` branch that commit is from | `UPSTREAM_REF` in `mk/<stream>.mk` |
@@ -207,16 +267,17 @@ copies are checked against it**:
 
     bin/proscala-check           # exit 1 and list every divergence
     bin/proscala-check -v        # also show what passed
-    bin/proscala-check --quick   # skip proving every version at every anchor
+    bin/proscala-check --quick   # skip verifying the store, and deriving at each of its commits
 
-It checks that `patches/series` and the patch directories agree, that every
-`meta` line is well-formed and names a commit inside the history window, that
-every version file holds one commit with the right trailer and is named in its
-`meta`, and that no two versions are identical; that every stream gets every
-patch it carries, plainly; and — the slow part — that every version applies
-plainly at every one of its anchors, after the patches chosen before it (in a
-throwaway index, with no worktree). It notes, without failing, versions that are
-behind their patch's latest revision. It checks the feature table against what
+It checks that the store's patches are a chain beginning with `zflags`, and agree
+with the patch directories; that every `meta` line is well-formed and names a
+commit inside the history window; that every patch has a message with its
+trailer; that each commit of the store descends from the one it is beneath; and
+that every stream gets every patch it carries, cleanly. The slow part
+(skipped by `--quick`) runs `orthant check` on the store, and derives every patch
+at every commit of the store, to see that each is as its bounds say; it notes,
+without failing, where a patch is stale at such a commit.
+It checks the feature table against what
 the streams carry, the `Repro` column against the reproductions that actually
 exist (and that each has its executable `test.sh`), the `Flag` column against the registry each stream builds, the stream
 tables in `README.md` and this file against `mk/<stream>.mk`, the patch counts
@@ -260,7 +321,10 @@ differ, the directory carries a clearly named variant file.
 
 ## The tools
 
-All need bash 4+ and git; building additionally needs GNU make, `curl`, `python3`, `javac`,
+All need bash 4+, git and [`orthant`](https://github.com/propensive/orthant) (the
+version in `etc/orthant-version`; `curl -fsSL
+https://github.com/propensive/orthant/releases/download/<version>/install.sh | sh`
+installs it); building additionally needs GNU make, `curl`, `python3`, `javac`,
 `jar` and a JDK ≥ 17, and the release artefacts `zip`.
 
 ### Building any upstream: `bin/proscala-tree`
@@ -270,14 +334,15 @@ All need bash 4+ and git; building additionally needs GNU make, `curl`, `python3
     bin/proscala-tree main                  # a branch head (also lts-3.9, release-3.10.1, …)
     bin/proscala-tree 3.10.2-RC1-bin-20261010-bb20dff-NIGHTLY   # a nightly, by its version
     bin/proscala-tree 88be2f56a1            # any commit
-    bin/proscala-tree 3.10.0 --plan         # just say which versions would apply
+    bin/proscala-tree 3.10.0 --plan         # just say how each patch stands there
     cd worktrees/3.10.0 && make             # build every module jar
 
 `bin/proscala-tree <target> [<dir>]` resolves the target to a `scala/scala3`
-commit, chooses the patches for it (see *Choosing patches for a target*), creates
-a git worktree at `<dir>` (default `worktrees/<target>`) detached at that commit,
-applies the patches with `git am` — one commit per patch, so `git log` in the
-tree reads like the patch list — and overlays the build from this checkout's
+commit, derives the patches for it (see *Deriving the patches for a target*),
+makes one commit per patch above that commit — each with the tree the store has
+after that patch, and the patch's message — so `git log` reads like the patch
+list, creates a git worktree at `<dir>` (default `worktrees/<target>`) at the last
+of them, and overlays the build from this checkout's
 `HEAD` (`bin/proscala-overlay` copies the Makefile, the build configs, the
 vendored Scala.js IR — the stock or scala-wasm IR, by whether the tree carries
 the WASM/WIT sources — and the other build inputs in as untracked, git-excluded
@@ -322,65 +387,68 @@ override the output name with `make BRANCH=<name>`. The overlay comes from the
 *committed* `HEAD` of this checkout, so commit a build change before rebuilding a
 tree with it.
 
-Other modes: `--only <patch>` applies just `zflags` and one patch, to build it in
-isolation; `--3way` lets a patch with no plainly-applying version apply by a
-three-way merge; `--allow-missing` builds without patches that have no version
-for the target (and names them); `--reset` rebuilds an existing tree, but refuses
-if the tree holds any commit whose change is in no version file (each tree
-records which file it applied for each patch, so a tree that is merely out of
-date is never mistaken for one holding work); `--continue` resumes after a patch
-that did not apply.
+Other modes: `--only <patch>` gives just `zflags` and one patch, to build it in
+isolation (its change is applied to what `zflags` leaves, so it must not rest on
+the patches between); `--allow-stale` builds with stale patches as they stand;
+`--allow-missing` builds without patches the store has nothing for at the target
+(and names them); `--reset` rebuilds an existing tree, but refuses if the tree
+holds any commit whose change is neither what it was when the tree was built nor
+what the store has now (each tree records what each of its commits changed, so a
+tree that is merely out of date is never mistaken for one holding work).
 
 ### Writing patches back: `bin/proscala-export`
 
     bin/proscala-export 3.10                # the tree worktrees/3.10
-    bin/proscala-export 3.10.0 --adapt      # a version of a patch for this upstream
+    bin/proscala-export 3.10.0 --adapt      # this upstream needs a patch done differently
     bin/proscala-export 3.10 --revise       # a change to the patch itself
 
 `bin/proscala-export <dir or target>` reads the tree's commits above its
 upstream base — each must be an ordinary commit with a `Proscala-Patch:`
-trailer, at most one per name, in `patches/series` order — and records every
-patch whose commit differs from the version that was applied, as a version
-anchored at the base:
+trailer, at most one per name, in the store's order — and checks in every patch
+whose commit no longer changes what it did when the tree was built, at the base:
 
 - a change of **context only** (the patch's own `+`/`-` lines are unchanged: the
-  tree was rebased, or a three-way merge placed it) is recorded at once;
-- a **new patch** is recorded at once and added to `patches/series` where the
-  tree has it;
+  tree was rebased, or a stale patch was looked at and left) is checked in at once;
+- a **new patch** is checked in at once, and joins the chain where the tree has it;
 - any other change must be qualified: **`--adapt`** says this upstream needs the
-  patch done differently (other versions are left alone), **`--revise`** says the
-  patch itself changed (see *Revisions*).
+  patch done differently, and checks it in at the base, for that commit and every
+  later one; **`--revise`** says the patch itself changed, and checks the change in
+  at the earliest commit, among those the base descends from, at which the store
+  has the patch and the change still fits, so that every commit after it gets the
+  change. A line of history which forked before that commit still carries the old
+  change, and export names each: make the change there too.
 
 `--obsolete <patch>` records that the tree no longer carries a patch because
 upstream made it unnecessary (`obsolete-from` the base); `--remove <patch>`
 deletes a patch altogether. A patch the target should carry but the tree lacks is
 an error otherwise, so a patch can never vanish by accident. Before writing
-anything, export proves the result: choosing patches for the base anew must
-rebuild the tree exactly. It also refuses to export a tree that is out of date —
-one still holding a patch exactly as it was applied whose file has changed since —
-since that would silently undo the change; rebuild such a tree with `--reset`.
-Export commits nothing: review `git diff` on `main` and commit it.
+anything, export proves the result: deriving the patches at the base anew must
+rebuild the tree, and each of its commits, exactly. It also refuses to export a
+tree that is out of date — one still holding a patch exactly as it was built,
+which the store has changed since — since that would silently undo the change;
+rebuild such a tree with `--reset`. It writes each patch's `message` from its
+commit. Export commits nothing: review `git diff` on `main` and commit it.
 
 ### Coverage: `bin/proscala-coverage` and `bin/proscala-fill`
 
     bin/proscala-coverage                   # streams, release tags, branch heads
-    bin/proscala-coverage --3way 3.10.0     # and which gaps a merge would close
-    bin/proscala-fill 3.10.0 3.10.0-RC3     # record the merges that are safe
+    bin/proscala-coverage 3.10.0 main       # just these
+    bin/proscala-fill 3.10.0 3.10.0-RC3     # confirm the stale patches that are right
 
-`bin/proscala-coverage [<target>...]` chooses patches for each target (by
+`bin/proscala-coverage [<target>...]` derives the patches for each target (by
 default the streams, every `scala/scala3` release tag from 3.9.0-RC1 on, and the
 heads of `main`, `lts-3.9` and the release branches) and lists, per target, the
-patches that are in range but have no version that applies: the gaps. It exits
-1 if there are any. `.github/workflows/coverage.yml` runs it weekly and on
-demand, and builds a few targets end to end.
+patches that are in range but stale or missing: the gaps. It exits 1 if there are
+any. `.github/workflows/coverage.yml` runs it weekly and on demand, and builds a
+few targets end to end.
 
-`bin/proscala-fill <target>...` closes the gaps a three-way merge can: each patch
-that merges cleanly at a target is recorded as a new version anchored there,
-with the revision it was merged from — but only if its `+`/`-` lines are exactly
-those of the version it came from, because a clean merge can still change what a
-patch does when upstream edited the lines around it. Those that differ are
-listed (`--accept-changed` records them too, for review); those that do not
-merge at all need a person.
+`bin/proscala-fill <target>...` closes the gaps that are safe to close: each
+stale patch is confirmed — checked in at the target as it stands — but only if
+its `+`/`-` lines there are exactly those it has at the commit it is carried
+from, because a patch can still do something different when upstream edited the
+lines around it. Those that differ are listed (`--accept-changed` confirms them
+too, for review); a missing patch needs a person. It also takes out, at the
+target, any patch which its bounds exclude but the store still has there.
 
 ### Testing the patches: `bin/proscala-test`
 
@@ -460,15 +528,18 @@ for a tree that is only being tried; its new messages are then `↯/p.2.1`.
 To support an upstream commit that has gaps (say a new release candidate):
 
 1. `bin/proscala-coverage <target>` lists the gaps; `bin/proscala-fill <target>`
-   closes the ones a merge can.
+   closes the ones it safely can.
 2. For each gap left, decide whether the patch is needed there at all. If
    upstream fixed the problem, or the problem does not exist yet on that line,
-   add the bound to `patches/<patch>/meta`, with its reason.
-3. Otherwise make the version: `bin/proscala-tree <target> --allow-missing`
-   builds the tree without the missing patches; apply the nearest version by
-   hand (`git am -3 patches/<patch>/<file>`, resolving the conflicts, or redo the
-   change), commit it with the `Proscala-Patch:` trailer in its place in the
-   series (`git rebase -i` to move it), and `bin/proscala-export <target> --adapt`.
+   add the bound to `patches/<patch>/meta`, with its reason (and run
+   `bin/proscala-fill <target>` again, which takes the patch out there).
+3. Otherwise put the patch right: `bin/proscala-tree <target> --allow-stale
+   --allow-missing` builds the tree with the stale patches as they stand and
+   without the missing ones. Fix each stale patch's commit (`git commit --fixup`,
+   then `git rebase -i --autosquash`); make each missing one — cherry-pick its
+   commit from a tree of another upstream which has it, or redo the change — and
+   commit it with the `Proscala-Patch:` trailer in its place in the order
+   (`git rebase -i` to move it). Then `bin/proscala-export <target> --adapt`.
 4. Build the tree, run `bin/proscala-test` on it, run `bin/proscala-check`, and
    commit on `main`.
 
@@ -491,8 +562,9 @@ To support an upstream commit that has gaps (say a new release candidate):
    `bin/proscala-check`; then commit the patch, its doc and its row together on
    `main`.
 4. **Other upstreams.** A new patch at first has one version, so other targets
-   may report it missing: run `bin/proscala-coverage`, and cover the targets that
-   matter (above), at least the other stream.
+   may report it missing — it is checked in on one line of history only: run
+   `bin/proscala-coverage`, and cover the targets that matter (above), at least
+   the other stream.
 5. **Release.** `bin/proscala-release <x.y.z>` (see *Proscala version numbers*
    for which number, and *Releases*).
 
@@ -502,16 +574,16 @@ Moving a stream onto a newer upstream commit is covering a new target and then
 pointing the stream at it:
 
     bin/proscala-coverage <new-sha>          # the gaps, if any
-    bin/proscala-fill <new-sha>              # the mechanical ones
+    bin/proscala-fill <new-sha>              # the safe ones
     # cover the rest as above, then set UPSTREAM_SHA in mk/<stream>.mk
     bin/proscala-check; bin/proscala-tree <stream> --reset; build and test
 
-The old versions stay: the stream's previous commit, and every other upstream the
-patches covered, still build exactly as before. Alternatively, rebase an existing
-tree onto the new commit (`git rebase --onto <new-sha> <old-base>` inside it,
-which gives git true merge bases for every patch) and export it; patches whose
-`+`/`-` lines survive unchanged are recorded without further ado, the rest need
-`--adapt`. Nothing is force-pushed.
+What was checked in before stays: the stream's previous commit, and every other
+upstream the patches covered, still build exactly as before. Alternatively,
+rebase an existing tree onto the new commit (`git rebase --onto <new-sha>
+<old-base>` inside it, which gives git true merge bases for every patch) and
+export it; patches whose `+`/`-` lines survive unchanged are checked in without
+further ado, the rest need `--adapt`. Nothing is force-pushed.
 
 ### Changing the build
 
@@ -525,7 +597,7 @@ commit on `main`**. Rebuild a tree's overlay to pick it up
 Proscala has its own version, independent of the Scala it patches. A Proscala
 version names a **set of features** — the patches, each with the guarantee its
 doc states — and each release is built for many upstreams, on each of which every
-feature is *the same feature*, adapted: a different version of the patch, or no
+feature is *the same feature*, adapted: the patch as it has to be there, or no
 patch at all where upstream already provides the guarantee. Versions follow
 [semantic versioning](https://semver.org), with the public interface being what
 users of Proscala on a given upstream can rely on beyond that upstream: the
@@ -535,7 +607,7 @@ change what is pickled (`doc/compatibility.md`).
 
 | Change | Increment |
 | ------ | --------- |
-| a new version or bound of a feature (more upstreams covered) | patch |
+| a feature checked in at, or bounded for, more upstreams | patch |
 | a patch dropped where upstream now meets its guarantee | patch |
 | a fix making a feature meet its documented guarantee | patch |
 | a new always-on crash, hang or spurious-error fix (it only turns rejected programs into accepted ones) | patch |
@@ -548,8 +620,8 @@ change what is pickled (`doc/compatibility.md`).
 Two consequences follow. A `-Z` flag whose feature upstream has made redundant
 stays registered on that upstream, accepted and doing nothing, since dropping it
 would break builds that pass it (under `-Werror`, fatally); removing it is a major
-change. And covering a newly released upstream, which needs new versions of
-patches, is a patch release: 1.0.1 is 1.0.0's features on more Scala versions.
+change. And covering a newly released upstream, which needs patches adapted to it,
+is a patch release: 1.0.1 is 1.0.0's features on more Scala versions.
 
 ### Releases
 
@@ -591,7 +663,7 @@ with `scalaOrganization := "dev.propensive"` and
 1. **plan** checks that the tag is on `main` (any other tag is ignored) and runs
    `bin/proscala-release <x.y.z> --verify` on the tagged commit: the version must
    be greater than every earlier release, `bin/proscala-check` must pass, and
-   every target must get every patch it should (no gaps: `bin/proscala-coverage`).
+   every target must get every patch it should, cleanly (no gaps: `bin/proscala-coverage`).
    It resolves the targets — the snapshot branches as they are at that moment.
 2. **build**, for every target in parallel: builds the tree for the target's
    commit with `bin/proscala-tree`, and the release artefacts in it, cleanly

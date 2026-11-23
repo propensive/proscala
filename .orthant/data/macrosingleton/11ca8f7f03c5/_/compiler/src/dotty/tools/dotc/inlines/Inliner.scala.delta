@@ -1,0 +1,8 @@
+orthant 2 patch
+
+@ 1 0 0 0a5f6ee1027551a51cc550361df0f2ee
++               // A singleton whose type is (or contains) an opaque alias, such as a
++               // `val Unset: Unset` of an opaque `Unset`, is widened to it, so that the
++               // opaque is revealed on this side as it is on the other.
++               case tp: TermRef if tp.widen.existsPart(_.typeSymbol.isOpaqueAlias) =>
++                 apply(tp.widen)

@@ -1,0 +1,7 @@
+orthant 2 patch
+
+@ 0 1 0 0329e1ef0a2f36e612077f829482b651
++       // An export forwarder only passes its own parameters, and the type parameters
++       // bounded as the method it forwards to bounds them, on to that method, which admits
++       // them: its uses are not checked again here.
++       for (tree, uses, env) <- useInfos if !env.owner.is(Exported) do

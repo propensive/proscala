@@ -1,0 +1,15 @@
+orthant 2 patch
+
+@ 1 0 0 127467c57373502900d11b252d75652a
++ import config.Feature
+
+@ 1 0 0 155fb9f076dd48360550ead93df71ddc
++       // Under separation checking, an accessor for an update method, or a setter accessor
++       // for a mutable field, must itself count as an update method (see
++       // cc.Mutability.isUpdateMethod): otherwise any inline method that updates state
++       // through a private member fails the exclusivity check inside the synthetic accessor
++       // ("access is in method X, which is not an update method").
++       if Feature.enabled(Feature.separationChecking)
++          && (accessed.isAllOf(Mutable | Method)
++              || accessed.is(Mutable) && !accessed.is(Method) && name.isSetterName)
++       then sym.setFlag(Mutable)

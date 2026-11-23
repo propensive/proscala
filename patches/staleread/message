@@ -1,0 +1,15 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 17 Jul 2026 15:22:52 +0200
+
+Tolerate reading newer denotations from stale run contexts
+
+A denotation already brought forward to a newer run can be consulted
+through a context captured in an earlier run: TypeMap/LazyRef closures
+created before a compilation-suspension re-run are forced afterwards
+(capture-checking Setup does this over TASTy-loaded collection traits,
+crashing with 'denotation trait SortedSetFactoryDefaults invalid in
+run N'). Reading the fresher denotation is safe; re-stamping its
+validity backwards would corrupt the newer run, so return it unchanged.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Proscala-Patch: staleread

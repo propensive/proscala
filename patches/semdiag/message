@@ -1,0 +1,96 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Wed, 22 Jul 2026 20:33:57 +0200
+
+-Zsemantic-diagnostics: XML error output with TASTy-encoded types
+
+Squashed from 3 commits, oldest first:
+
+* reporting: semantic XML diagnostics with TASTy types (-Xsemantic-diagnostics)
+
+Adds a flag under which diagnostics are emitted as a stream of XML elements
+that preserve the semantic identity of message fragments, instead of the plain
+console rendering. Without the flag, output is byte-for-byte unchanged.
+
+While a Message is forced under the flag (a context property set in
+`inMessageContext`, so ordinary `i""` logging is unaffected), the string
+interpolators wrap the shown form of each interpolated argument in private-use
+markers (DiagnosticMarkup) recording its kind: type, symbol, name or code.
+Types additionally carry their TASTy serialization, Base64-encoded, pickled
+with the same TastyPickler/TreePickler recipe as quotes. Because diagnostic
+types routinely mention symbols defined in the failing sources, error types,
+type variables and skolems — which no consumer could ever resolve — a
+sanitizing TypeMap (DiagnosticTypePickler) first replaces each maximal subtree
+headed by such a part with a string literal type "⟨scala-diag:<n>⟩", described
+out-of-band by a placeholder record (kind, name, arity, definition position,
+printed form). Pickling failures are absorbed: the type is then marked up
+without a TASTy payload.
+
+XmlReporter, installed by Driver.setup under the flag, parses the markers into
+one top-level <diagnostic> element per diagnostic, with <type>/<sym>/<name>/
+<code> mixed content in <message> and <explanation>, position and error-id
+attributes, and the compiler and TASTy versions (TASTy payloads are
+version-locked). Every other consumer strips markers: the interface accessor
+Diagnostic.message and the console MessageRendering paths go through
+DiagnosticMarkup.plain, so a stray flag cannot corrupt zinc or console output.
+
+TypeMismatch.msg now interpolates the found/required types directly when
+markup is active instead of pre-rendering them through Formatting.typeDiff,
+whose colored string diff would defeat the markup.
+
+Verified manually on this branch's build: default output identical with the
+flag off; with it on, a local-class mismatch produces placeholders with
+definedAt/printed metadata, and both TASTy payloads round-trip on the consumer
+side through scala3-staging's QuoteUnpickler into a TypeRepr (a TypeRef for a
+classpath type; the placeholder ConstantType for a local one).
+
+Developed with LLM assistance (Claude Code); design and verification reviewed
+by the committer per LLM_POLICY.md.
+
+* reporting: mark up container elements, styled projections; nested markers
+
+Extends semantic diagnostics (-Xsemantic-diagnostics) to cover the message
+fragments that previously pre-stringified their entities:
+
+- Container elements. The shown-container Show instances (Seq, Option, Map,
+  tuples) flattened each element to a String before the formatter could mark
+  it. Marking now happens in a shared Formatting.showValue, called both from
+  StringFormatter.showArg and from ShownDef.Shown.toStr, so the types in a
+  shown Seq[Type] are marked individually.
+
+- Styled projections. A new carrier, Formatting.Styled(value, style)(text),
+  renders an entity with a non-default style (showDcl, showLocated,
+  showFullName, or an hl-highlighted form) while preserving its identity;
+  the marker gains a style attribute. Styled evaluates its text EAGERLY at
+  the argument position: the Seen disambiguation machinery assigns
+  superscripts and where: clauses by recording order, so deferring the show
+  into the formatter reorders it after eagerly-evaluated sibling arguments
+  and changes rendered output (caught by the golden-output check below on
+  tests/neg/byname-implicits-16.scala).
+
+- Nested markers. DiagnosticMarkup markers now nest: parse builds a tree,
+  wrap accepts balanced markers in the wrapped text, and XmlReporter renders
+  nested elements. This is the format support needed for composite-phrase
+  helpers (err.refStr and friends) to be converted incrementally later.
+
+- messages.scala sweep: ~45 sites converted from pre-rendered strings to
+  direct or Styled interpolation. Left alone: synthetic example construction,
+  identifier-suggestion concatenation, sort/comparison keys.
+
+Verified by a golden-output check: baseline and patched compilers run over
+every 4th file of tests/neg (448 files) with the flag off; 444 outputs are
+byte-identical, and the 4 differing files are recursion-limit stack-trace
+tests that differ between two runs of the *same* compiler (JIT-dependent
+overflow depth). Flag-on markup for sequences (per-element code markers) and
+styled symbols verified manually.
+
+Developed with LLM assistance (Claude Code); design and verification reviewed
+by the committer per LLM_POLICY.md.
+
+* Enable semantic diagnostics with -Z:semantic-diagnostics
+
+The -Xsemantic-diagnostics setting is replaced by the semantic-diagnostics
+entry of the shared -Z registry; nothing else changes.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: semdiag

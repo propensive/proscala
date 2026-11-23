@@ -1,0 +1,34 @@
+orthant 2 patch
+
+@ 2 0 0 1fdbc043bff912471e48c12c660cb916
++       /** An opaque alias is known inside its scope by a refinement of the self type
++        *  of the class that owns it, `{ type A[X] = Rhs }`. Keep that alias free of the
++        *  capture set which a capability `Rhs` implies, as a type alias's own info is
++        *  (`type X = C`, not `type X = C^{any}`): the set is implied anew by each `A[T]`
++        *  written in scope. Left in the alias it is a root that every `A[T]^cs` acquires
++        *  when dealiased, so that a frozen `A[T]^{}` in a type argument is boxed as
++        *  `Rhs^{any.rd}` -- but only where the alias is read from this info and not from
++        *  the one before capture checking, which depends on what else the run looked at
++        *  first: a signature could be read differently in a separate compilation.
++        */
++       override def mapClassInfo(tp: ClassInfo): ClassInfo =
++         def stripAlias(alias: Type): Type = alias match
++           case alias: HKTypeLambda =>
++             alias.derivedLambdaType(resType = stripAlias(alias.resType))
++           case _ =>
++             stripImpliedCaptureSet(alias)
++         def stripOpaqueAliases(self: Type): Type = self match
++           case self @ CapturingType(parent, refs) =>
++             self.derivedCapturingType(stripOpaqueAliases(parent), refs)
++           case self @ RefinedType(parent, rname, rinfo: TypeAlias) =>
++             self.derivedRefinedType(
++               stripOpaqueAliases(parent), rname, rinfo.derivedAlias(stripAlias(rinfo.alias)))
++           case _ =>
++             self
++         val tp1 = super.mapClassInfo(tp)
++         tp1.selfInfo match
++           case self: Type if self ne tp.selfInfo =>
++             tp1.derivedClassInfo(selfInfo = stripOpaqueAliases(self))
++           case _ =>
++             tp1
++

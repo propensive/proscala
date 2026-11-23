@@ -1,0 +1,18 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sun, 12 Jul 2026 17:30:55 +0200
+
+Treat IArray as pure under capture checking
+
+IArray dealiases to (mutable, and under strict mutability
+capability-classified) Array, so every stdlib IArray factory or
+extension result was decorated ^{fresh} through the opaque alias,
+although the interface exposes no mutation: constructing an IArray is
+semantically caps.freeze. derivesFromCapTrait now stops at the IArray
+head, which removes the spurious freshness from classification, freeze
+and Setup alike. Mutable Array itself is unaffected.
+
+Enabled by `-Z:pure-iarrays`; without it, upstream's code runs at every site this
+patch touches.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: iarraypure

@@ -1,0 +1,11 @@
+orthant 2 patch
+
+@ 0 6 0 0b8a605ad59ed99317f900468e11cec2
++   def appendExplanation(suffix: => String): Message =
++     val appended = new Message(errorId):
++       val kind = self.kind
++       def msg(using Context) = self.msg
++       override def msgPostscript(using Context) = self.msgPostscript
++       def explain(using Context) = self.explain + suffix
++       override def canExplain = true
++     appended.withBoltOrigin(boltOrigin)

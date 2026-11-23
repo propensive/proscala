@@ -1,0 +1,32 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 21 Nov 2026 07:19:14 +0900
+
+Let quoted code refer to the members a class defined in the quote inherits
+
+A class defined in a quote could not reliably use the members of its parent.
+
+A reference to a protected member from quoted code gets an accessor, since the
+quote may be spliced where the member is not accessible, unless it is made
+through the `this` of a class defined in the quote, which inherits the member
+wherever it ends up. That exception looked for a selection `this.m`, but a
+member referred to by its name alone is typed as an identifier, so it never
+applied to one. The accessor was then entered in the quoted class after its
+body had been typed, and the expansion failed with "undefined:
+this.inline$m"; or, where a quote nested in a splice had already made the
+accessor, the accessor's own body was rewritten to call itself, and the
+expanded program did not terminate. The exception now covers identifiers.
+
+A reference from a quote nested in a splice to something defined in the
+enclosing quote is passed into the splice as an argument of its hole. What
+counted as defined in the quote was decided by the symbol alone, so a member
+which a class of the quote only inherits was left in the nested quote as it
+was, with the `this` of a class that does not exist where that quote is
+pickled: "unresolved symbols: anonymous class". Such a reference is now
+captured as one to a member the class defines itself is, whether it is read,
+applied or assigned to. It is recorded under the reference and not the
+member's symbol, because two classes of the quote may inherit the same member.
+
+Written with LLM assistance (Claude Code).
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: quotedthis

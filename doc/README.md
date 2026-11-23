@@ -20,7 +20,7 @@ lives on `main` and is overlaid into a generated tree at build time, so it has n
 patch file and no row below — but it is documented alongside the features, in
 [make/make.md](make/make.md). The **`-Z` setting**, through which the features in
 the `Flag` column are enabled by name, is likewise not a patch: it is the stream
-base, `zflags`, first in `patches/series` and beneath every patch, documented in
+base, `zflags`, first of the patches and beneath every other, documented in
 [zflags/zflags.md](zflags/zflags.md). A feature
 whose `Flag` is "always on" runs unconditionally. [boundscap](boundscap/boundscap.md)
 likewise has no row: it applied only to the 3.8 stream, retired in August 2026, and

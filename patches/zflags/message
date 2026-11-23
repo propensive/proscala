@@ -1,0 +1,18 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Thu, 3 Sep 2026 10:31:13 +0100
+
+Add -Z, the settings that enable Proscala's optional behaviours by name
+
+Each opt-in patch is enabled by its own flag, `-Z<name>` (`-Zliterate-literals`,
+`-Zunion-captures`), in the style of -X and -Y; where a name is not given the
+compiler runs upstream's code at every site the patch touches. The flags are
+declared in a loop over one registry, `config.Proscala`, which holds each
+feature's name, patch and help text; a bare -Z prints the synopsis of them
+like -X and -Y do, and an unknown name is rejected like any other option.
+Patches test `Proscala.enabled(Proscala.<Feature>)` at their sites.
+
+This is the stream's base: every patch is rebased onto it, so the registry is
+edited only here, never in a patch (see doc/zflags/zflags.md on main).
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: zflags

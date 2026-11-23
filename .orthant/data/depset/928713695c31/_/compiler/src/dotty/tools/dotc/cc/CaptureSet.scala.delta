@@ -1,0 +1,14 @@
+orthant 2 patch
+
+@ 0 1 0 1a498ba19e54ad080b44ea8746afe4ba
++ import util.{SimpleIdentitySet, MutableIdentitySet, Property, EqHashMap}
+
+@ 0 1 0 1facc360ba7ccae81ee76208b4d4d478
++   type Deps = MutableIdentitySet[CaptureSet]
+
+@ 0 1 0 0c585f1a6a80e5e31af25893323dd428
++     val deps: Deps = new MutableIdentitySet[CaptureSet]
+
+@ 0 1 0 1ad6b500e80b9f3112350b9d7ba8c6ad
++       deps.foldLeft(universal: CaptureSet): (acc, sup) =>
++         acc ** sup.upperApprox(this)

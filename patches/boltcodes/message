@@ -1,0 +1,20 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 13 Nov 2026 23:51:18 +0900
+
+Label every error and warning with its bolt code under -Zbolt-codes
+
+A bolt code names a diagnostic in one form across Propensive's projects:
+↯/p.1.7 is Proscala's subdivision 1, error 7. Subdivision 1 is upstream's
+own numbering, so E007 is ↯/p.1.7. A message upstream leaves unnumbered is
+known by the template of the em"..." string that made it, which the
+interpolator now records, and whose code is looked up in the registry the
+build puts in the compiler's jar. A message reported by a macro is ↯/p.2.2,
+and carries the macro's own bolt code if its text began with one, as the
+compound ↯/p.2.2/s.87.1.2.
+
+The code replaces upstream's number in the console heading, and is given
+to semdiag's XML, sbt's bridge and the presentation compiler.
+
+Written with the assistance of Claude (an LLM).
+
+Proscala-Patch: boltcodes

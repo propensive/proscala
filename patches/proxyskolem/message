@@ -1,0 +1,23 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 25 Aug 2026 07:44:42 +0200
+
+Do not recover inline-proxy skolems in avoidance under capture checking
+
+Upstream #26563 (3.9.0-RC5) typed the proxy for an unstable argument to a
+dependent inline method with the typer-minted SkolemType; #26872 reverted that
+to the widened argument type and instead records the skolem on the proxy
+binding so type avoidance can substitute it into the expansion's type. Under
+capture checking that substitution is still wrong: the skolem-mentioning
+expansion type cannot be avoided into a pure declared result, so derivation
+results summoned via summonFrom fail with "capability `typeclass` cannot flow
+into capture set {}". Not planting the attachment in cc-enabled units restores
+plain widening avoidance — the behaviour every cc unit had before RC5 — while
+leaving the #26153/#26031/#26810 fix active elsewhere; upstream's own
+regression tests for those still pass.
+
+Developed with LLM assistance (Claude); the capture-mode failure has a
+standalone reproduction in the feature documentation, and the need for the
+gate was established by building the full Soundness tree on this commit's
+base with and without it.
+
+Proscala-Patch: proxyskolem

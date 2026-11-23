@@ -1,0 +1,17 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 8 Aug 2026 16:08:53 +0200
+
+Keep Boolean results of nullary case-class unapplies under capture checking
+
+The capture-checking synthetics augmentation ("Two different versions of
+unapply types depending on consume", upstream e954236aaf) rewrites a
+non-consume case-class unapply's result type to the scrutinee's singleton
+x.type. A nullary case class's synthesized unapply returns Boolean, so the
+rewrite retypes every `case C() =>` pattern to the scrutinee singleton where
+Boolean is required — surfacing, under macro re-splicing or plain rechecking,
+as "Found: C^{x} Required: Boolean" (Soundness's mandible Opcode patterns,
+anthology's CompilerError). Boolean results are now left unchanged.
+
+Developed with LLM assistance (Claude).
+
+Proscala-Patch: boolunapply

@@ -1,0 +1,15 @@
+orthant 2 patch
+
+@ 2 0 0 0fad9fdd554dcf251594a0a3858b475c
++   /** The members of an inline trait become deferred, and the trait loses its initializer,
++    *  whichever unit is being compiled when the symbol is first asked for: a denotation is
++    *  transformed once, so going by the current unit's `hasSpecializations` left the
++    *  members concrete for good if a unit which merely uses the trait came first, while
++    *  `transformTemplate` still emptied their definitions.
++    */
+
+@ 0 3 0 0f4e46950934d17b00dd4f4c426a21c9
++     if isEraseable(sym) then 
+
+@ 0 1 0 0eb6056db0594db10f43bf381beb4f25
++     else if sym.isClass && sym.isInlineTrait then

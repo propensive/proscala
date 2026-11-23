@@ -1,0 +1,10 @@
+orthant 2 patch
+
+@ 1 0 0 1d9c742e76f0008701722f95d2a17823
++             // A two-Apply parent call also arises for any ordinary parent whose
++             // constructor takes a second (e.g. using) argument list; its type is
++             // then no AppliedType and the unapply returns None, meaning "not a
++             // specialized trait" — not a crash.
+
+@ 0 1 0 1a571f39f4f59f5d0cd1f1613cae2ac5
++             spec.exists(_.hasSpecializedParams)

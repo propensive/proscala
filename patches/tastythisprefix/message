@@ -1,0 +1,24 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 14 Nov 2026 18:22:17 +0900
+
+Recognise the prefix of an inline call by its class, not by type equality
+
+When the body of an inline method refers to `C.this`, the inliner binds it to
+a proxy, `C_this`, unless it is the prefix of the call and the call is made
+inside `C`, where `C.this` means the same thing. A private member cannot be
+selected from the proxy, so for a local inline method which reads private
+members of its class it matters that no proxy is made.
+
+Whether `C.this` is the prefix was decided by comparing two `ThisType`s for
+equality. A `ThisType` read from TASTy need not hold the same type reference
+to the class as `cls.thisType` does, and then the two are unequal though they
+are the `this` of one class. So a class compiled from source did not recompile
+from its own TASTy: "value raster cannot be accessed as a member of
+(Encoder_this : (Encoder.this : app.Encoder))".
+
+The comparison is now `sameThis`, which compares the classes.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: tastythisprefix

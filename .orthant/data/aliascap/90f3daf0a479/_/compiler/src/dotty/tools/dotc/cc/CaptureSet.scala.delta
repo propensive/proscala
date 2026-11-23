@@ -1,0 +1,17 @@
+orthant 2 patch
+
+@ 0 11 0 0f2c43471cd814801d784288a5763277
++       else bimap match
++         case bimap: ClassifierMap if !bimap.keeps(elem) =>
++           // The projection drops parts of `elem`, so no instance of `source` makes
++           // this set account for `elem`.
++           failWith(IncludeFailure(this, elem))
++         case _ =>
++           // Propagate backwards to source. The element will be added then by another
++           // forward propagation from source that hits the first branch `if origin eq source then`.
++           printOnAssertionError(i"fail while prop backwards tryInclude $elem of ${elem.getClass} from $this # $id / ${this.summarize} to $source # ${source.id}"):
++             reporting.trace(i"prop backwards $elem from $this # $id to $source # ${source.id} via $summarize"):
++               val sourceElem = bimap.inverse.mapCapability(elem)
++               if config.Proscala.enabled(config.Proscala.AliasCaptures) && lostTracking(elem, sourceElem)
++               then failWith(IncludeFailure(this, elem))
++               else source.tryInclude(sourceElem, this, widen)

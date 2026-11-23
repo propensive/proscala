@@ -1,0 +1,26 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 17 Oct 2026 10:25:51 +0200
+
+Make the synthetic jdk.internal.ValueBased annotation class permanent
+
+Under -release (ct.sym), jdk.internal.ValueBased is absent and upstream
+#27318 has Definitions.JdkInternalValueBasedAnnot synthesize a class symbol
+for it, which the classfile parser then attaches to every @ValueBased JDK
+class (Integer, Long, Optional, ...). Definitions is shared by every run of
+a compiler instance, but the symbol was created with newCompleteClassSymbol
+and never entered in its owner, so it is valid only in the run that made
+it: in the next run, any look at those classes' annotations -- the
+backend's isScalaStatic check when boxing, for one -- brings it forward,
+stillValid fails, and compilation crashes with a StaleSymbolException. A
+second run happens whenever a unit is suspended for a macro defined in the
+same compilation, and in the REPL. Building scala3-repl itself crashed this
+way in genBCode on Fansi.scala.
+
+Mark the symbol Permanent, as every other synthetic class in Definitions
+is (newPermanentClassSymbol, enterCompleteClassSymbol), so stillValid
+accepts it in every run. Upstream candidate.
+
+Developed with LLM assistance (Claude).
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: valuebased

@@ -1,0 +1,34 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Mon, 6 Jul 2026 15:19:31 +0200
+
+Keep root capabilities global in type alias infos
+
+Setup.transformExplicitType localized caps.any to a LocalCap owned by the
+symbol whose info is being transformed, including for type aliases. A type
+alias's own info is not consulted by capture-checked units (Setup expands
+aliases at each using symbol, localizing roots per use site), but it is
+exposed when the signature of a symbol from a unit that was NOT capture
+checked mentions the alias: such signatures are fluidified without
+following aliases, so rechecking dealiases late and meets a capability at
+the alias's own (package-)level, which no use-site capability can flow
+into. Applying a method of a non-capture-checked module with a result
+type like `Tactic[E]^ ?=> T` (spelled through an alias such as
+`raises`) then fails with:
+
+    Found:    (contextual$N : Tactic[E])
+    Required: Tactic[E]^{any}
+    ... not visible from any in type raises
+
+Keeping the root global in alias infos lets recheck freshen it per
+application, matching the behaviour of capture-checked callees.
+
+Diagnostic wording changes in three neg tests (boundschecks2,
+boundschecks3, i19330): notes now print 'the root capability caps.any'
+instead of 'a root capability in the type of type T'; the errors
+themselves are unchanged.
+
+Enabled by `-Z:alias-captures`; without it, upstream's code runs at every site this
+patch touches.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Proscala-Patch: aliascap

@@ -1,0 +1,22 @@
+orthant 2 patch
+
+@ 2 0 0 07ee8aa04c56f92d0a8182de723ed687
++   /** Are capture sets set up and checked in this run? Not in one which reads its units
++    *  from TASTy. They were checked when they were compiled, and cannot be checked again
++    *  from what TASTy holds: it does not record which types were inferred, and the checker
++    *  gives an inferred type the capture sets it finds for it, but takes one that was
++    *  written to say all there is to say, so it rejects unpickled trees it accepted as
++    *  source. Nor in a run without the checker's phase (`-Yskip:cc`), whose state the
++    *  symbol transformer here needs.
++    */
++   def isActive(using Context): Boolean =
++     Feature.ccEnabledSomewhere
++     && !ctx.settings.fromTasty.value
++     && Phases.checkCapturesPhase.exists
++
+
+@ 0 1 0 1593f7eea11c1f070a96c3d751d66ed3
++     super.isRunnable && Setup.isActive
+
+@ 0 1 0 0b2379da702329ed15ddfdd6276ffe0c
++     if !pastRecheck && Setup.isActive then

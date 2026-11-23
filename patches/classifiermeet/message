@@ -1,0 +1,19 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 9 Oct 2026 09:36:45 +0200
+
+Accept a declared meet of two unrelated classifiers
+
+`Setup.checkClassifiedInheritance` rejected any class whose base classes
+include two unrelated classifiers, even when another classifier among
+them derives from both. That classifier is their meet, and
+`CaptureOps.classifier` (the `leastClassifier` fold over the base
+classes) already picks it as the least classifier; the fold collapses
+to `Nothing` only when no such meet exists. The check now accepts an
+unrelated pair when a declared meet is present, so a capability can be
+classified by, say, a `Durable` classifier and a level-exempt one at
+once.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Proscala-Patch: classifiermeet

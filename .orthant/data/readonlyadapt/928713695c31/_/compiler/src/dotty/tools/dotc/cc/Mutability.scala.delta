@@ -1,0 +1,7 @@
+orthant 2 patch
+
+@ 0 1 0 1d3111e64e93e68b0af6ba77d795e40c
++                   if updates.nonEmpty then
++                     // only the improved arguments have an entry; the others stay as they are
++                     val improved = updates.toMap
++                     AppliedType(atycon, aargs.map(aarg => improved.getOrElse(aarg, aarg)))

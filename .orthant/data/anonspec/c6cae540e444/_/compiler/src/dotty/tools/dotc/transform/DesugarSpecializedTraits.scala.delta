@@ -1,0 +1,5 @@
+orthant 2 patch
+
+@ 0 4 0 1c67b37bf6b2744d012a81ebc0da05e6
++             val spec = Specialization.unapply(t.tpe.resultType.resultType, t.span)
++             spec.exists(_.hasSpecializedParams)

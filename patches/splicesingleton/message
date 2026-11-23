@@ -1,0 +1,33 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sun, 15 Nov 2026 17:15:15 +0900
+
+Keep an adapted singleton from being widened again under capture checking
+
+Under capture checking, a reference to a value spliced by a macro as the
+argument for a parameter of that value's singleton type was rejected, when
+the value's own type has a capture set:
+
+    def goImpl[T <: Path^](x: Expr[T])(using Type[T], Quotes) = '{calc[T]($x)}
+
+    xs.map: path => go[path.type](path)
+
+    Found:    Path^{io}
+    Required: (path : Path^{io})^{path}
+
+A type argument is boxed, so the parameter's type is `box path.type^{path}`.
+The argument is adapted to it in `adapt`, which keeps a singleton as it is
+when the expected type is a singleton (`noWiden`) and otherwise widens it to
+its underlying type. The splice leaves the reference wrapped in an `Inlined`
+node, which is adapted after the reference inside it and takes its type from
+it: already adapted, `box path.type^{path}`. `noWiden` asked whether that was
+a singleton without stripping its capture set, as it does for the expected
+type, so the second adaptation widened it to the declared `Path^{io}`, which
+is no subtype of a singleton.
+
+The actual type is now stripped of its capture set too, so that a singleton
+already adapted stays one.
+
+Written with LLM assistance (Claude Code).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Proscala-Patch: splicesingleton

@@ -1,0 +1,19 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Tue, 13 Oct 2026 11:22:30 +0200
+
+Do not assert on an open type parameter reached through a term's info
+
+Collecting the parts of an implicit search's type for its implicit scope
+asserted that every type parameter it meets is instantiated: `wildApprox`
+removes uninstantiated ones from the type. It does not look inside the info of
+a term reference in that type, though, and the parts collector does. So an
+inline match's given search (`summonFrom`) whose type mentions an inline
+`this`-proxy typed while an enclosing call's type variables were still open
+crashed with "`wildApprox` failed to remove uninstantiated value" (Soundness:
+`state/next` with serpentine's transparent `/`, inside a `fuse` within
+`mitigate`/`protect`, in exoskeleton's rig; stock 3.10.0 crashes too, 3.9
+does not). Such a parameter's declared bound stands for it, as for any other.
+
+Developed with LLM assistance (Claude Code).
+
+Proscala-Patch: implicitparts

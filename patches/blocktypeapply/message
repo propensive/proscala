@@ -1,0 +1,22 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 13 Nov 2026 17:59:46 +0900
+
+Apply type arguments to a lifted application's expression, not its block
+
+An application whose arguments must be evaluated once and in order — because a
+default argument refers to an earlier argument, a `using` argument among them
+— is lifted into a block: the arguments are bound to local values and the
+call follows as the block's expression. If the method has a type-parameter
+clause after the defaulted clause, Typer then applies the type arguments to
+what it has, the block, and `tpd.TypeApply` asserts that it was given a
+function: "unexpected tree for type application: Block(…)", a crash in typer.
+
+`appliedToTypeTrees` now applies the type arguments to a block's expression,
+inside the block. This is upstream's change 481fe77b7ef ("Allow
+`appliedToTypeTrees` to operate on block expressions", #26259), which is on
+`main` and every 3.10 release but not on the 3.9 line.
+
+Written with LLM assistance (Claude Code); reviewed content.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: blocktypeapply

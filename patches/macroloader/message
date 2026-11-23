@@ -1,0 +1,22 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Wed, 4 Nov 2026 09:09:33 +0100
+
+Resolve a macro's classes from the compilation classpath, not the compiler's host
+
+The macro class loader is a URLClassLoader over the compilation classpath
+whose parent is the loader that loaded the compiler. A host that embeds the
+compiler beside its own libraries therefore shadows the session classpath:
+parent-first delegation resolves every class the host also carries from the
+host's copy, and a macro from the session is linked against the host's
+versions of its dependencies, failing with NoSuchMethodError or the like
+whenever they differ.
+
+Under -Zisolated-macros the parent is an IsolatingLoader instead, which
+delegates to the compiler's loader only the names a macro must share with
+the compiler — the standard library and quotes API (scala.) and the compiler
+itself (dotty.) — and sends everything else to the platform class loader, so
+that any other class is found on the compilation classpath, as in a
+standalone scalac. Resources are routed the same way, since the macro loader
+is also the thread's context class loader while a macro runs.
+
+Proscala-Patch: macroloader

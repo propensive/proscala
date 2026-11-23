@@ -1,0 +1,53 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sun, 15 Nov 2026 08:58:29 +0900
+
+Unify the capture variables of an overriding method's parameters
+
+Under capture checking, a class in the expansion of an inline method could
+not override a method whose parameter type came from a type argument that was
+inferred for the call:
+
+    inline def derived[value](x: value): Inspectable { type Self = value } =
+      new Inspectable:
+        type Self = value
+        def text(arg: value): String = "x"
+
+    def test(point: Point) = derived(point)
+
+    error overriding method text in trait Inspectable of type (value: Self): String;
+      method text of type (arg: Point^'s1): String has incompatible type
+
+An inferred type argument of an inline call is marked `@inferred`, and Setup
+gives each occurrence of it in the expansion a capture set variable of its
+own: one in the parameter type of `text`, another in the alias of `Self`.
+Overrides are checked with frozen constraints, under which an unsolved
+variable is related to nothing but itself, and parameter types must be the
+same. The variables in a member's signature are otherwise those of its
+inferred result type, solved when the member is checked; nothing solved or
+related these.
+
+The same happens without a class in the source where a lambda is converted
+to a SAM type for which the platform makes a class: under `-scalajs` any
+trait, since `ExpandSAMs` runs before capture checking. There a typeclass
+instance written as a lambda in an inline method was rejected, though the
+JVM, which keeps the closure, accepted it.
+
+Before the overrides of a class are checked, the parameter types of each
+overriding pair are now compared without freezing, which unifies their
+variables, and the variables are then solved. All pairs are unified before
+any variable is solved, so that the order of the pairs does not matter, and
+solving is what makes the frozen check succeed, since `asSeenFrom` maps an
+unsolved variable to a new one each time a member's info is taken.
+
+The unification is an attempt, and must leave nothing behind if it fails.
+A variable that could not take an element withdrew it from itself but not
+from the sets depending on it which had already accepted it, where the
+comparer, trying the comparison another way, found it and succeeded. An
+inclusion is therefore atomic while unifying; upstream since #27364 makes the
+forwarding of every inclusion atomic, so this version needs no switch of its
+own (`CCState.withAtomicIncludes` in older versions).
+
+Written with LLM assistance (Claude Code).
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: overridevars

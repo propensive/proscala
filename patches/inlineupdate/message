@@ -1,0 +1,13 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 17 Jul 2026 15:22:49 +0200
+
+Propagate update classification to inline accessors
+
+Under separation checking, an inline method that mutates state through a
+private member generates a synthetic accessor (inline$x_= or a call
+forwarder) that is not classified as an update method, so the mutation
+fails the exclusivity check inside the accessor. Give the accessor the
+Mutable flag when the accessed symbol is an update method, or when it is
+a mutable field and the accessor is its setter.
+
+Proscala-Patch: inlineupdate

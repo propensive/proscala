@@ -1,0 +1,20 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Sat, 8 Aug 2026 12:28:58 +0200
+
+Strip ordinary aliases when the macro-expansion check reveals opaques
+
+The macro-expansion conformance check (upstream #25756) dealises opaque types
+so aliases invisible at the expansion site do not fail the check, but its
+TypeMap only reveals an opaque that heads the type directly. An opaque hidden
+behind an ordinary alias (`type Date = Timestamp {...}` over an opaque
+`Timestamp`) is left unrevealed — and because the two sides of the check
+arrive differently normalized (the expected type from the inline definition's
+TASTy is already dealiased; the actual type from the unpickled expansion is
+not), well-typed expansions are rejected. Stripping ordinary aliases first
+(`tp.dealias`) normalizes both sides identically; `dealias` respects opaque
+scopes, so nothing is revealed that the check would not reveal anyway.
+
+Developed with LLM assistance (Claude); two-file reproduction in the feature
+documentation.
+
+Proscala-Patch: macroalias

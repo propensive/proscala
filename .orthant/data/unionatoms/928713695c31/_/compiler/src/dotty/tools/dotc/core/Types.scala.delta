@@ -1,0 +1,11 @@
+orthant 2 patch
+
+@ 1 0 0 187bff8da2f7d6850eba0b8b8e7fffbf
++       // A singleton's underlying type may carry a capture set: under capture checking,
++       // `Setup` gives a module class a self type with one, so `this` of an object is
++       // `C.type^{'s}`, not `C.type`. It does not change which value the singleton is, so
++       // it is stripped; otherwise an atom found while capture checking keeps a prefix
++       // that one found while typing (as the cached atoms of a union were) normalized away.
+
+@ 0 1 0 0d5dda7320fb577f1bf52096c8ba4b61
++           tp.underlying.dealias.stripCapturing match
