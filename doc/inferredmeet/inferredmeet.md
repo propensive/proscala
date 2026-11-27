@@ -1,6 +1,6 @@
 # inferredmeet
 
-Pulls the capture sets out of the intersection type inferred for an instance of an anonymous class with several parents, so that the instance has one capture set.
+Pulls the capture sets out of the intersection type inferred for an instance of an anonymous class or for a closure parameter, so that the value has one capture set.
 
 ## Context
 
@@ -75,9 +75,13 @@ records what it grants, and parasite's daemons and tasks are
 ## Solution
 
 The patch makes the rewrite again, in the map which handles inferred types,
-for the type of an anonymous class instance only — the ascription the typer
-gives `new A with B { ... }`, and the type of a definition it is the
-right-hand side of — and only where both sets are variables:
+in two places — for the type of an anonymous class instance (the ascription the
+typer gives `new A with B { ... }`, and the type of a definition it is the
+right-hand side of), and for the type of a parameter of a closure, which takes
+an intersection from the function type the closure is expected to have and
+failed in the same way (`open(...)(block)` in Soundness's aperture, whose block
+receives `(Result & Granting[Grants])^`) — and only where both sets are
+variables:
 
 ```scala
 def meetCaptures(tp: Type): Type = tp match

@@ -1,7 +1,7 @@
 Author: Jon Pretty <jon.pretty@propensive.com>
 Date: Fri, 27 Nov 2026 13:39:57 +0900
 
-Pull the capture sets out of an anonymous class instance's intersection type
+Pull the capture sets out of the intersection type of an instance or closure parameter
 
 scala/scala3 #27539 stopped Setup from rewriting `A^{c1} & B^{c2}` to
 `(A & B)^{c1 ** c2}`, because the meet of two sets whose elements are known
@@ -17,15 +17,16 @@ an instance
   - was not made pure by `caps.unsafe.unsafeAssumePure`, which strips the
     capture set of its argument's type.
 
-The rewrite is made again for the type of an anonymous class instance: the
-ascription Typer gives it, and a definition it is the right-hand side of.
-Other inferred intersections are left as upstream leaves them: the type of a
-variable bound by a typed pattern is the scrutinee's meeting the pattern's,
-and merging those lets a capability of the scrutinee into a pattern type
-which is pure.
+The rewrite is made again for the type of an anonymous class instance (the
+ascription Typer gives it, and a definition it is the right-hand side of),
+and for the type of a parameter of a closure, which takes an intersection
+from the function type expected and failed in the same way. Other inferred
+intersections are left as upstream leaves them: the type of a variable bound
+by a typed pattern is the scrutinee's meeting the pattern's, and merging
+those lets a capability of the scrutinee into a pattern type which is pure.
 
-Found in Soundness's galilei (directory handles) and parasite (daemon and
-task handles).
+Found in Soundness's galilei (directory handles), parasite (daemon and task
+handles) and aperture (the block passed to `open` and `create`).
 
 Developed with LLM assistance (Claude).
 

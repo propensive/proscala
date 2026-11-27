@@ -70,7 +70,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [frozenpure](frozenpure/frozenpure.md) | Classify a frozen type as pure under capture checking | 3.9, 3.10 | bug fix | yes | `-Zfrozen-pure` |
 | [javaenumctor](javaenumctor/javaenumctor.md) | Give java.lang.Enum its no-argument constructor whichever root loads it | 3.9, 3.10 | bug fix | yes | always on |
 | [implicitparts](implicitparts/implicitparts.md) | Do not assert on an open type parameter reached through a term's info | 3.10 | bug fix (crash) | yes | always on |
-| [inferredmeet](inferredmeet/inferredmeet.md) | Pull the capture sets out of an anonymous class instance's intersection type | 3.10 | bug fix | yes | always on |
+| [inferredmeet](inferredmeet/inferredmeet.md) | Pull the capture sets out of the intersection type of an instance or closure parameter | 3.10 | bug fix | yes | always on |
 | [inertcache](inertcache/inertcache.md) | Cache inert types in capture-checking Setup | 3.9, 3.10 | bug fix (hang) | yes | always on |
 | [inlinedclosures](inlinedclosures/inlinedclosures.md) | Capture-check closures inlined from compiled code | 3.9, 3.10 | bug fix | yes | `-Zcheck-inlined-closures` |
 | [inlineaccessor](inlineaccessor/inlineaccessor.md) | Do not let an inline accessor hide the instance it reads | 3.10 | bug fix | yes | always on |
