@@ -1766,6 +1766,9 @@ project p proscala
     error 254
       source dotc/typer/Typer.scala
       text  Scala 2 macro cannot be used in Dotty, this call will crash at runtime. See https://docs.scala-lang.org/scala3/reference/dropped-features/macros.html
+    error 255
+      source dotc/typer/Applications.scala
+      template  Sequence wildcard pattern is not allowed for {}`{}`; it requires `unapplySeq` {}
 
   subdivision 8 metaprogramming
     summary  inlining, quotes, splices and staging
