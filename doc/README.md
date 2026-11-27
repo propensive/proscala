@@ -40,6 +40,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 
 | Feature | Description | Streams | Kind | Repro | Flag |
 | ------- | ----------- | ------- | ---- | ----- | ---- |
+| [adaptpath](adaptpath/adaptpath.md) | Keep a reference whose intersection type needed no box adaptation | 3.10 | bug fix | yes | always on |
 | [aliascap](aliascap/aliascap.md) | Keep root capabilities global in type alias infos | 3.9, 3.10 | bug fix | yes | `-Zalias-captures` |
 | [anonascribe](anonascribe/anonascribe.md) | Treat an anonymous class instance's ascription as inferred | 3.10 | bug fix | yes | always on |
 | [anonspec](anonspec/anonspec.md) | Treat non-specialized anonymous-class parents as such, not as a crash | 3.10 | bug fix (crash) | yes | always on |

@@ -282,6 +282,9 @@ axis
   value
     name quoteunshare
     parent inlinecomplete
+  value
+    name adaptpath
+    parent quoteunshare
 axis
   name upstream
   kind git
