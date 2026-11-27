@@ -1,0 +1,32 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 27 Nov 2026 10:39:37 +0900
+
+Relate type arguments to bounds naming other type parameters
+
+Under capture checking, an application of `[element, coll <: Coll[element]]`
+whose arguments are inferred was rejected when the collection's elements
+capture something: "Type argument Coll[Box^{cap}] does not conform to upper
+bound Coll[Box^{}]". Two things were wrong.
+
+The arguments are compared with their bounds in full only in postCheck,
+after capture sets are solved, and nothing before that related the capture
+set inside the argument for `coll` to the one of the argument for `element`,
+which was therefore solved without it. recheckTypeApply now makes that
+comparison, for each inferred argument whose upper bound names a type
+parameter of the same clause, while the sets can still grow; a comparison
+that fails is undone and left for postCheck to report.
+
+And postCheck put the arguments into the bounds with the box status they
+have when compared with their own bounds, so the argument for `element` went
+into `Coll[element]` unboxed, where an argument of an applied type is always
+boxed: an argument could then not conform to a bound with the very same
+capture sets. The bound is now instantiated with the arguments as they are,
+and takes the bound's own box status at its top level only.
+
+Found in Soundness, whose Traversable and Mappable instances are given for
+`[element, list <: List[element]]` (Proscala issue 62).
+
+Developed with LLM assistance (Claude).
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: dependbound

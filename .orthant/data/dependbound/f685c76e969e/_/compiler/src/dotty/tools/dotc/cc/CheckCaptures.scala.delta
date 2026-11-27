@@ -1,0 +1,43 @@
+orthant 2 patch
+
+@ 1 0 0 0912233fa10a00ce0dfbcd534f6a7b1e
++       constrainDependentTypeArgs(tree)
+
+@ 3 0 0 178977ba2877cd600771bf729db53b29
++     /** The bound `bound` of a type parameter of `tl`, with the arguments `args` in place
++      *  of the parameters. An argument is boxed, and is put in boxed where the bound
++      *  names its parameter inside another type, as in `Coll[element]`: an argument of
++      *  an applied type is always boxed. Where the bound is the parameter itself the
++      *  result takes the box status of the bound, like the argument compared with it.
++      */
++     private def instantiateBound(bound: Type, tl: PolyType, args: List[Tree])(using Context): Type =
++       bound.substParams(tl, args.map(_.nuType)).forceBoxStatus(bound.isBoxed)
++
++     /** Relate each inferred type argument to an upper bound which names other type
++      *  parameters of the same clause, while capture sets can still grow.
++      *
++      *  For `[element, coll <: Coll[element]]` applied to `[Box^{?1}, Coll[Box^{?2}]]`,
++      *  the bound requires `{?2} <: {?1}`, but `recheckTypeArg` compares only the capture
++      *  sets of the argument and the bound themselves, and the full comparison is made in
++      *  `postCheck`, after the sets are solved: by then nothing has told `?1` what flowed
++      *  into `?2`, and a well-typed application is rejected. Making the comparison here
++      *  records the dependency. A comparison that fails changes nothing, and is left for
++      *  `postCheck` to report.
++      */
++     private def constrainDependentTypeArgs(tree: TypeApply)(using Context): Unit =
++       tree.fun.nuType.widen match
++         case tl: PolyType =>
++           def isDependent(bound: Type) = bound.existsPart:
++             case ref: TypeParamRef => ref.binder eq tl
++             case _ => false
++           for (arg, bounds) <- tree.args.lazyZip(tl.paramInfos) do
++             if arg.isInstanceOf[InferredTypeTree] && isDependent(bounds.hi) then
++               val argType = arg.nuType.forceBoxStatus(bounds.hi.isBoxed | bounds.lo.isBoxed)
++               withMode(Mode.CheckBoundsOrSelfType):
++                 TypeComparer.noNotes:
++                   TypeComparer.atomicOp(argType <:< instantiateBound(bounds.hi, tl, tree.args))
++         case _ =>
++
+
+@ 0 1 0 0b8ec18385c3e8ef126da00b981b8f01
++                   checkBounds(normArgs, tl.paramInfos, (bound, _) => instantiateBound(bound, tl, args))

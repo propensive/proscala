@@ -1,0 +1,1 @@
+obsolete-from 1254c389464aafd285d31f4e531c451a3911dae8   # upstream #27632 maps a LazyRef with mapOver, which does not force it, so there is no recursion left to guard

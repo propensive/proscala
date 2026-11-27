@@ -57,6 +57,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [cyclicctx](cyclicctx/cyclicctx.md) | Render an escaped type error in the context it was raised in | 3.9, 3.10 | bug fix (crash) | FIXME | always on |
 | [definefurther](definefurther/definefurther.md) | Treat an endless instantiation as no further definition in `canDefineFurther` | 3.10 | bug fix | yes | always on |
 | [dependarg](dependarg/dependarg.md) | Conserve stable argument paths in dependent-application rechecking | 3.9, 3.10 | bug fix | yes | always on |
+| [dependbound](dependbound/dependbound.md) | Relate an inferred type argument to a bound naming another type parameter | 3.10 | bug fix | yes | always on |
 | [depset](depset/depset.md) | Add a mutable IdentitySet to optimize variable dependencies in CC | 3.9 | backport (perf) | yes | always on |
 | [dictcaps](dictcaps/dictcaps.md) | Infer the capture set of recursive-implicit dictionary instances | 3.9, 3.10 | bug fix | yes | always on |
 | [exportuses](exportuses/exportuses.md) | Do not recheck the escaping uses of an export forwarder | 3.10 | bug fix | yes | always on |
@@ -90,6 +91,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [permitlazy](permitlazy/permitlazy.md) | Lazy resolution of permitted subclasses in classfile parsing | 3.9 | bug fix | yes | always on |
 | [proxycap](proxycap/proxycap.md) | Capture-check inline argument proxies within their parameters' bounds | 3.10 | bug fix | yes | always on |
 | [proxyskolem](proxyskolem/proxyskolem.md) | No skolem-typed inline argument proxies under capture checking | 3.9, 3.10 | bug fix | yes (2: `repro`, `repro2`) | always on |
+| [proxywrite](proxywrite/proxywrite.md) | Let the reference decide whether an intersection with it may be written through | 3.10 | bug fix | yes | always on |
 | [prunecomplete](prunecomplete/prunecomplete.md) | Do not force completion when filtering prunable inline methods | — | bug fix (crash) | yes | always on |
 | [quotedthis](quotedthis/quotedthis.md) | Let quoted code refer to the members a class defined in the quote inherits | 3.9, 3.10 | bug fix (crash) | yes | always on |
 | [readonlyadapt](readonlyadapt/readonlyadapt.md) | Keep the type arguments a read-only adaptation does not improve | 3.9, 3.10 | bug fix (crash) | yes | always on |
