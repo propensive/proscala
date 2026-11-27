@@ -1,0 +1,21 @@
+orthant 2 patch
+
+@ 2 0 0 16515594e583e0c30108b6580c323c7e
++       /** Pull the capture sets of an inferred intersection out of it, as their meet:
++        *  `A^{CV_1} & B^{CV_2}` becomes `(A & B)^{CV_1 ** CV_2}`. `normalizeCaptures` does
++        *  not do this, since the meet of two sets whose elements are known only later can
++        *  come out too small during Setup. Here at least one set is a variable this map has
++        *  just made, so nothing is decided before the sets are filled in: without the
++        *  rewrite, the type inferred for an instance of an anonymous class with several
++        *  parents keeps a capture set for each parent, and conforms neither to a type with
++        *  one capture set nor to what `unsafeAssumePure` strips.
++        */
++       def meetCaptures(tp: Type): Type = tp match
++         case AndType(tp1 @ CapturingType(parent1, refs1), tp2 @ CapturingType(parent2, refs2))
++         if tp1.isBoxed == tp2.isBoxed && (!refs1.isConst || !refs2.isConst) =>
++           CapturingType(AndType(parent1, parent2), refs1 ** refs2, tp1.isBoxed)
++         case _ => tp
++
+
+@ 0 1 0 127de124b50250ef1a75560b467e9c78
++           addCaptureRefinements(normalizeCaptures(meetCaptures(normalizeFunctions(tp1, orig)))),

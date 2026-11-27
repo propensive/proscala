@@ -1,0 +1,1 @@
+needed-from de3a4e1de07c77946429de39d85882d3d3ddbc0c   # scala/scala3 #27524 (overlap of an exclusive root with a read-only path) made the accessor a hiding definition

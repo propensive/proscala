@@ -1,0 +1,28 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 27 Nov 2026 13:39:57 +0900
+
+Pull the capture sets out of an inferred intersection again
+
+scala/scala3 #27539 stopped Setup from rewriting `A^{c1} & B^{c2}` to
+`(A & B)^{c1 ** c2}`, because the meet of two sets whose elements are known
+only later can come out too small. That is not so where a set is a variable
+Setup has just made for an inferred type, and without the rewrite the type
+inferred for an instance of an anonymous class with several parents keeps one
+capture set per parent, `((Handle^) & (Granting[Int]^)){type Under = fs}`.
+From 3.10.2-RC1 on such an instance
+
+  - did not conform to a parameter of the same intersection type with a
+    single capture set ("capability any cannot flow into capture set {any}"),
+  - was not made pure by `caps.unsafe.unsafeAssumePure`, which strips the
+    capture set of its argument's type.
+
+The rewrite is made again for inferred types, where at least one of the two
+sets is a variable.
+
+Found in Soundness's galilei (directory handles) and parasite (daemon and
+task handles).
+
+Developed with LLM assistance (Claude).
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: inferredmeet

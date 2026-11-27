@@ -69,8 +69,10 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [frozenpure](frozenpure/frozenpure.md) | Classify a frozen type as pure under capture checking | 3.9, 3.10 | bug fix | yes | `-Zfrozen-pure` |
 | [javaenumctor](javaenumctor/javaenumctor.md) | Give java.lang.Enum its no-argument constructor whichever root loads it | 3.9, 3.10 | bug fix | yes | always on |
 | [implicitparts](implicitparts/implicitparts.md) | Do not assert on an open type parameter reached through a term's info | 3.10 | bug fix (crash) | yes | always on |
+| [inferredmeet](inferredmeet/inferredmeet.md) | Pull the capture sets out of an inferred intersection type again | 3.10 | bug fix | yes | always on |
 | [inertcache](inertcache/inertcache.md) | Cache inert types in capture-checking Setup | 3.9, 3.10 | bug fix (hang) | yes | always on |
 | [inlinedclosures](inlinedclosures/inlinedclosures.md) | Capture-check closures inlined from compiled code | 3.9, 3.10 | bug fix | yes | `-Zcheck-inlined-closures` |
+| [inlineaccessor](inlineaccessor/inlineaccessor.md) | Do not let an inline accessor hide the instance it reads | 3.10 | bug fix | yes | always on |
 | [inlinetraitimport](inlinetraitimport/inlinetraitimport.md) | Leave an inline trait's imports out of the classes which extend it | 3.10 | bug fix (crash) | yes | always on |
 | [inlinetraitprune](inlinetraitprune/inlinetraitprune.md) | Make an inline trait's members deferred whichever unit asks first | — | bug fix | yes | always on |
 | [inlinetraittrace](inlinetraittrace/inlinetraittrace.md) | Give the inline calls expanded in an inline trait's child their call traces | 3.10 | bug fix (crash) | yes | always on |
@@ -109,6 +111,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [smap](smap/smap.md) | `-Zinline-source-maps`: JSR-45 SMAP attributes mapping inlined code to its source files | 3.9, 3.10 | feature | yes | `-Zinline-source-maps` |
 | [splicealias](splicealias/splicealias.md) | Give spliced type binders their spliced type as info | 3.9 | bug fix | yes | always on |
 | [splicesingleton](splicesingleton/splicesingleton.md) | Keep an adapted singleton from being widened again under capture checking | 3.9, 3.10 | bug fix | yes | always on |
+| [structuralarg](structuralarg/structuralarg.md) | Do not crash on a structural call whose argument has no class | 3.10 | bug fix (crash) | yes | always on |
 | [spreadable](spreadable/spreadable.md) | Splice any type with a `Spreadable` instance into a vararg position | 3.9, 3.10 | feature | yes (2: `repro`, `repro-cc`) | `-Zspreadable-varargs` |
 | [gatherable](gatherable/gatherable.md) | Receive repeated parameters as the type a `Gatherable` instance names | 3.9, 3.10 | feature | yes | `-Zgatherable-varargs` |
 | [staleread](staleread/staleread.md) | Tolerate reading newer denotations from stale run contexts | 3.9 | bug fix (crash) | yes | always on |

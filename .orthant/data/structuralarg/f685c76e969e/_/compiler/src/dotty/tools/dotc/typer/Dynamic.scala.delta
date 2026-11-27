@@ -1,0 +1,8 @@
+orthant 2 patch
+
+@ 0 3 0 1f5a9f1c62f59df20828f790d32703b1
++         // No class symbol where the argument's type is, say, an opaque alias bounded by
++         // an intersection of unrelated classes: such an argument is no value class.
++         val clzSym = t.tpe.resultType.classSymbol
++         if clzSym.isClass && clzSym.isDerivedValueClass && isReflectSelectable then
++           val underlying = ValueClasses.valueClassUnbox(clzSym.asClass).asTerm

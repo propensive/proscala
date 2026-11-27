@@ -1,0 +1,24 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 27 Nov 2026 13:21:21 +0900
+
+Do not take an argument of a structural call for a value class without a class
+
+A structural call through `reflectiveSelectable`, or any `Selectable`, whose
+argument has a type with no class symbol crashed the compiler:
+
+    java.lang.ClassCastException: NoSymbol cannot be cast to ClassSymbol
+      at dotty.tools.dotc.typer.Dynamic.handleRepeated
+
+scala/scala3 #17564 unboxes value-class arguments of a dynamic call, and
+finds the argument's class with `classSymbol.asClass`. An opaque alias
+bounded by an intersection of unrelated classes, as Soundness's `Text` is
+(`opaque type Text <: Matchable & caps.Pure`), has none. Such an argument is
+no value class, and is now passed as it is.
+
+Found in Soundness's enigmatic, whose providers are reached through
+structural refinements.
+
+Developed with LLM assistance (Claude).
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: structuralarg

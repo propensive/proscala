@@ -267,6 +267,15 @@ axis
   value
     name proxywrite
     parent dependbound
+  value
+    name structuralarg
+    parent proxywrite
+  value
+    name inlineaccessor
+    parent structuralarg
+  value
+    name inferredmeet
+    parent inlineaccessor
 axis
   name upstream
   kind git
