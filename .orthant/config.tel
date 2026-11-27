@@ -276,6 +276,9 @@ axis
   value
     name inferredmeet
     parent inlineaccessor
+  value
+    name inlinecomplete
+    parent inferredmeet
 axis
   name upstream
   kind git

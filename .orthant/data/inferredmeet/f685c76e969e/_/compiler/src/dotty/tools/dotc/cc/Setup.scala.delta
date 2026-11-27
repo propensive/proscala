@@ -1,21 +1,60 @@
 orthant 2 patch
 
+@ 1 0 0 13431ac2dd8e5b0c06bb07c8c3ef17f1
++     *  @param meetIntersections if true, pull the capture sets out of intersections, see
++     *                       `meetCaptures`. True for the type of an instance of an
++     *                       anonymous class.
+
+@ 0 1 0 00a2fd09cd655c760f80aabf75f2baf8
++   private def transformInferredType(tp: Type, sym: Symbol, typeArgFormal: Type = NoType, initialVariance: Int = 1, meetIntersections: Boolean = false)(using Context): Type = {
+
 @ 2 0 0 16515594e583e0c30108b6580c323c7e
-+       /** Pull the capture sets of an inferred intersection out of it, as their meet:
++       /** Pull the capture sets of an intersection out of it, as their meet:
 +        *  `A^{CV_1} & B^{CV_2}` becomes `(A & B)^{CV_1 ** CV_2}`. `normalizeCaptures` does
 +        *  not do this, since the meet of two sets whose elements are known only later can
-+        *  come out too small during Setup. Here at least one set is a variable this map has
-+        *  just made, so nothing is decided before the sets are filled in: without the
-+        *  rewrite, the type inferred for an instance of an anonymous class with several
-+        *  parents keeps a capture set for each parent, and conforms neither to a type with
-+        *  one capture set nor to what `unsafeAssumePure` strips.
++        *  come out too small during Setup. It is done for the type inferred for an instance
++        *  of an anonymous class with several parents, which is an intersection of them:
++        *  both sets are then variables this map has just made for the one object, so
++        *  nothing is decided before they are filled in. Without the rewrite the instance
++        *  keeps a capture set for each parent, and conforms neither to a type with one
++        *  capture set nor to what `unsafeAssumePure` strips. Other inferred intersections
++        *  are left alone: the type of a variable bound by a typed pattern is the
++        *  scrutinee's meeting the pattern's, and the two are checked separately.
 +        */
 +       def meetCaptures(tp: Type): Type = tp match
 +         case AndType(tp1 @ CapturingType(parent1, refs1), tp2 @ CapturingType(parent2, refs2))
-+         if tp1.isBoxed == tp2.isBoxed && (!refs1.isConst || !refs2.isConst) =>
++         if meetIntersections && tp1.isBoxed == tp2.isBoxed && !refs1.isConst && !refs2.isConst =>
 +           CapturingType(AndType(parent1, parent2), refs1 ** refs2, tp1.isBoxed)
 +         case _ => tp
 +
 
 @ 0 1 0 127de124b50250ef1a75560b467e9c78
 +           addCaptureRefinements(normalizeCaptures(meetCaptures(normalizeFunctions(tp1, orig)))),
+
+@ 0 1 0 1afce798a7c686751d2f3ea686637f9e
++     private def transformTT(tree: TypeTree, sym: Symbol, boxed: Boolean, typeArgFormal: Type = NoType, inferred: Boolean = false, meetIntersections: Boolean = false)(using Context): Unit =
+
+@ 0 1 0 13c0e2bbb017edaa18a87aca245b39c9
++           then transformInferredType(tree.tpe, sym, typeArgFormal, meetIntersections = meetIntersections)
+
+@ 0 1 0 08aaa29924c5e0d41f61c3bf59fd77c1
++     def transformResultType(tpt: TypeTree, sym: Symbol, meetIntersections: Boolean = false)(using Context): Unit =
+
+@ 0 1 0 1d0612eed4a57132008106b20d463d7a
++           transformTT(tpt, sym, boxed = false, meetIntersections = meetIntersections)
+
+@ 0 1 0 0ab94b097a2d1fa70b9cb4f5815935e9
++                 transformResultType(tpt, sym, meetIntersections = isAnonymousInstanceBlock(tree.rhs))
+
+@ 0 1 0 0ced3b304e4638cb0100e2003643f6f6
++           transformTT(tpt, NoSymbol, boxed = false, inferred = true, meetIntersections = true)
+
+@ 2 0 0 099341a010d0987c07676c41bdf8dfbe
++     /** Is `tree` the definition of an anonymous class followed by its instantiation,
++      *  as the right-hand side of a definition whose type is that of the instance?
++      */
++     private def isAnonymousInstanceBlock(tree: Tree)(using Context): Boolean = tree match
++       case Block(_, expr) => isAnonymousInstanceBlock(expr)
++       case Typed(expr, _) => isAnonymousInstanceBlock(expr)
++       case _ => isAnonymousInstance(tree)
++

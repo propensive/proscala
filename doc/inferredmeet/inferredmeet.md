@@ -1,6 +1,6 @@
 # inferredmeet
 
-Pulls the capture sets of an inferred intersection type out of it again, so that an instance of an anonymous class with several parents has one capture set.
+Pulls the capture sets out of the intersection type inferred for an instance of an anonymous class with several parents, so that the instance has one capture set.
 
 ## Context
 
@@ -16,13 +16,13 @@ rewrote the first form to the second. #27539 removed the rewrite, for a sound
 reason: during `Setup` the elements of some capture sets are not known yet, and
 the meet of two such sets can come out too small.
 
-That reason does not hold for a type the compiler *inferred*. There `Setup` has
-just put a fresh **capture set variable** on each part, to be filled in by the
-checking which follows, and the meet of two variables decides nothing early: it
-is itself a variable, tied to both. But without the rewrite, inferred
-intersections keep one variable per operand, and the commonest source of an
-inferred intersection — the instance of an anonymous class with more than one
-parent — stopped working in two ways from 3.10.2-RC1 on.
+That reason does not hold for the type the compiler infers for an instance of
+an anonymous class with more than one parent, which is the intersection of the
+parents. There `Setup` has just put a fresh **capture set variable** on each
+operand, to be filled in by the checking which follows, and both variables
+describe the one object: their meet decides nothing early, being itself a
+variable tied to both. But without the rewrite the instance keeps one variable
+per parent, and from 3.10.2-RC1 on it stopped working in two ways.
 
 ## How to reproduce it
 
@@ -74,28 +74,31 @@ records what it grants, and parasite's daemons and tasks are
 
 ## Solution
 
-The patch makes the rewrite again in the one map which handles inferred types,
-and only where at least one of the two sets is a variable:
+The patch makes the rewrite again, in the map which handles inferred types,
+for the type of an anonymous class instance only — the ascription the typer
+gives `new A with B { ... }`, and the type of a definition it is the
+right-hand side of — and only where both sets are variables:
 
 ```scala
 def meetCaptures(tp: Type): Type = tp match
   case AndType(tp1 @ CapturingType(parent1, refs1), tp2 @ CapturingType(parent2, refs2))
-  if tp1.isBoxed == tp2.isBoxed && (!refs1.isConst || !refs2.isConst) =>
+  if meetIntersections && tp1.isBoxed == tp2.isBoxed && !refs1.isConst && !refs2.isConst =>
     CapturingType(AndType(parent1, parent2), refs1 ** refs2, tp1.isBoxed)
   case _ => tp
-
-def addVar(tp1: Type, orig: Type) =
-  decorate(
-    addCaptureRefinements(normalizeCaptures(meetCaptures(normalizeFunctions(tp1, orig)))),
-    ...)
 ```
 
-`refs1 ** refs2` is the meet. With a variable among its operands it is a
-variable which receives whatever is added to both, so nothing is settled
-before the sets are known: the hazard #27539 avoided does not arise. An
-intersection whose two capture sets are both constants — one written in the
-source — is left as upstream leaves it, as is every type which was not
-inferred.
+`refs1 ** refs2` is the meet. Of two variables it is a variable which receives
+whatever is added to both, so nothing is settled before the sets are known:
+the hazard #27539 avoided does not arise.
+
+Every other intersection is left as upstream leaves it, and one case shows why
+the rewrite must not be general. A variable bound by a typed pattern,
+`case typeclass: T => typeclass`, has the scrutinee's type meeting `T`, and the
+two operands are checked separately: the value may be used as a pure `T`
+whatever the scrutinee captured. Merging the two capture sets there carries the
+scrutinee's capabilities into `T`, and rejects code which relies on the pattern
+— as an earlier form of this patch did to every derived typeclass instance in
+Soundness.
 
 The patch is always on: it restores what 3.10.0 and 3.10.1 accept. It applies
 from #27539 on.

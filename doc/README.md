@@ -69,10 +69,11 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [frozenpure](frozenpure/frozenpure.md) | Classify a frozen type as pure under capture checking | 3.9, 3.10 | bug fix | yes | `-Zfrozen-pure` |
 | [javaenumctor](javaenumctor/javaenumctor.md) | Give java.lang.Enum its no-argument constructor whichever root loads it | 3.9, 3.10 | bug fix | yes | always on |
 | [implicitparts](implicitparts/implicitparts.md) | Do not assert on an open type parameter reached through a term's info | 3.10 | bug fix (crash) | yes | always on |
-| [inferredmeet](inferredmeet/inferredmeet.md) | Pull the capture sets out of an inferred intersection type again | 3.10 | bug fix | yes | always on |
+| [inferredmeet](inferredmeet/inferredmeet.md) | Pull the capture sets out of an anonymous class instance's intersection type | 3.10 | bug fix | yes | always on |
 | [inertcache](inertcache/inertcache.md) | Cache inert types in capture-checking Setup | 3.9, 3.10 | bug fix (hang) | yes | always on |
 | [inlinedclosures](inlinedclosures/inlinedclosures.md) | Capture-check closures inlined from compiled code | 3.9, 3.10 | bug fix | yes | `-Zcheck-inlined-closures` |
 | [inlineaccessor](inlineaccessor/inlineaccessor.md) | Do not let an inline accessor hide the instance it reads | 3.10 | bug fix | yes | always on |
+| [inlinecomplete](inlinecomplete/inlinecomplete.md) | Do not recheck a definition inside an inline method when its info is forced | 3.10 | bug fix | FIXME | always on |
 | [inlinetraitimport](inlinetraitimport/inlinetraitimport.md) | Leave an inline trait's imports out of the classes which extend it | 3.10 | bug fix (crash) | yes | always on |
 | [inlinetraitprune](inlinetraitprune/inlinetraitprune.md) | Make an inline trait's members deferred whichever unit asks first | — | bug fix | yes | always on |
 | [inlinetraittrace](inlinetraittrace/inlinetraittrace.md) | Give the inline calls expanded in an inline trait's child their call traces | 3.10 | bug fix (crash) | yes | always on |
