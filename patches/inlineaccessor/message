@@ -1,0 +1,26 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 27 Nov 2026 13:36:53 +0900
+
+Do not let an inline accessor hide the instance it reads
+
+An inline method which reads a protected or private member does so through
+an accessor the inliner makes (`inline$cells`). Where the member is an array,
+the accessor's result type is `Array[T]^{any.rd}`, and since scala/scala3
+#27524 separation checking took that for a definition hiding the enclosing
+instance: every later access to `this` in the class was an error,
+
+    Separation failure: Illegal access to {Parser.this} which is hidden by
+    the previous definition of method zephyrine$Cursor$Snapshot$$inline$cells
+
+which no annotation in the source can prevent, the accessor being the
+compiler's. An inline accessor stands for a selection of the member, which
+hides nothing where it is written out, and is no longer checked or recorded
+as a definition.
+
+Found in Soundness's ypsiloid, a parser extending the inline trait
+zephyrine.Cursor.Snapshot.
+
+Developed with LLM assistance (Claude).
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: inlineaccessor

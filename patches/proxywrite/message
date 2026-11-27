@@ -1,0 +1,30 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 27 Nov 2026 12:16:09 +0900
+
+Let the reference decide whether an intersection with it is exclusive
+
+A write through an inline extension method on an opaque alias of Array,
+
+    extension [element](inline buffer: Arr[element]^)
+      inline def update(index: Int, value: element): Unit = buffer(index) = value
+
+was rejected wherever the alias is opaque: "Cannot call update method update
+of (arr : p.Arr[String]^) & $proxy1.Arr[String] since its capture set {} of
+value $proxy1 is read-only". The inliner casts the receiver to the
+intersection of its singleton type and its type as seen through the proxy
+of the alias's prefix. The second operand shows the alias to be an array,
+so that the value is stateful, but has no capture set, and the capture set
+of an intersection is the meet of its operands': empty, however exclusively
+`arr` is held.
+
+A value of type `x.type & T` is `x`. Mutability.exclusivityInContext now
+takes whether the value is stateful from the intersection, and whether it
+may be written through from `x`. A reference which is read-only is still
+refused, and is now refused here too where `T` alone says it is stateful.
+
+Found in Soundness's proscenium.Array (Proscala issue 64).
+
+Developed with LLM assistance (Claude).
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: proxywrite

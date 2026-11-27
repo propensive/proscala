@@ -1,0 +1,1 @@
+needed-from f685c76e969e508ebcad6bce3322e912dd533df1   # scala/scala3 #27551: before it the argument has no capture variable inside it, and the application fails sooner for that reason

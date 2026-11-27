@@ -40,6 +40,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 
 | Feature | Description | Streams | Kind | Repro | Flag |
 | ------- | ----------- | ------- | ---- | ----- | ---- |
+| [adaptpath](adaptpath/adaptpath.md) | Keep a reference whose intersection type needed no box adaptation | 3.10 | bug fix | yes | always on |
 | [aliascap](aliascap/aliascap.md) | Keep root capabilities global in type alias infos | 3.9, 3.10 | bug fix | yes | `-Zalias-captures` |
 | [anonascribe](anonascribe/anonascribe.md) | Treat an anonymous class instance's ascription as inferred | 3.10 | bug fix | yes | always on |
 | [anonspec](anonspec/anonspec.md) | Treat non-specialized anonymous-class parents as such, not as a crash | 3.10 | bug fix (crash) | yes | always on |
@@ -57,6 +58,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [cyclicctx](cyclicctx/cyclicctx.md) | Render an escaped type error in the context it was raised in | 3.9, 3.10 | bug fix (crash) | FIXME | always on |
 | [definefurther](definefurther/definefurther.md) | Treat an endless instantiation as no further definition in `canDefineFurther` | 3.10 | bug fix | yes | always on |
 | [dependarg](dependarg/dependarg.md) | Conserve stable argument paths in dependent-application rechecking | 3.9, 3.10 | bug fix | yes | always on |
+| [dependbound](dependbound/dependbound.md) | Relate an inferred type argument to a bound naming another type parameter | 3.10 | bug fix | yes | always on |
 | [depset](depset/depset.md) | Add a mutable IdentitySet to optimize variable dependencies in CC | 3.9 | backport (perf) | yes | always on |
 | [dictcaps](dictcaps/dictcaps.md) | Infer the capture set of recursive-implicit dictionary instances | 3.9, 3.10 | bug fix | yes | always on |
 | [exportuses](exportuses/exportuses.md) | Do not recheck the escaping uses of an export forwarder | 3.10 | bug fix | yes | always on |
@@ -68,8 +70,11 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [frozenpure](frozenpure/frozenpure.md) | Classify a frozen type as pure under capture checking | 3.9, 3.10 | bug fix | yes | `-Zfrozen-pure` |
 | [javaenumctor](javaenumctor/javaenumctor.md) | Give java.lang.Enum its no-argument constructor whichever root loads it | 3.9, 3.10 | bug fix | yes | always on |
 | [implicitparts](implicitparts/implicitparts.md) | Do not assert on an open type parameter reached through a term's info | 3.10 | bug fix (crash) | yes | always on |
+| [inferredmeet](inferredmeet/inferredmeet.md) | Pull the capture sets out of the intersection type of an instance or closure parameter | 3.10 | bug fix | yes | always on |
 | [inertcache](inertcache/inertcache.md) | Cache inert types in capture-checking Setup | 3.9, 3.10 | bug fix (hang) | yes | always on |
 | [inlinedclosures](inlinedclosures/inlinedclosures.md) | Capture-check closures inlined from compiled code | 3.9, 3.10 | bug fix | yes | `-Zcheck-inlined-closures` |
+| [inlineaccessor](inlineaccessor/inlineaccessor.md) | Do not let an inline accessor hide the instance it reads | 3.10 | bug fix | yes | always on |
+| [inlinecomplete](inlinecomplete/inlinecomplete.md) | Do not recheck a definition inside an inline method when its info is forced | 3.10 | bug fix | FIXME | always on |
 | [inlinetraitimport](inlinetraitimport/inlinetraitimport.md) | Leave an inline trait's imports out of the classes which extend it | 3.10 | bug fix (crash) | yes | always on |
 | [inlinetraitprune](inlinetraitprune/inlinetraitprune.md) | Make an inline trait's members deferred whichever unit asks first | — | bug fix | yes | always on |
 | [inlinetraittrace](inlinetraittrace/inlinetraittrace.md) | Give the inline calls expanded in an inline trait's child their call traces | 3.10 | bug fix (crash) | yes | always on |
@@ -90,8 +95,10 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [permitlazy](permitlazy/permitlazy.md) | Lazy resolution of permitted subclasses in classfile parsing | 3.9 | bug fix | yes | always on |
 | [proxycap](proxycap/proxycap.md) | Capture-check inline argument proxies within their parameters' bounds | 3.10 | bug fix | yes | always on |
 | [proxyskolem](proxyskolem/proxyskolem.md) | No skolem-typed inline argument proxies under capture checking | 3.9, 3.10 | bug fix | yes (2: `repro`, `repro2`) | always on |
+| [proxywrite](proxywrite/proxywrite.md) | Let the reference decide whether an intersection with it may be written through | 3.10 | bug fix | yes | always on |
 | [prunecomplete](prunecomplete/prunecomplete.md) | Do not force completion when filtering prunable inline methods | — | bug fix (crash) | yes | always on |
 | [quotedthis](quotedthis/quotedthis.md) | Let quoted code refer to the members a class defined in the quote inherits | 3.9, 3.10 | bug fix (crash) | yes | always on |
+| [quoteunshare](quoteunshare/quoteunshare.md) | Do not share type trees between the expansions of a quote | 3.10 | bug fix | yes | always on |
 | [readonlyadapt](readonlyadapt/readonlyadapt.md) | Keep the type arguments a read-only adaptation does not improve | 3.9, 3.10 | bug fix (crash) | yes | always on |
 | [refinealias](refinealias/refinealias.md) | Drop the implied capture set from a type alias in a refinement | 3.10 | bug fix | yes | always on |
 | [refinedsingleton](refinedsingleton/refinedsingleton.md) | Check a refinement against the tracked value itself, not its widened type | 3.9, 3.10 | bug fix | yes | always on |
@@ -107,6 +114,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | [smap](smap/smap.md) | `-Zinline-source-maps`: JSR-45 SMAP attributes mapping inlined code to its source files | 3.9, 3.10 | feature | yes | `-Zinline-source-maps` |
 | [splicealias](splicealias/splicealias.md) | Give spliced type binders their spliced type as info | 3.9 | bug fix | yes | always on |
 | [splicesingleton](splicesingleton/splicesingleton.md) | Keep an adapted singleton from being widened again under capture checking | 3.9, 3.10 | bug fix | yes | always on |
+| [structuralarg](structuralarg/structuralarg.md) | Do not crash on a structural call whose argument has no class | 3.10 | bug fix (crash) | yes | always on |
 | [spreadable](spreadable/spreadable.md) | Splice any type with a `Spreadable` instance into a vararg position | 3.9, 3.10 | feature | yes (2: `repro`, `repro-cc`) | `-Zspreadable-varargs` |
 | [gatherable](gatherable/gatherable.md) | Receive repeated parameters as the type a `Gatherable` instance names | 3.9, 3.10 | feature | yes | `-Zgatherable-varargs` |
 | [staleread](staleread/staleread.md) | Tolerate reading newer denotations from stale run contexts | 3.9 | bug fix (crash) | yes | always on |

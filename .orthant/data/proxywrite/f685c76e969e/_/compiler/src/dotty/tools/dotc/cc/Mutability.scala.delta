@@ -1,0 +1,56 @@
+orthant 2 patch
+
+@ 0 3 0 0311572e756d9e681f8143af47fc63f6
++     /** OK, except if `classified` extends `Stateful` but `tp`'s capture set is non-exclusive
++      *  @param required    if true, exclusivity can be obtained by setting the mutability
++      *                     status of some capture set variable from Ignored to Writer.
++      *  @param classified  the type which says whether the value is stateful: `tp`, or
++      *                     an intersection of which `tp` is the singleton operand.
+
+@ 0 1 0 1f717536f2174a4e0478ae861b87b34c
++     private def exclusivity(required: Boolean, classified: Type)(using Context): Exclusivity =
+
+@ 0 1 0 04f4987d7c4f40ed107eb0493ef20e48
++       if classified.derivesFromStatefulUnfrozen then
+
+@ 1 2 0 157bdb583713dfdb1ecdf676be4c7b4e
++      *  @param required    if true, exclusivity can be obtained by setting the mutability
++      *                     status of some capture set variable from Ignored to Writer.
++      *  @param classified  if it exists, the type which says whether the value is
++      *                     stateful, instead of `tp`: see the case of intersections.
+
+@ 0 15 0 09ba3c26111b10f91b4cd5b8827cfff6
++     private def exclusivityInContext(required: Boolean = false, classified: Type = NoType)(using Context): Exclusivity =
++       def stateful = classified.orElse(tp)
+
+@ 2 0 0 019d69e90881454704e84ba11c3a4c60
++       /** A value of type `x.type & T` is `x`, so it is `x` which says whether the value
++        *  may be written through; what `T` adds is only what kind of value it is. The
++        *  inliner casts the receiver of an inline method to such a type, where `T` is
++        *  the receiver's type as seen through the proxy of an opaque alias's prefix:
++        *  it shows the alias to be, say, an array, and has no capture set of its own,
++        *  so the capture set of the intersection is empty however `x` is held.
++        */
++       def ofSingleton(ref: SingletonType) =
++         ref.exclusivityInContext(required, stateful) match
++           case Exclusivity.ReadOnly(_) => Exclusivity.ReadOnly(tp)
++           case ex => ex
++
++       tp match
++         case tp: ThisType =>
++           if stateful.derivesFromStateful
++           then ctx.owner.inExclusivePartOf(tp.cls)
++           else Exclusivity.OK
++         case tp: TermRef =>
++           tp.info match
++             case tp1: SingletonType => tp1.exclusivityInContext(required, classified)
++             case _ =>
++               val preEx = tp.prefix match
++                 case prefix: Capability => prefix.exclusivityInContext(required)
++                 case _ => Exclusivity.OK
++               preEx.andAlso(tp.exclusivity(required, stateful))
++         case AndType(tp1: SingletonType, _) => ofSingleton(tp1)
++         case AndType(_, tp2: SingletonType) => ofSingleton(tp2)
++         case _ =>
++           tp.exclusivity(required, stateful)
++

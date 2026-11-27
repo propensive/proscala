@@ -1,0 +1,23 @@
+orthant 2 patch
+
+@ 3 0 0 157851cd926026740ea834941ab648d1
++   /** A copy of `tree` in which every type tree is a node of its own. The copy made of a
++    *  cached quote keeps the nodes it had no reason to change, and a type tree whose type
++    *  names nothing defined in the quote is one of them: without this, the expansions of
++    *  a macro in a compilation unit would share it. Capture checking records the type it
++    *  works out for a type tree against the node, with capture sets which belong to the
++    *  definition the tree is part of, so a shared node gives the second expansion the
++    *  capture sets of the first.
++    */
++   private def unshareTypeTrees(tree: Tree)(using Context): Tree =
++     val unshare = new TreeMap:
++       override def transform(tree: Tree)(using Context): Tree = tree match
++         case tree: TypeTree =>
++           TypeTree(tree.tpe, inferred = tree.isInferred).withSpan(tree.span)
++         case _ =>
++           super.transform(tree)
++     unshare.transform(tree)
++
+
+@ 0 1 0 176d934d6ea119e80f3d9c28cb1678bb
++             unshareTypeTrees(treeCpy.changeNonLocalOwners(ctx.owner))

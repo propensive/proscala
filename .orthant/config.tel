@@ -261,13 +261,45 @@ axis
   value
     name quotedthis
     parent opaqueself
+  value
+    name dependbound
+    parent quotedthis
+  value
+    name proxywrite
+    parent dependbound
+  value
+    name structuralarg
+    parent proxywrite
+  value
+    name inlineaccessor
+    parent structuralarg
+  value
+    name inferredmeet
+    parent inlineaccessor
+  value
+    name inlinecomplete
+    parent inferredmeet
+  value
+    name quoteunshare
+    parent inlinecomplete
+  value
+    name adaptpath
+    parent quoteunshare
 axis
   name upstream
   kind git
   prefer own
   value
-    name 074fab21755a
+    name 0ed42a2d891c
+    parent 90f3daf0a479
+    commit 0ed42a2d891c8a09d78d6c4fc7f6ae2c71be03fa
+  value
+    name f685c76e969e
     parent 89ff5128b6e7
+    commit f685c76e969e508ebcad6bce3322e912dd533df1
+  value
+    name 074fab21755a
+    parent f685c76e969e
     commit 074fab21755a73dc1b7b0be9c90d6a4b97556089
   value
     name 12959dbf8aa8
@@ -279,7 +311,7 @@ axis
     commit 78ea9c662e8f4b0680a962944404e0c7b540d5aa
   value
     name 90f3daf0a479
-    parent 89ff5128b6e7
+    parent f685c76e969e
     commit 90f3daf0a4795308d9c0e1b8f2265aeaecae8aa2
   value
     name 89ff5128b6e7

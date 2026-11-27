@@ -1,0 +1,10 @@
+orthant 2 patch
+
+@ 1 1 0 1999d4c590605cd41da845be44248243
++       if sym.owner.ownersIterator.exists(_.isInlineMethod) then
++         // The body of an inline method is not rechecked (see `Recheck.recheckDefDef`):
++         // it is checked where it is expanded. A definition inside it must not be
++         // rechecked either when its completer is forced, out of order and outside the
++         // environment of the method, by something which only asks for its info.
++         completed += sym
++       else try

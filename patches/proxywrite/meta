@@ -1,0 +1,1 @@
+needed-from f685c76e969e508ebcad6bce3322e912dd533df1   # seen on 3.10.2-RC1 and later, not on 3.10.1; the commit which brought it is not known, and this one is an ancestor of every upstream it has been seen on

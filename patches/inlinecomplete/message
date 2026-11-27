@@ -1,0 +1,23 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 27 Nov 2026 18:08:16 +0900
+
+Do not recheck a definition inside an inline method when its info is asked for
+
+The body of an inline method is not capture checked where it is defined,
+only where it is expanded. But a definition inside it with an inferred type
+has a completer which rechecks it, and that completer runs whenever the
+symbol's info is asked for: by the final pass over the unit, say, which
+walks inline bodies too, and takes a member as seen from a prefix. The
+definition is then checked out of order, outside the environment of its
+method, against types the method's own inline calls have not been expanded
+to meet, and a closure which captures a context parameter was reported as
+not conforming to the parameter type of an inline method.
+
+Such a definition is now marked complete without being rechecked.
+
+Found in Soundness's jacinta, in the inline `conjunction` of a derivation.
+
+Developed with LLM assistance (Claude).
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: inlinecomplete

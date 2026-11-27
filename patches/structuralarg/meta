@@ -1,0 +1,1 @@
+needed-from 42444d184db3e92005686917cc89987fbd700639   # scala/scala3 #17564 (unbox value classes in arguments of a dynamic call) introduced the crash

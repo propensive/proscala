@@ -1,0 +1,19 @@
+orthant 2 patch
+
+@ 0 1 0 17daeabff03a4a9300ed17df0ef5b98d
++ import NameKinds.{WildcardParamName, InlineAccessorName}
++ import NameOps.unexpandedName
+
+@ 3 0 0 0ed325b8d30c508909b6779bed62104d
++   /** Is `sym` an accessor the inliner made for a member which inlined code could not
++    *  reach otherwise? It stands for a selection of that member, and is no definition of
++    *  the program's: a field read as `this.cells` hides nothing, and the same read made
++    *  through `inline$cells` must not hide the instance from the rest of its class. The
++    *  name is expanded where the accessor was copied from an inline trait.
++    */
++   private def isInlineAccessor(sym: Symbol)(using Context): Boolean =
++     sym.name.unexpandedName.is(InlineAccessorName)
++
+
+@ 1 0 0 18b992aa3ee113a70519e73831035257
++        && !isInlineAccessor(sym)

@@ -1,0 +1,1 @@
+needed-from f685c76e969e508ebcad6bce3322e912dd533df1   # found building Soundness on upstream main (0ed42a2d89); the reproduction also fails on stock 3.10.1, so earlier lines have the defect too, and are not covered yet

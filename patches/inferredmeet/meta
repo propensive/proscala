@@ -1,0 +1,1 @@
+needed-from 681d301b79c46a647f25c56248e99f0a9cd18550   # scala/scala3 #27539 stopped pulling capture sets out of intersections

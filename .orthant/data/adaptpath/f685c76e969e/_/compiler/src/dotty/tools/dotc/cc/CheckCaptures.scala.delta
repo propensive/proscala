@@ -1,0 +1,14 @@
+orthant 2 patch
+
+@ 0 3 0 043245ab5440b57313f47c0fc32c22cd
++             // If nothing had to be adapted, `actual` is returned as it was, as for a
++             // match type above: the caller then keeps the reference whose widened type
++             // this is, and with it the paths that go through the reference.
++             val pulled = CapturingType(AndType(parent1, parent2), refs1 ** refs2, tp1.isBoxed)
++             val adapted = recur(pulled, expected, covariant)
++             return if adapted eq pulled then actual else adapted
+
+@ 0 3 0 19fdb45bf452ba2b0d550060dbbcb621
++             val pulled = CapturingType(OrType(parent1, parent2, actual.isSoft), refs1 ++ refs2, tp1.isBoxed)
++             val adapted = recur(pulled, expected, covariant)
++             return if adapted eq pulled then actual else adapted

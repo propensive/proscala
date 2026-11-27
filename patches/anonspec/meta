@@ -1,1 +1,2 @@
 needed-from   3adfcbd32a00cb078db0d80ec4f147309e59895a   # upstream #26156 (Inline Traits & Specialized Traits) introduced the defect
+obsolete-from 301b5ef2e5e37aa85b414a57e3f43628730c48a6   # upstream #27648 replaced the test with isSimpleAnonymousClass, on an Option it no longer unwraps; the reproduction compiles unpatched there

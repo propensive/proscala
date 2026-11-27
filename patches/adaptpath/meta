@@ -1,0 +1,1 @@
+needed-from 3f912f5e4ccb64c8fe5bc9429be6c3bedf62a997   # scala/scala3 #27394 (pull capture sets out of intersections in box adaptation) returns the rewritten type unconditionally

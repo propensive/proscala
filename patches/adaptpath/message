@@ -1,0 +1,27 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 27 Nov 2026 21:26:51 +0900
+
+Keep a reference whose intersection type needed no box adaptation
+
+scala/scala3 #27394 made box adaptation pull the capture sets out of an
+intersection or union of capturing types before adapting it. The rewritten
+type was returned whether or not anything was then adapted, so the caller,
+which keeps the reference it was given only if its widened type comes back
+unchanged, replaced every stable reference of such a type by the type. A
+path through the reference became a projection:
+
+    case gathering: Gathering => keep[gathering.Self](gathering.gathered(Nil))
+
+    Found:    (Parsing & Gathering)#Self
+    Required: gathering.Self
+
+for a variable bound by a typed pattern, whose type is the scrutinee's
+meeting the pattern's. The type is now returned as it was where the
+adaptation changed nothing, as the case for a match type beside it does.
+
+Found in Soundness's xylophone and stratiform.
+
+Developed with LLM assistance (Claude).
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: adaptpath
