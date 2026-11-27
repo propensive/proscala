@@ -8,7 +8,6 @@ with_feature() {
 }
 
 without_feature() {
-  # Upstream has no `anonascribe`, so the ascription is not treated as inferred there
-  # and has no capture set variables to share: the failure is one of the fork's own.
-  skip "the failure arises from the anonascribe patch, which upstream does not have"
+  compiles $OPTIONS -d . macro.scala
+  fails_with 'is not visible from any in an enclosing function' $OPTIONS -cp . -d . client.scala
 }

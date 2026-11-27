@@ -1,0 +1,35 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 27 Nov 2026 18:48:43 +0900
+
+Do not share type trees between the expansions of a quote
+
+A quote is unpickled once and cached, and each later use copies the cached
+tree so that its definitions are unique. The copy keeps the nodes it has no
+reason to change, among them every type tree whose type names nothing
+defined in the quote. So the expansions of a macro in one compilation unit
+share those type trees.
+
+Capture checking records the type it makes for a type tree against the node,
+with capture sets and root capabilities that belong to the definition the
+tree is part of. A shared node therefore gives the second expansion what was
+made for the first, which is out of its scope:
+
+    Note that capability `any²` cannot flow into capture set {any}
+    because any² is not visible from any in an enclosing function.
+
+for the parameter of a closure made for a context function argument, and
+
+    because postable$proxy2 in method second is not visible from any in
+    value request.
+
+for the ascription of an anonymous class instance. The copy of a cached
+quote now has a type tree node of its own for each occurrence.
+
+Found in Soundness's obligatory (two expansions of telekinesis's `submit`)
+and in exegesis and espionage (several of obligatory's `JsonRpc.serve`).
+The first case reproduces on stock scala/scala3 3.10.1 and 3.10.2-RC2.
+
+Developed with LLM assistance (Claude).
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: quoteunshare
