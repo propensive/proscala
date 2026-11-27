@@ -1,0 +1,1 @@
+needed-from f685c76e969e508ebcad6bce3322e912dd533df1   # found building Soundness on upstream main (0ed42a2d89); the lines before this commit keep anonascribe as it was, where the failure has not been seen

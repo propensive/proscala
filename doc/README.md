@@ -42,6 +42,7 @@ remain on 3.9 until `lts-3.9` backports those fixes.
 | ------- | ----------- | ------- | ---- | ----- | ---- |
 | [aliascap](aliascap/aliascap.md) | Keep root capabilities global in type alias infos | 3.9, 3.10 | bug fix | yes | `-Zalias-captures` |
 | [anonascribe](anonascribe/anonascribe.md) | Treat an anonymous class instance's ascription as inferred | 3.10 | bug fix | yes | always on |
+| [anonascribe-shared](anonascribe-shared/anonascribe-shared.md) | Give each ascription of an anonymous class instance its own type | 3.10 | bug fix | yes | always on |
 | [anonspec](anonspec/anonspec.md) | Treat non-specialized anonymous-class parents as such, not as a crash | 3.10 | bug fix (crash) | yes | always on |
 | [anykindcap](anykindcap/anykindcap.md) | Do not constrain type arguments by an `AnyKind` bound's capture set | 3.10 | bug fix | yes | always on |
 | [assumeseparate](assumeseparate/assumeseparate.md) | Keep an `unsafeAssumeSeparate` operand's own type | 3.9, 3.10 | bug fix | yes (2: `repro`, `repro-element`) | always on |

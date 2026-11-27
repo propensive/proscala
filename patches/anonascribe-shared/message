@@ -1,0 +1,27 @@
+Author: Jon Pretty <jon.pretty@propensive.com>
+Date: Fri, 27 Nov 2026 18:22:14 +0900
+
+Give each ascription of an anonymous class instance its own type
+
+Setup treats the type Typer ascribes to an anonymous class instance as
+inferred (anonascribe), and gave it capture set variables by setting the new
+type of the ascription's type tree. A quote is unpickled once, and the
+expansions of a macro in one unit share the trees a splice does not change:
+that type tree among them. It can hold one type, so the second expansion got
+the variables of the first, which belong to the first one's scope, and a
+capability of the second expansion could not flow into them:
+
+    Note that capability `postable$proxy2` cannot flow into capture set {any}
+    because postable$proxy2 in method second is not visible from any in
+    value request.
+
+The type is now made for each ascription and attached to its `Typed` node,
+which the expansions do not share, and the rechecker takes it from there.
+
+Found in Soundness's obligatory, whose `request` and `notification` each
+expand telekinesis's `submit` macro.
+
+Developed with LLM assistance (Claude).
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Proscala-Patch: anonascribe-shared

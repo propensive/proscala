@@ -1,0 +1,11 @@
+orthant 2 patch
+
+@ 0 1 0 14e210428150d85505bd315096556b6c
++       tree.getAttachment(Setup.AnonymousAscription) match
++         case Some(ascribed) =>
++           // The ascription of an anonymous class instance: Setup made its type for
++           // this occurrence, see `Setup.AnonymousAscription`.
++           recheck(tree.expr, ascribed)
++           ascribed
++         case None =>
++           super.recheckTyped(tree)
